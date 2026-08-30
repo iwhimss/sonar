@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sonar-linux"
+version = "0.1.0.dev0"
+description = "PipeWire tabanlı kanal mikseri — Linux için SteelSeries Sonar alternatifi"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "iwhimss" }]
+keywords = ["pipewire", "audio", "mixer", "equalizer", "streaming", "obs", "sonar"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Mixers",
+]
+dependencies = [
+    "PySide6>=6.6",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/iwhimss/sonar"
+Issues = "https://github.com/iwhimss/sonar/issues"
+
+[project.scripts]
+sonar-daemon = "sonar.daemon.__main__:main"
+sonar-cli = "sonar.cli.__main__:main"
+
+[project.gui-scripts]
+sonar = "sonar.gui.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sonar"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sonar/gui/qml" = "sonar/gui/qml"
+"src/sonar/presets" = "sonar/presets"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Türkçe metinlerde belirsiz Unicode uyarıları
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

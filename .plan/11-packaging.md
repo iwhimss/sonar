@@ -1,0 +1,78 @@
+# Faz 11 — Paketleme ve dağıtım
+
+**Durum:** ⚪ Bekliyor
+**Bağımlılık:** Faz 10
+**Çıktı:** `packaging/`, ilk sürüm etiketi
+
+---
+
+## Amaç
+
+Projeyi "klonlayıp çalıştırılan bir betik" olmaktan çıkarıp kurulabilir bir uygulamaya
+dönüştürmek.
+
+---
+
+## Görevler
+
+### Arch / CachyOS paketi
+- [ ] `packaging/PKGBUILD`
+  - `depends`: `pipewire`, `pipewire-pulse`, `wireplumber`, `pyside6`, `python-numpy`, `lsp-plugins-lv2`
+  - `optdepends`:
+    - `deepfilter-ladspa` — AI gürültü engelleme
+    - `calf` — ek efekt eklentileri
+    - `qpwgraph` — graf hata ayıklama
+  - `makedepends`: `python-build`, `python-installer`, `python-hatchling`
+- [ ] `.SRCINFO` üretimi, yerel `makepkg -si` testi
+- [ ] (Opsiyonel, sonra) AUR'a `sonar-linux` olarak gönderim
+
+### Masaüstü entegrasyonu
+- [ ] `packaging/io.github.iwhimss.Sonar.desktop`
+      — kategori `AudioVideo;Audio;Mixer;`, `StartupWMClass` doğru ayarlı
+- [ ] Uygulama ikonu — SVG, köşesiz tasarım diliyle uyumlu, 16/24/32/48/64/128/256 px
+- [ ] `packaging/io.github.iwhimss.Sonar.metainfo.xml` (AppStream — yazılım merkezlerinde görünür)
+- [ ] `packaging/sonar-daemon.service` kurulumu (`/usr/lib/systemd/user/`)
+- [ ] D-Bus servis dosyası (`/usr/share/dbus-1/services/`) — daemon talep üzerine başlar
+- [ ] Kurulum sonrası mesajı: `systemctl --user enable --now sonar-daemon`
+
+### İlk çalıştırma sihirbazı
+- [ ] Gerekli LV2/LADSPA eklentilerini doğrula; eksikse hangi paketi kuracağını göster
+      (kopyalanabilir `pacman` komutuyla)
+- [ ] Fiziksel çıkış ve mikrofon cihazını seçtir
+- [ ] Önerilen yönlendirme kurallarını göster, kullanıcı onaylasın
+- [ ] "Varsayılan çıkışı Sonar yap" sorusunu açıkça sor (varsayılan: hayır)
+- [ ] OBS kullanıcısı mısın? → evetse `docs/OBS.md`'ye kısa yol
+
+### Sürüm
+- [ ] Sürümleme: SemVer, `v1.0.0`
+- [ ] `CHANGELOG.md`
+- [ ] `git tag v1.0.0` + `gh release create` (ekran görüntüleri ve kurulum notlarıyla)
+- [ ] README rozetleri: lisans, sürüm, platform
+
+### Geliştirici deneyimi
+- [ ] `just` veya `Makefile`: `dev` (daemon + GUI birlikte), `test`, `lint`, `pkg`
+- [ ] Kurulum yapmadan çalıştırma: `python -m sonar.daemon` / `python -m sonar.gui`
+- [ ] (Opsiyonel) GitHub Actions: `ruff` + `pytest` (headless testler)
+
+---
+
+## Doğrulama
+
+```bash
+cd packaging && makepkg -si
+systemctl --user enable --now sonar-daemon
+systemctl --user status sonar-daemon      # aktif
+# Uygulama menüsünden "Sonar" ile aç
+```
+
+- Temiz bir kullanıcı hesabında sıfırdan kurulum çalışıyor mu
+- Eksik eklentiyle kurulum → sihirbaz doğru yönlendiriyor mu
+- Paket kaldırıldığında sanal cihazlar temizleniyor mu (daemon durunca)
+- `.desktop` girdisi doğru ikon ve adla görünüyor mu
+
+---
+
+## Tamamlanma kriteri
+
+`makepkg -si` ile kurulan, uygulama menüsünden açılan, systemd ile otomatik başlayan,
+eksik bağımlılıkları kendisi bildiren bir v1.0.0 paketi.

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Test / araçlar
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editör
+.vscode/
+.idea/
+*.swp
+
+# Çalışma zamanı (asla commit edilmez)
+*.log
+/tmp/
+graph.conf
