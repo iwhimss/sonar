@@ -22,3 +22,6 @@ htmlcov/
 *.log
 /tmp/
 graph.conf
+
+# venv
+.venv/

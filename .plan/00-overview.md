@@ -7,15 +7,15 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 0 tamamlandı → Faz 1 onay bekliyor
+**Aktif faz:** Faz 2 — graph.conf üreteci
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 1 (veri modeli ve yapılandırma) için kullanıcı onayı bekleniyor.
+**Sonraki adım:** Faz 2 — graph.conf üreteci (ilk iş: canlı parametre doğrulaması).
 
 | # | Faz | Durum |
 |---|---|---|
 | 0 | [İskelet ve repo](00-overview.md) | 🟢 Tamamlandı |
-| 1 | [Veri modeli ve yapılandırma](01-model-config.md) | ⚪ Bekliyor |
-| 2 | [graph.conf üreteci](02-confgen.md) | ⚪ Bekliyor |
+| 1 | [Veri modeli ve yapılandırma](01-model-config.md) | 🟢 Tamamlandı |
+| 2 | [graph.conf üreteci](02-confgen.md) | 🟡 Sıradaki |
 | 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | ⚪ Bekliyor |
 | 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | ⚪ Bekliyor |
 | 5 | [Uygulama yönlendirme](05-routing.md) | ⚪ Bekliyor |
@@ -28,6 +28,8 @@
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
+
+**Test durumu:** 176 test geçiyor, `ruff` temiz.
 
 ---
 
@@ -136,6 +138,16 @@ mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ limite
 | Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
 
 Topoloji **hiç değişmez** → efekt açıp kapatmak sadece bir parametre yazımı, ses kesintisi yok.
+
+### Faz 1'de doğrulanan DSP ayrıntıları
+
+* LSP'nin **tüm kazanç portları lineerdir** (`g_N` aralığı 0.01585–63.096 = ±36 dB), dB değil.
+  Dönüşüm `core/dsp/params.py` içinde tek noktada yapılır.
+* Bir EQ bandını kapatmanın yolu `ft_N = 0` (Off). `xs_N` = solo, `xm_N` = mute.
+* `fm_N = 6` (**APO DR**) filtre modeli seçildi: RBJ cookbook biquad'ıyla birebir örtüşür,
+  böylece arayüzde çizilen eğri kulağın duyduğuyla aynı olur.
+* Band varsayılan frekansları ISO R10 (1/3 oktav) serisidir.
+* DeepFilterNet'in `enabled` portu yoktur; bypass = azaltma sınırı 0 dB.
 
 ### Canlı parametre yazımı
 
