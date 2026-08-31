@@ -227,3 +227,14 @@ def test_every_declared_signal_can_be_emitted(config_store):
         "GraphRebuilt",
         "Error",
     ]
+
+
+def test_streams_signal_payload_matches_get_streams(config_store):
+    """`StreamsChanged` ham envanteri yollamamalı — bir kez o hataya düşüldü."""
+    import inspect
+
+    from sonar.daemon import service
+
+    source = inspect.getsource(service.SonarDaemon._emit_streams)
+    assert "self.api.get_streams()" in source
+    assert "supervisor.state.streams" not in source

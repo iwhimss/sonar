@@ -180,12 +180,23 @@ class SonarApi:
         return self.router.sync()
 
     def get_streams(self) -> list[dict]:
-        """Kullanıcıya gösterilecek akışlar — Sonar'ın kendi loopback'leri hariç."""
-        return [
-            serde.to_jsonable(stream)
-            for stream in self.supervisor.state.streams.values()
-            if not stream.is_internal
-        ]
+        """Kullanıcıya gösterilecek akışlar — Sonar'ın kendi loopback'leri hariç.
+
+        Her akışa `channel` alanı eklenir. Bunu node'un `target.object` prop'undan okumak
+        **mümkün değil**: akışı `pw-metadata` ile taşıdığımızda hedef metadata deposunda
+        tutuluyor, node'un kendi props'una yazılmıyor (pw-dump'ta boş görünüyor). Doğru
+        kaynak yönlendiricinin kendi kaydı — hem kural kararlarını hem kullanıcının elle
+        taşımalarını içeriyor.
+        """
+        decided = self.router.decided
+        out = []
+        for stream in self.supervisor.state.streams.values():
+            if stream.is_internal:
+                continue
+            row = serde.to_jsonable(stream)
+            row["channel"] = decided.get(stream.serial or stream.id, "")
+            out.append(row)
+        return out
 
     def conflicts(self) -> list[dict]:
         """Bizimle çakışan, sistem geneli çalışan ses işleyicileri."""

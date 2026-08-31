@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 7 — GUI tasarım sistemi ve Mixer görünümü
+**Aktif faz:** Faz 8 — Kanal FX sayfası
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 7 — `qml/ui/Theme.qml` (köşe yarıçapı her yerde 0), `gui/bridge.py`,
-Mixer görünümü.
+**Sonraki adım:** Faz 8 — EQ eğrisi (`core/dsp/response.py` + `QQuickPaintedItem`),
+dinamik filtre panelleri, profil şeridi.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -21,8 +21,8 @@ Mixer görünümü.
 | 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟢 Tamamlandı |
 | 5 | [Uygulama yönlendirme](05-routing.md) | 🟢 Tamamlandı |
 | 6 | [Seviye ölçümü](06-meters.md) | 🟢 Tamamlandı |
-| 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟡 Sıradaki |
-| 8 | [Kanal FX sayfası](08-gui-fx.md) | ⚪ Bekliyor |
+| 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟢 Tamamlandı |
+| 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟡 Sıradaki |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | ⚪ Bekliyor |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | ⚪ Bekliyor |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor |
@@ -30,7 +30,7 @@ Mixer görünümü.
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 475 test geçiyor, `ruff` temiz.
+**Test durumu:** 542 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -218,6 +218,16 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
 * **Ölçüm maliyeti %3–5** (hedef %2'ydi, tutturulamadı). Yalnızca mikser açıkken oluşuyor;
   abone yokken sıfır süreç. Çözüm yolu backlog'da.
 * Peak-hold canlı doğrulandı: 1.5 s tutup 20 dB/s düşüyor.
+
+### Faz 7'de yakalanan PySide6 tuzakları
+
+Üçü de sessiz: hata vermiyor, arayüz boş kalıyor.
+
+* **Python öznitelikleri QML'e görünmüyor** — modeller `Property` olarak açılmalı.
+* **Fonksiyon çağrıları binding'i tazelemiyor** — QML yalnızca özellik okumalarını izliyor;
+  köprüye `revision` sayacı eklendi.
+* **D-Bus sinyal yuvaları `"1"` öneki istiyor** (`"1onGraphRebuilt()"`); öneksiz form
+  sessizce bağlanmıyor.
 
 ### Canlı parametre yazımı
 

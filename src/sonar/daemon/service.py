@@ -173,12 +173,14 @@ class SonarDaemon:
             self._streams_timer.start()
 
     def _emit_streams(self) -> None:
+        # `api.get_streams()` şart: ham envanter Sonar'ın kendi loopback'lerini de içeriyor
+        # ve akışların hangi kanalda olduğunu bilmiyor. Doğrudan serileştirildiğinde arayüz
+        # "çalan uygulamalar" olarak kendi tesisatımızı gösteriyordu.
+        #
         # Bilinçli olarak `get_state()` çağrılmıyor: o tüm yapılandırmayı ve her hedefin
         # profilini serileştiriyor; akış listesi saniyede birkaç kez değişebiliyor.
-        from sonar.core import serde
-
         payload = {
-            "streams": [serde.to_jsonable(s) for s in self.supervisor.state.streams.values()],
+            "streams": self.api.get_streams(),
             "devices": self.api.get_devices(),
         }
         self.iface.emit_signal("StreamsChanged", json.dumps(payload, ensure_ascii=False))

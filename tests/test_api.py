@@ -520,3 +520,20 @@ def test_structural_change_resets_the_router(api):
     assert api.router.decided
     api.set_mic_monitor("mic", True)
     assert api.router.decided == {}
+
+
+def test_streams_carry_their_channel(api):
+    """Arayüz uygulamanın hangi şeritte görüneceğini buradan öğreniyor.
+
+    `target.object`'ten okunamıyor: `pw-metadata` ile taşıdığımızda hedef metadata
+    deposunda kalıyor, node'un props'una yazılmıyor.
+    """
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.sync_routing()
+    row = next(s for s in api.get_streams() if s["app_binary"] == "firefox")
+    assert row["channel"] == "media"
+
+
+def test_untouched_stream_has_no_channel(api):
+    _stream_obj(api, 11, "mpv", **{"application.process.binary": "mpv"})
+    assert next(s for s in api.get_streams() if s["id"] == 11)["channel"] == ""

@@ -59,6 +59,9 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # Türkçe metinlerde belirsiz Unicode 
 # D-Bus metot adları protokolün parçası ve PascalCase olmak zorunda; `busctl` ile
 # çağrılırken birebir bu adlar kullanılıyor.
 "src/sonar/daemon/dbus_iface.py" = ["N802"]
+# QML sinyal/özellik/metot adları camelCase olmak zorunda; QML tarafında birebir
+# bu adlarla bağlanılıyor.
+"src/sonar/gui/bridge.py" = ["N802", "N815"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
