@@ -73,7 +73,10 @@ def test_get_state_carries_everything_the_ui_needs(api):
     )
     assert [c["id"] for c in state["config"]["channels"]] == ["game", "chat", "media", "aux"]
     assert set(state["profiles"]) == set(api.config.profile_targets())
-    assert state["profile_names"]["game"] == ["Default"]
+    # Gömülü presetler önce, kullanıcının kendi profilleri sonra.
+    assert state["profile_names"]["game"][0] == "Flat"
+    assert state["profile_names"]["game"][-1] == "Default"
+    assert "Flat" in state["builtin_profiles"]["game"]
 
 
 def test_get_devices_hides_our_own_virtual_nodes(api):
@@ -537,3 +540,237 @@ def test_streams_carry_their_channel(api):
 def test_untouched_stream_has_no_channel(api):
     _stream_obj(api, 11, "mpv", **{"application.process.binary": "mpv"})
     assert next(s for s in api.get_streams() if s["id"] == 11)["channel"] == ""
+
+
+# --------------------------------------------------------------------------- presetler
+#
+# Gömülü presetler salt okunur. Düzenlemeler aktif profile otomatik kalıcı olduğu için,
+# kopya alınmasaydı bir preset'i kurcalamak preset'in kendisini bozardı.
+
+
+def test_builtin_presets_are_listed_first(api):
+    names = api.list_profiles("game")
+    assert names[:2] == ["Flat", "FPS Footsteps"]
+    assert "Default" in names
+
+
+def test_mic_gets_its_own_catalogue(api):
+    assert "Broadcast" in api.list_profiles("mic")
+    assert "FPS Footsteps" not in api.list_profiles("mic")
+
+
+def test_loading_a_preset_does_not_write_it_to_disk(api, config_store):
+    api.load_profile("game", "Bass Boost")
+    assert api.profile("game").name == "Bass Boost"
+    assert not config_store.paths.profile_file("game", "Bass Boost").exists()
+
+
+def test_editing_a_preset_creates_a_copy(api, config_store):
+    api.load_profile("game", "Bass Boost")
+    api.set_eq_band("game", 0, "gain_db", 3.0)
+
+    assert api.config.channel("game").active_profile == "Bass Boost (özel)"
+    assert config_store.paths.profile_file("game", "Bass Boost (özel)").exists()
+    # Preset'in kendisi bozulmamalı.
+    fresh = api.list_profiles("game")
+    assert "Bass Boost" in fresh
+    api.load_profile("game", "Bass Boost")
+    assert api.profile("game").eq.bands[0].gain_db == 0.0
+
+
+def test_repeated_edits_do_not_pile_up_copies(api):
+    api.load_profile("game", "Bass Boost")
+    api.set_eq_band("game", 0, "gain_db", 3.0)
+    api.set_eq_band("game", 1, "gain_db", 4.0)
+    copies = [n for n in api.list_profiles("game") if "özel" in n]
+    assert copies == ["Bass Boost (özel)"]
+
+
+def test_copy_names_do_not_collide(api):
+    api.load_profile("game", "Bass Boost")
+    api.set_eq_band("game", 0, "gain_db", 3.0)
+    api.load_profile("game", "Bass Boost")
+    api.set_eq_band("game", 0, "gain_db", 5.0)
+    copies = {n for n in api.list_profiles("game") if "özel" in n}
+    assert copies == {"Bass Boost (özel)", "Bass Boost (özel 2)"}
+
+
+def test_editing_a_user_profile_does_not_copy(api):
+    api.set_eq_band("game", 0, "gain_db", 3.0)
+    assert api.config.channel("game").active_profile == "Default"
+    assert not [n for n in api.list_profiles("game") if "özel" in n]
+
+
+def test_a_copy_is_announced(config_store):
+    seen: list[dict] = []
+    api = SonarApi(config_store, FakeSupervisor(), save_delay=0, on_change=seen.append)
+    api.load_profile("game", "Flat")
+    api.set_eq_enabled("game", True)
+    assert any(d["kind"] == "profile_copied" for d in seen)
+
+
+@pytest.mark.parametrize(
+    ("call", "args"),
+    [
+        ("save_profile", ("game", "Bass Boost")),
+        ("delete_profile", ("game", "Bass Boost")),
+        ("rename_profile", ("game", "Bass Boost", "X")),
+        ("rename_profile", ("game", "Default", "Bass Boost")),
+    ],
+)
+def test_presets_are_protected(api, call, args):
+    with pytest.raises(ApiError) as excinfo:
+        getattr(api, call)(*args)
+    assert excinfo.value.code == "profile_readonly"
+
+
+def test_filter_edits_also_trigger_the_copy(api):
+    api.load_profile("mic", "Broadcast")
+    api.set_filter_param("mic", "comp", "ratio", 6.0)
+    assert api.config.mic("mic").active_profile == "Broadcast (özel)"
+
+
+def test_state_marks_which_profiles_are_builtin(api):
+    state = api.get_state()
+    assert "Bass Boost" in state["builtin_profiles"]["game"]
+    assert "Default" not in state["builtin_profiles"]["game"]
+
+
+def test_rebuild_uses_the_preset_when_it_is_active(api):
+    """Graf yeniden kurulunca aktif preset diskte olmadığı için kaybolmamalı."""
+    api.load_profile("game", "FPS Footsteps")
+    provider = api.supervisor.load_profile
+    restored = provider("game", "FPS Footsteps")
+    assert restored.eq.enabled is True
+    assert restored.eq.bands[6].gain_db > 4.0
+
+
+# --------------------------------------------------------------------------- içe/dışa aktarma
+
+AUTOEQ_TEXT = """\
+Preamp: -5.0 dB
+Filter 1: ON LSC Fc 100 Hz Gain 5.0 dB Q 0.70
+Filter 2: ON PK Fc 3000 Hz Gain -4.0 dB Q 2.00
+"""
+
+
+def test_import_creates_and_activates_a_profile(api, config_store):
+    result = api.import_profile("game", AUTOEQ_TEXT, "HD650")
+    assert result["name"] == "HD650"
+    assert result["source"] == "autoeq"
+    assert api.config.channel("game").active_profile == "HD650"
+    assert config_store.paths.profile_file("game", "HD650").exists()
+    assert api.profile("game").eq.preamp_db == -5.0
+
+
+def test_import_applies_to_the_graph(api):
+    api.import_profile("game", AUTOEQ_TEXT, "HD650")
+    assert ("target", "game") in api.supervisor.calls
+
+
+def test_import_never_overwrites_a_preset(api):
+    result = api.import_profile("game", AUTOEQ_TEXT, "Bass Boost")
+    assert result["name"] == "Bass Boost (özel)"
+    assert "Bass Boost" in api.builtin_names("game")
+
+
+def test_import_reports_dropped_bands(api):
+    lines = [f"Filter {i}: ON PK Fc {50 + i * 90} Hz Gain 2 dB Q 1" for i in range(40)]
+    result = api.import_profile("game", "\n".join(lines), "Çok")
+    assert result["dropped"] == 8
+    assert result["warnings"]
+
+
+def test_import_rejects_garbage(api):
+    with pytest.raises(ApiError) as excinfo:
+        api.import_profile("game", "bu bir EQ dosyası değil")
+    assert excinfo.value.code == "import_failed"
+
+
+def test_export_round_trips_through_import(api):
+    api.set_eq_band("game", 3, "gain_db", 5.0)
+    api.set_eq_enabled("game", True)
+    text = api.export_profile("game")
+    api.import_profile("chat", text, "Kopya")
+    assert api.profile("chat").eq.bands[3].gain_db == 5.0
+
+
+def test_export_autoeq_is_text(api):
+    api.set_eq_enabled("game", True)
+    text = api.export_profile("game", autoeq=True)
+    assert text.startswith("Preamp:")
+    assert "Filter 1:" in text
+
+
+def test_export_of_a_named_profile(api):
+    api.save_profile("game", "CS2")
+    api.load_profile("game", "Default")
+    assert "CS2" in api.export_profile("game", "CS2")
+
+
+def test_copy_profile(api):
+    api.set_eq_band("game", 0, "gain_db", 4.0)
+    api.copy_profile("game", "Kopyam")
+    assert api.config.channel("game").active_profile == "Kopyam"
+    assert api.profile("game").eq.bands[0].gain_db == 4.0
+
+
+def test_copy_refuses_a_preset_name(api):
+    with pytest.raises(ApiError) as excinfo:
+        api.copy_profile("game", "Movie")
+    assert excinfo.value.code == "profile_readonly"
+
+
+def test_reset_flattens_the_active_profile(api):
+    api.set_eq_enabled("game", True)
+    api.set_eq_band("game", 4, "gain_db", 9.0)
+    api.set_filter_enabled("game", "gate", True)
+    api.reset_profile("game")
+    profile = api.profile("game")
+    assert profile.eq.enabled is False
+    assert profile.eq.bands[4].gain_db == 0.0
+    assert profile.filter(FilterStage.GATE).enabled is False
+    assert profile.name == "Default", "sıfırlama adı korumalı"
+
+
+def test_reset_on_a_preset_copies_first(api):
+    api.load_profile("game", "Bass Boost")
+    api.reset_profile("game")
+    assert api.config.channel("game").active_profile == "Bass Boost (özel)"
+
+
+# --------------------------------------------------------------------------- ChatMix
+
+
+def test_chatmix_accepts_several_channels_per_side(api):
+    api.set_chatmix_config(True, "game", "chat,media")
+    from sonar.engine.supervisor import chatmix_gains
+
+    api.set_chatmix(100.0)
+    gains = chatmix_gains(api.config)
+    assert gains["chat"] == pytest.approx(1.0)
+    assert gains["media"] == pytest.approx(1.0)
+    assert gains["game"] < 0.05
+
+
+def test_chatmix_config_rejects_an_unknown_channel_in_a_list(api):
+    with pytest.raises(ApiError) as excinfo:
+        api.set_chatmix_config(True, "game", "chat,yok")
+    assert excinfo.value.code == "unknown_channel"
+
+
+def test_chatmix_config_rejects_an_empty_side(api):
+    with pytest.raises(ApiError) as excinfo:
+        api.set_chatmix_config(True, "game", "  ")
+    assert excinfo.value.code == "invalid_value"
+
+
+def test_state_exposes_chatmix_gains(api):
+    api.set_chatmix(100.0)
+    gains = api.get_state()["chatmix_gains"]
+    assert gains["game"] < 0.05
+    assert gains["chat"] == pytest.approx(1.0)
+
+
+def test_state_lists_headsets(api):
+    assert isinstance(api.get_state()["headsets"], list)

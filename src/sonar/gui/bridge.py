@@ -65,7 +65,13 @@ RECONNECT_MS = 2000
 def channel_rows(state: dict) -> list[dict]:
     """Kanal şeritlerinin satırları — mikserde soldan sağa görünecek sırayla."""
     config = state.get("config") or {}
-    profiles = state.get("profile_names") or {}
+    builtins = state.get("builtin_profiles") or {}
+    profiles = {
+        target: [
+            {"name": name, "builtin": name in set(builtins.get(target) or [])} for name in names
+        ]
+        for target, names in (state.get("profile_names") or {}).items()
+    }
     rows = []
     for channel in sorted(config.get("channels", []), key=lambda c: (c["order"], c["id"])):
         rows.append(
@@ -510,7 +516,46 @@ class SonarBridge(QObject):
 
     @Slot(str, result="QVariant")
     def profileNames(self, target: str) -> list:
-        return (self._state.get("profile_names") or {}).get(target) or []
+        """Profil listesi; gömülü presetler `builtin: true` ile işaretli."""
+        builtin = set((self._state.get("builtin_profiles") or {}).get(target) or [])
+        return [
+            {"name": name, "builtin": name in builtin}
+            for name in (self._state.get("profile_names") or {}).get(target) or []
+        ]
+
+    @Slot(str, result=float)
+    def chatmixGain(self, channel: str) -> float:
+        """Kanalın ChatMix çarpanı. 1.0 = dokunulmamış."""
+        return float((self._state.get("chatmix_gains") or {}).get(channel, 1.0))
+
+    @Slot(str, str)
+    def importProfile(self, target: str, path: str) -> None:
+        from pathlib import Path
+
+        try:
+            text = Path(path.removeprefix("file://")).read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            log.warning("dosya okunamadı: %s", error)
+            return
+        self._call("ImportProfile", target, text, "")
+        self.refresh()
+
+    @Slot(str, str, bool)
+    def exportProfile(self, target: str, path: str, autoeq: bool) -> None:
+        from pathlib import Path
+
+        text = self._call("ExportProfile", target, "", autoeq)
+        if text is None:
+            return
+        try:
+            Path(path.removeprefix("file://")).write_text(text, encoding="utf-8")
+        except OSError as error:
+            log.warning("dosya yazılamadı: %s", error)
+
+    @Slot(str)
+    def resetProfile(self, target: str) -> None:
+        self._call("ResetProfile", target)
+        self.refresh()
 
     @Slot(str, result="QVariant")
     def channelOf(self, target: str) -> dict:

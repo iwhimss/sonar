@@ -73,10 +73,11 @@ def chatmix_gains(cfg: SonarConfig) -> dict[str, float]:
     if not mix.enabled:
         return {}
     tilt = (mix.value - 50.0) / 50.0  # -1 (tam sol) … +1 (tam sağ)
-    return {
-        mix.left_channel: db_to_linear(max(tilt, 0.0) * mix.floor_db),
-        mix.right_channel: db_to_linear(max(-tilt, 0.0) * mix.floor_db),
-    }
+    left_gain = db_to_linear(max(tilt, 0.0) * mix.floor_db)
+    right_gain = db_to_linear(max(-tilt, 0.0) * mix.floor_db)
+    gains = dict.fromkeys(mix.left(), left_gain)
+    gains.update(dict.fromkeys(mix.right(), right_gain))
+    return gains
 
 
 def live_params(

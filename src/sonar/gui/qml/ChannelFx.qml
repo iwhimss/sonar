@@ -41,7 +41,11 @@ Item {
                     width: 190
                     accent: root.accent
                     anchors.verticalCenter: parent.verticalCenter
-                    model: root.names.map(function (n) { return { value: n, label: n } })
+                    model: root.names.map(function (p) {
+                        return typeof p === "string"
+                            ? { value: p, label: p }
+                            : { value: p.name, label: (p.builtin ? "🔒 " : "") + p.name }
+                    })
                     currentValue: root.activeName
                     onActivated: (v) => root.bridge.loadProfile(root.target, v)
                 }
@@ -49,6 +53,12 @@ Item {
                     text: "Farklı kaydet"
                     anchors.verticalCenter: parent.verticalCenter
                     onClicked: saveDialog.open()
+                }
+                SonarButton {
+                    text: "Sıfırla"
+                    variant: "ghost"
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: root.bridge.resetProfile(root.target)
                 }
                 SonarButton {
                     text: "Sil"

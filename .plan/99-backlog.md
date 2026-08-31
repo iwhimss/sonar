@@ -105,3 +105,20 @@ tabanlı yardımcı süreç (Rust/C, ~200 satır) tüm noktaları tek bağlantı
 peak/RMS değerlerini yazabilir; D-Bus sinyali ve arayüz tarafı hiç değişmez.
 
 Yalnızca mikser penceresi açıkken oluşan bir maliyet olduğu için v1 engelleyicisi değil.
+
+
+## Faz 9'dan devreden
+
+### Donanım ChatMix tekerinin okunması
+`engine/headset.py` cihazı buluyor ve udev kuralı `packaging/99-sonar-headset.rules`'ta
+hazır. Kalan iş: kural kurulduktan sonra `/dev/hidraw*`'dan gelen raporları izleyip teker
+konumunu çözmek (SteelSeries Arctis 7+ = `1038:220e`). Protokol cihazdan okumadan
+doğrulanamayacağı için tahminle yazılmadı.
+
+### Arayüz kolaylıkları
+- Arama kutulu profil gözat paneli
+- Filtre paneli başına `⋮` menüsü (sıfırla / preset / aşamayı kopyala-yapıştır)
+- Noise Gate "eşiği otomatik hesapla" (5 sn taban gürültü ölçümü)
+- Mikrofon dalga formu görseli
+- `mic` ↔ `stream_mic` sekmesi ve "zinciri paylaş" seçeneği
+- Ctrl+Z / Ctrl+Y, A/B karşılaştırma, tüm zinciri geçici bypass eden düğme

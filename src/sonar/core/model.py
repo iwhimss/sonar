@@ -306,9 +306,21 @@ class ChatMixConfig:
 
     enabled: bool = True
     value: float = 50.0  # 0 = tamamen sol, 50 = nötr, 100 = tamamen sağ
+    #: Virgülle birden fazla kanal verilebilir ("chat,media"). Yeni bir alan eklemek yerine
+    #: aynı alan çoğullaştırıldı: eski yapılandırmalar olduğu gibi okunmaya devam ediyor.
     left_channel: str = "game"
     right_channel: str = "chat"
     floor_db: float = -40.0  # uçtaki kanalın kaç dB kısılacağı
+
+    def left(self) -> list[str]:
+        return _split_channels(self.left_channel)
+
+    def right(self) -> list[str]:
+        return _split_channels(self.right_channel)
+
+
+def _split_channels(value: str) -> list[str]:
+    return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
 @dataclass(slots=True)

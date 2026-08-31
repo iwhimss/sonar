@@ -27,6 +27,15 @@ gecikmeyle diske. "Kaydet" demeyi unutmak ayarların kaybolması anlamına gelme
 `save_profile(target, ad)` bir **"farklı kaydet"**tir: çalışılan kopyayı yeni bir adla yazar
 ve aktif profili ona çevirir. Eski profil o âna kadarki hâliyle kalır.
 
+## Gömülü presetler salt okunur
+
+`Flat`, `FPS Footsteps`, `Broadcast`… kod içinde tanımlı ve **diske yazılmaz**. Kullanıcı
+salt okunur bir preset aktifken bir şeyi kurcalarsa, önce `"<ad> (özel)"` adıyla bir kopya
+oluşturulup ona geçilir; preset bozulmaz.
+
+Bu, otomatik kalıcılığın kaçınılmaz sonucu: düzenleme aktif profile yazıldığı için, kopya
+alınmasaydı preset'in kendisi değişirdi. (Faz 8'de tam bu yüzden bir ölçüm kirlendi.)
+
 ## Canlı mı, yapısal mı
 
 Her mutasyon ikisinden biridir:
@@ -48,7 +57,7 @@ from collections.abc import Callable
 from typing import Any
 
 from sonar.core import config as config_mod
-from sonar.core import serde
+from sonar.core import importers, presets, serde
 from sonar.core.model import (
     SUPPORTED_BAND_COUNTS,
     BusId,
@@ -62,9 +71,10 @@ from sonar.core.model import (
     slugify,
 )
 from sonar.engine import confgen
+from sonar.engine.headset import detect_headsets
 from sonar.engine.meters import Level, MeterManager, meter_sources
 from sonar.engine.router import Decision, Router
-from sonar.engine.supervisor import Supervisor
+from sonar.engine.supervisor import Supervisor, chatmix_gains
 
 __all__ = ["ApiError", "SonarApi", "envelope"]
 
@@ -167,12 +177,19 @@ class SonarApi:
                 for target in self.config.profile_targets()
             },
             "profile_names": {
-                target: self.store.list_profiles(target) for target in self.config.profile_targets()
+                target: self.list_profiles(target) for target in self.config.profile_targets()
+            },
+            "builtin_profiles": {
+                target: self.builtin_names(target) for target in self.config.profile_targets()
             },
             "streams": self.get_streams(),
             "devices": self.get_devices(),
             "graph_ready": bool(state.sonar_nodes()),
             "conflicts": self.conflicts(),
+            # Arayüz fader'ın altında "ChatMix yönetiyor" rozetini buna bakarak gösteriyor:
+            # gösterilen değer taban seviye, duyulan ise taban × bu çarpan.
+            "chatmix_gains": chatmix_gains(self.config),
+            "headsets": self.headsets(),
         }
 
     def sync_routing(self) -> list[Decision]:
@@ -216,6 +233,18 @@ class SonarApi:
             if node in nodes
         ]
 
+    def headsets(self) -> list[dict]:
+        """Donanım ChatMix tekeri olduğu bilinen kulaklıklar ve erişilebilirlikleri."""
+        return [
+            {
+                "device": info.device,
+                "name": info.name,
+                "readable": info.readable,
+                "hint": info.hint,
+            }
+            for info in detect_headsets()
+        ]
+
     def get_devices(self) -> list[dict]:
         """Fiziksel cihazlar. Kendi sanal node'larımız listeden düşer."""
         return [
@@ -227,17 +256,56 @@ class SonarApi:
         ]
 
     def list_profiles(self, target: str) -> list[str]:
+        """Gömülü presetler önce, kullanıcının kendi profilleri sonra."""
         self._check_target(target)
-        return self.store.list_profiles(target)
+        builtin = presets.builtin_names(target, self._mic_targets())
+        user = [name for name in self.store.list_profiles(target) if name not in builtin]
+        return builtin + user
+
+    def builtin_names(self, target: str) -> list[str]:
+        return presets.builtin_names(target, self._mic_targets())
+
+    def _mic_targets(self) -> frozenset[str]:
+        return frozenset(mic.id for mic in self.config.mic_chains)
+
+    def _is_builtin(self, target: str, name: str) -> bool:
+        return presets.is_builtin(target, name, self._mic_targets())
 
     def list_rules(self) -> list[dict]:
         return [serde.to_jsonable(rule) for rule in self.config.rules]
 
     def profile(self, target: str) -> Profile:
-        """Hedefin çalışılan profili; yoksa diskten yüklenir."""
+        """Hedefin çalışılan profili; yoksa preset'ten veya diskten yüklenir."""
         if target not in self.profiles:
-            self.profiles[target] = self.store.load_profile(target, self._active_name(target))
+            self.profiles[target] = self._load(target, self._active_name(target))
         return self.profiles[target]
+
+    def _load(self, target: str, name: str) -> Profile:
+        builtin = presets.builtin_profile(target, name, self._mic_targets())
+        return builtin if builtin is not None else self.store.load_profile(target, name)
+
+    def _editable(self, target: str) -> Profile:
+        """Düzenlemeden önce çağrılır. Aktif profil salt okunursa kopyaya geçilir."""
+        name = self._active_name(target)
+        if not self._is_builtin(target, name):
+            return self.profile(target)
+
+        copy_name = self._unique_copy_name(target, name)
+        working = self.profile(target)
+        working.name = copy_name
+        self.store.save_profile(target, working)
+        self._set_active_name(target, copy_name)
+        self._emit({"kind": "profile_copied", "target": target, "from": name, "to": copy_name})
+        return working
+
+    def _unique_copy_name(self, target: str, name: str) -> str:
+        existing = set(self.store.list_profiles(target)) | set(self.builtin_names(target))
+        candidate = f"{name} ({presets.COPY_SUFFIX})"
+        index = 2
+        while candidate in existing:
+            candidate = f"{name} ({presets.COPY_SUFFIX} {index})"
+            index += 1
+        return candidate
 
     # ------------------------------------------------------------------ seviye
 
@@ -268,7 +336,7 @@ class SonarApi:
     # ------------------------------------------------------------------ filtreler
 
     def set_filter_enabled(self, target: str, stage: str, enabled: bool) -> None:
-        profile = self.profile(target)
+        profile = self._editable(target)
         if stage == FilterStage.EQ:
             profile.eq.enabled = bool(enabled)
         else:
@@ -277,7 +345,7 @@ class SonarApi:
 
     def set_filter_param(self, target: str, stage: str, name: str, value: float) -> None:
         """`name` insan birimindeki parametre adıdır (`threshold_db`), port sembolü değil."""
-        state = self.profile(target).filter(self._stage(target, stage))
+        state = self._editable(target).filter(self._stage(target, stage))
         if name not in state.params:
             raise ApiError("unknown_param", f"'{stage}' aşamasında böyle bir parametre yok: {name}")
         state.params[name] = float(value)
@@ -289,11 +357,11 @@ class SonarApi:
         self.set_filter_enabled(target, FilterStage.EQ.value, enabled)
 
     def set_eq_preamp(self, target: str, value_db: float) -> None:
-        self.profile(target).eq.preamp_db = float(value_db)
+        self._editable(target).eq.preamp_db = float(value_db)
         self._live_target(target, {"kind": "eq_preamp", "target": target})
 
     def set_eq_band(self, target: str, band: int, field: str, value: float | str) -> None:
-        eq = self.profile(target).eq
+        eq = self._editable(target).eq
         if not 0 <= band < len(eq.bands):
             raise ApiError("unknown_band", f"band aralık dışında: {band}")
         if field not in _EQ_FIELDS:
@@ -322,7 +390,7 @@ class SonarApi:
                 "unsupported_band_count",
                 f"desteklenen band sayıları: {', '.join(map(str, SUPPORTED_BAND_COUNTS))}",
             )
-        self.profile(target).eq.band_count = count
+        self._editable(target).eq.band_count = count
         self.config.settings.default_band_count = count
         self._structural({"kind": "band_count", "target": target})
 
@@ -330,12 +398,15 @@ class SonarApi:
 
     def load_profile(self, target: str, name: str) -> None:
         self._check_target(target)
-        self.profiles[target] = self.store.load_profile(target, name)
+        self.profiles[target] = self._load(target, name)
+        self._dirty_profiles.discard(target)
         self._set_active_name(target, name)
         self._live_target(target, {"kind": "profile", "target": target, "name": name})
 
     def save_profile(self, target: str, name: str) -> None:
         self._check_target(target)
+        if self._is_builtin(target, name):
+            raise ApiError("profile_readonly", f"gömülü preset üzerine yazılamaz: {name}")
         profile = self.profile(target)
         profile.name = name
         self.store.save_profile(target, profile)
@@ -346,6 +417,8 @@ class SonarApi:
 
     def delete_profile(self, target: str, name: str) -> None:
         self._check_target(target)
+        if self._is_builtin(target, name):
+            raise ApiError("profile_readonly", f"gömülü preset silinemez: {name}")
         if not self.store.delete_profile(target, name):
             raise ApiError("profile_protected", f"bu profil silinemez: {name}")
         if self._active_name(target) == name:
@@ -354,6 +427,10 @@ class SonarApi:
 
     def rename_profile(self, target: str, old: str, new: str) -> None:
         self._check_target(target)
+        if self._is_builtin(target, old):
+            raise ApiError("profile_readonly", f"gömülü preset yeniden adlandırılamaz: {old}")
+        if self._is_builtin(target, new):
+            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {new}")
         if not self.store.rename_profile(target, old, new):
             raise ApiError("profile_not_renamed", f"profil yeniden adlandırılamadı: {old}")
         if self._active_name(target) == old:
@@ -361,6 +438,67 @@ class SonarApi:
             self.profile(target).name = new
         self._emit({"kind": "profile_renamed", "target": target, "old": old, "new": new})
         self._save_soon()
+
+    def import_profile(self, target: str, text: str, name: str = "") -> dict:
+        """Dış bir EQ dosyasını profil olarak içe aktarır ve ona geçer.
+
+        Biçim içerikten bulunur (uzantıya güvenilmiyor): AutoEQ/APO, EasyEffects preset'i
+        veya `.sonarprofile`.
+        """
+        self._check_target(target)
+        try:
+            result = importers.import_any(text, name or None)
+        except importers.ProfileImportError as error:
+            raise ApiError("import_failed", str(error)) from error
+
+        final = name or result.profile.name
+        if self._is_builtin(target, final):
+            final = f"{final} ({presets.COPY_SUFFIX})"
+        result.profile.name = final
+        self.store.save_profile(target, result.profile)
+        self.profiles[target] = result.profile
+        self._set_active_name(target, final)
+        self.supervisor.apply_target(self.config, target)
+        self._emit({"kind": "profile_imported", "target": target, "name": final})
+        self._save_soon()
+        return {
+            "name": final,
+            "source": result.source,
+            "bands": result.profile.eq.band_count,
+            "dropped": result.dropped,
+            "warnings": list(result.warnings),
+        }
+
+    def export_profile(self, target: str, name: str = "", autoeq: bool = False) -> str:
+        """Profili metin olarak verir. `autoeq` ise AutoEQ/APO biçiminde."""
+        self._check_target(target)
+        wanted = name or self._active_name(target)
+        profile = (
+            self.profile(target)
+            if wanted == self._active_name(target)
+            else self._load(target, wanted)
+        )
+        return importers.export_autoeq(profile) if autoeq else importers.export_profile(profile)
+
+    def copy_profile(self, target: str, name: str) -> str:
+        """Aktif profili yeni bir adla çoğaltır ve ona geçer."""
+        self._check_target(target)
+        if self._is_builtin(target, name):
+            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {name}")
+        self.save_profile(target, name)
+        return name
+
+    def reset_profile(self, target: str) -> None:
+        """Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı)."""
+        self._check_target(target)
+        working = self._editable(target)
+        flat = presets.builtin_profile(target, "Flat", self._mic_targets())
+        if flat is None:  # pragma: no cover - Flat her katalogda var
+            return
+        flat.name = working.name
+        flat.favorite_slot = working.favorite_slot
+        self.profiles[target] = flat
+        self._live_target(target, {"kind": "profile_reset", "target": target})
 
     def set_profile_favorite(self, target: str, name: str, slot: int) -> None:
         self._check_target(target)
@@ -490,8 +628,15 @@ class SonarApi:
         self._live_volumes({"kind": "chatmix", "value": self.config.chatmix.value})
 
     def set_chatmix_config(self, enabled: bool, left: str, right: str) -> None:
-        self._channel(left)
-        self._channel(right)
+        """`left`/`right` virgülle birden fazla kanal alabilir ("chat,media")."""
+        from sonar.core.model import _split_channels
+
+        for side in (left, right):
+            channels = _split_channels(side)
+            if not channels:
+                raise ApiError("invalid_value", "en az bir kanal gerekli")
+            for channel in channels:
+                self._channel(channel)
         self.config.chatmix.enabled = bool(enabled)
         self.config.chatmix.left_channel = left
         self.config.chatmix.right_channel = right
@@ -556,7 +701,8 @@ class SonarApi:
             dirty_profiles, self._dirty_profiles = self._dirty_profiles, set()
         for target in dirty_profiles:
             profile = self.profiles.get(target)
-            if profile is not None:
+            # Gömülü preset asla diske yazılmaz; `_editable()` zaten kopyaya geçirmiş olmalı.
+            if profile is not None and not self._is_builtin(target, profile.name):
                 self.store.save_profile(target, profile)
         if dirty_config:
             self.store.save(self.config)
@@ -578,7 +724,7 @@ class SonarApi:
         cached = self.profiles.get(target)
         if cached is not None and cached.name == name:
             return cached
-        return self.store.load_profile(target, name)
+        return self._load(target, name)
 
     def _live_volumes(self, delta: dict) -> None:
         self.supervisor.apply_volumes(self.config)

@@ -59,8 +59,13 @@ def test_stream_mic_is_not_a_strip():
 
 
 def test_profiles_reach_the_row():
-    row = channel_rows(make_state())[0]
-    assert row["profiles"] == ["Default", "CS2"]
+    """Gömülü presetler `builtin` bayrağıyla geliyor; arayüz kilit işareti koyuyor."""
+    state = make_state(builtin_profiles={"game": ["Default"]})
+    row = channel_rows(state)[0]
+    assert row["profiles"] == [
+        {"name": "Default", "builtin": True},
+        {"name": "CS2", "builtin": False},
+    ]
 
 
 def test_channel_without_profiles_gets_an_empty_list():
@@ -414,5 +419,26 @@ def test_channel_of_returns_the_strip_row(fx):
 
 
 def test_profile_names(fx):
-    assert fx.profileNames("game") == ["Default", "CS2"]
+    assert fx.profileNames("game") == [
+        {"name": "Default", "builtin": False},
+        {"name": "CS2", "builtin": False},
+    ]
     assert fx.profileNames("yok") == []
+
+
+def test_profile_names_mark_builtins(qt_app):
+    client = FakeClient(make_state(builtin_profiles={"game": ["CS2"]}))
+    obj = SonarBridge(client)
+    obj.apply_state(client.state)
+    assert obj.profileNames("game")[1] == {"name": "CS2", "builtin": True}
+
+
+def test_chatmix_gain_defaults_to_unity(fx):
+    assert fx.chatmixGain("game") == 1.0
+
+
+def test_chatmix_gain_is_reported(qt_app):
+    client = FakeClient(make_state(chatmix_gains={"game": 0.01, "chat": 1.0}))
+    obj = SonarBridge(client)
+    obj.apply_state(client.state)
+    assert obj.chatmixGain("game") == pytest.approx(0.01)

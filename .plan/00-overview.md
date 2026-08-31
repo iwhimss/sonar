@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 9 — Profiller, presetler, ChatMix
+**Aktif faz:** Faz 10 — Uçtan uca doğrulama ve dokümantasyon
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 9 — gömülü preset'ler (salt okunur), içe/dışa aktarma,
-ChatMix'in donanım tekerine bağlanması.
+**Sonraki adım:** Faz 10 — OBS senaryosu, dayanıklılık testleri, README ve
+kurulum rehberi.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -23,14 +23,14 @@ ChatMix'in donanım tekerine bağlanması.
 | 6 | [Seviye ölçümü](06-meters.md) | 🟢 Tamamlandı |
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟢 Tamamlandı |
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟢 Tamamlandı |
-| 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟡 Sıradaki |
-| 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | ⚪ Bekliyor |
+| 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟢 Tamamlandı |
+| 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟡 Sıradaki |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 600 test geçiyor, `ruff` temiz.
+**Test durumu:** 712 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -234,6 +234,16 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
 * **Çizilen EQ eğrisi gerçek DSP yanıtıyla örtüşüyor.** 8 frekansta ortalama sapma
   **0.00 dB**, en büyük **0.01 dB**. Faz 1'deki `fm_N = 6` (APO DR) seçimi tam bunun içindi.
 * Arayüzden verilen ±9 dB, ölçümde ±9.00 / -8.97 dB olarak çıktı.
+
+### Faz 9'da ölçümle doğrulananlar
+
+* **Profil geçişi anında ve kesintisiz.** CS2 (+9.00 dB) ↔ Arc Raiders (-9.00 dB), D-Bus
+  çağrısı ~10 ms. 3.4 saniyede 12 geçiş: **0 dropout, 0 tık**.
+* **ChatMix yayın miksini hiç bozmuyor.** Kulaklıkta doğru kanal ~40 dB kısılırken yayında
+  her iki kanal da sabit -21.9 dB kalıyor.
+* **Donanım ChatMix tekeri okunamıyor:** Arctis 7+ tek USB cihaz olarak görünüyor (planın
+  öngördüğü iki cihaz değil) ve teker HID'de, `/dev/hidraw*` root'a kapalı. Tespit ve udev
+  kuralı hazır; protokol çözümü backlog'da.
 
 ### Canlı parametre yazımı
 

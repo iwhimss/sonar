@@ -247,6 +247,42 @@ def _cmd_device(client: Client, args) -> int:
     return 0
 
 
+def _cmd_presets(client: Client, args) -> int:
+    builtin = set(client.call("ListBuiltinProfiles", args.target) or [])
+    for name in client.call("ListProfiles", args.target) or []:
+        print(f"{'🔒' if name in builtin else '  '} {name}")
+    return 0
+
+
+def _cmd_import(client: Client, args) -> int:
+    from pathlib import Path
+
+    text = Path(args.file).read_text(encoding="utf-8", errors="replace")
+    result = client.call("ImportProfile", args.target, text, args.name or "")
+    print(f"içe aktarıldı: {result['name']}  (biçim: {result['source']}, {result['bands']} band)")
+    for warning in result.get("warnings", []):
+        print(f"  ⚠ {warning}")
+    return 0
+
+
+def _cmd_export(client: Client, args) -> int:
+    from pathlib import Path
+
+    text = client.call("ExportProfile", args.target, args.name or "", args.autoeq)
+    if args.file:
+        Path(args.file).write_text(text, encoding="utf-8")
+        print(f"yazıldı: {args.file}")
+    else:
+        print(text, end="")
+    return 0
+
+
+def _cmd_reset(client: Client, args) -> int:
+    client.call("ResetProfile", args.target)
+    print(f"{args.target}: profil sıfırlandı")
+    return 0
+
+
 def _cmd_meters(client: Client, args) -> int:
     """Seviye metrelerini terminalde göster. Abonelik açılır, çıkışta kapatılır."""
     import time
@@ -345,6 +381,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("device")
     p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
 
+    p = sub.add_parser("presets", help="gömülü presetleri ve profilleri listele")
+    p.add_argument("target")
+
+    p = sub.add_parser("import", help="AutoEQ / EasyEffects / .sonarprofile içe aktar")
+    p.add_argument("target")
+    p.add_argument("file")
+    p.add_argument("--name", help="profil adı (varsayılan: dosyadan)")
+
+    p = sub.add_parser("export", help="profili dışa aktar")
+    p.add_argument("target")
+    p.add_argument("name", nargs="?")
+    p.add_argument("--file", help="dosyaya yaz (varsayılan: stdout)")
+    p.add_argument("--autoeq", action="store_true", help="AutoEQ/APO metin biçimi")
+
+    p = sub.add_parser("reset", help="aktif profili düz hâle döndür")
+    p.add_argument("target")
+
     p = sub.add_parser("meters", help="seviye metrelerini canlı göster")
     p.add_argument("--seconds", type=float, default=10.0, help="kaç saniye izlensin")
 
@@ -365,6 +418,10 @@ _COMMANDS = {
     "chatmix": _cmd_chatmix,
     "devices": _cmd_devices,
     "device": _cmd_device,
+    "presets": _cmd_presets,
+    "import": _cmd_import,
+    "export": _cmd_export,
+    "reset": _cmd_reset,
     "meters": _cmd_meters,
     "reload": _cmd_reload,
 }

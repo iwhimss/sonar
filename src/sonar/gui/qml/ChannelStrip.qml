@@ -16,6 +16,8 @@ Item {
 
     readonly property color accent: channel.color
     readonly property bool isMic: channel.kind === "mic"
+    readonly property real chatmixGain:
+        bridge ? (bridge.revision, bridge.chatmixGain(channel.id)) : 1.0
 
     /* Şeridin tamamı bırakma hedefi: kullanıcı çipi şeridin herhangi bir yerine
        bırakabilsin, yalnızca küçük Apps kutusuna nişan almak zorunda kalmasın. */
@@ -94,8 +96,11 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 2
                 accent: root.accent
-                model: (root.channel.profiles || []).map(function (n) {
-                    return { value: n, label: n }
+                model: (root.channel.profiles || []).map(function (p) {
+                    // Gömülü presetler kilit işaretiyle ayrılıyor (salt okunurlar).
+                    return typeof p === "string"
+                        ? { value: p, label: p }
+                        : { value: p.name, label: (p.builtin ? "🔒 " : "") + p.name }
                 })
                 currentValue: root.channel.activeProfile
                 onActivated: (value) => root.bridge.loadProfile(root.channel.id, value)
@@ -140,6 +145,17 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Theme.volumeText(modelData.vol)
                             color: Theme.textDim
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                        /* ChatMix bu kanalı kısıyorsa söyle: fader taban değeri gösteriyor,
+                           duyulan ses taban × ChatMix çarpanı. */
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: modelData.bus === "personal" && root.chatmixGain < 0.99
+                            text: "ChatMix " + Math.round(root.chatmixGain * 100) + "%"
+                            color: Theme.warn
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall
                             renderType: Text.NativeRendering

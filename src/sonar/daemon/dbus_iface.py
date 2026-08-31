@@ -123,6 +123,11 @@ class SonarDBusInterface(QObject):
         return reply(lambda: self.api.list_profiles(target))
 
     @Slot(result=str)
+    def ListHeadsets(self) -> str:
+        """Donanım ChatMix tekeri olduğu bilinen kulaklıklar."""
+        return reply(self.api.headsets)
+
+    @Slot(result=str)
     def ListRules(self) -> str:
         return reply(self.api.list_rules)
 
@@ -192,6 +197,27 @@ class SonarDBusInterface(QObject):
     @Slot(str, str, str, result=str)
     def RenameProfile(self, target: str, old: str, new: str) -> str:
         return reply(lambda: self.api.rename_profile(target, old, new))
+
+    @Slot(str, str, str, result=str)
+    def ImportProfile(self, target: str, text: str, name: str) -> str:
+        """Dış EQ dosyasını içe aktarır. Biçim içerikten bulunur."""
+        return reply(lambda: self.api.import_profile(target, text, name))
+
+    @Slot(str, str, bool, result=str)
+    def ExportProfile(self, target: str, name: str, autoeq: bool) -> str:
+        return reply(lambda: self.api.export_profile(target, name, autoeq))
+
+    @Slot(str, str, result=str)
+    def CopyProfile(self, target: str, name: str) -> str:
+        return reply(lambda: self.api.copy_profile(target, name))
+
+    @Slot(str, result=str)
+    def ResetProfile(self, target: str) -> str:
+        return reply(lambda: self.api.reset_profile(target))
+
+    @Slot(str, result=str)
+    def ListBuiltinProfiles(self, target: str) -> str:
+        return reply(lambda: self.api.builtin_names(target))
 
     @Slot(str, str, int, result=str)
     def SetProfileFavorite(self, target: str, name: str, slot: int) -> str:
