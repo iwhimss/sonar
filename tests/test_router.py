@@ -338,24 +338,18 @@ def test_stream_seen_timestamp_is_cleared_on_close(graph):
 
 
 def test_recycled_id_with_a_new_serial_is_routed_again(router, graph):
-    graph.add(
-        10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100}
-    )
+    graph.add(10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100})
     router.sync()
     assert graph.moves == [(10, "sonar_media")]
 
     # Aynı id, yeni serial — silinme olayı henüz gelmemiş olsa bile yeni bir akış.
-    graph.add(
-        10, "firefox", **{"application.process.binary": "firefox", "object.serial": 200}
-    )
+    graph.add(10, "firefox", **{"application.process.binary": "firefox", "object.serial": 200})
     router.sync()
     assert graph.moves == [(10, "sonar_media"), (10, "sonar_media")]
 
 
 def test_same_serial_is_not_routed_twice(router, graph):
-    graph.add(
-        10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100}
-    )
+    graph.add(10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100})
     router.sync()
     graph.add(
         10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100, "media.name": "x"}
@@ -365,9 +359,7 @@ def test_same_serial_is_not_routed_twice(router, graph):
 
 
 def test_manual_mark_uses_the_serial(router, graph):
-    graph.add(
-        10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100}
-    )
+    graph.add(10, "mpv", **{"application.process.binary": "mpv", "object.serial": 100})
     router.mark_manual(10, "game")
     assert router.decided == {100: "game"}
     assert router.sync() == []

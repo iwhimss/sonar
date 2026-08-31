@@ -92,3 +92,16 @@ Tamamen bitirmek için seçenekler:
   aşamasında yürütmek — LSP eklentileri kendi içinde yumuşatıyor
 
 Kullanıcı şikâyet etmezse v1 için gereksiz; ölçüm kaydı burada dursun.
+
+
+## Seviye ölçümü için native yardımcı süreç
+
+Faz 6'da ölçüldü: 8 ölçüm noktası ~%3–5 CPU (tek çekirdeğin) harcıyor, plandaki hedef %2'ydi.
+Maliyetin çoğu daemon'ın Python tarafında: saniyede 160 iş parçacığı uyanması, her birinde
+numpy analizi, üstüne 20 Hz JSON + D-Bus.
+
+`MeterManager` arayüzü bilinçli olarak `pw-cat`'ten bağımsız tutuldu. Tek bir libpipewire
+tabanlı yardımcı süreç (Rust/C, ~200 satır) tüm noktaları tek bağlantıda okuyup hazır
+peak/RMS değerlerini yazabilir; D-Bus sinyali ve arayüz tarafı hiç değişmez.
+
+Yalnızca mikser penceresi açıkken oluşan bir maliyet olduğu için v1 engelleyicisi değil.

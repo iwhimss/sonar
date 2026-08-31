@@ -260,8 +260,13 @@ class SonarDBusInterface(QObject):
 
     @Slot(bool, result=str)
     def SubscribeMeters(self, enabled: bool) -> str:
-        """Faz 6'da bağlanacak; şimdilik isteği kabul edip sayacı tutuyoruz."""
+        """Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı."""
         return reply(lambda: self.api.set_meters_subscribed(enabled))
+
+    @Slot(result=str)
+    def GetLevels(self) -> str:
+        """Anlık seviyeler. Sürekli akış için `LevelsUpdated` sinyalini dinleyin."""
+        return reply(self.api.get_levels)
 
     @Slot(result=str)
     def Reload(self) -> str:

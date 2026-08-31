@@ -118,17 +118,22 @@ def test_add_channel_returns_the_new_id(iface):
     assert payload["result"] == "voice_chat"
 
 
-def test_subscribe_meters_counts_clients(iface):
-    _call(iface, "SubscribeMeters", True)
-    _call(iface, "SubscribeMeters", True)
-    assert iface.api.meters_subscribed == 2
-    _call(iface, "SubscribeMeters", False)
-    assert iface.api.meters_subscribed == 1
+def test_subscribe_meters_counts_clients(iface, monkeypatch):
+    # Gerçek `pw-cat` süreçleri açılmasın; sayaç davranışını doğruluyoruz.
+    monkeypatch.setattr(iface.api.meters, "_start_sources", lambda: None)
+    monkeypatch.setattr(iface.api.meters, "_stop_sources", lambda: None)
+    monkeypatch.setattr(iface.api.meters, "_schedule", lambda: None)
+    assert _call(iface, "SubscribeMeters", True)["result"] == 1
+    assert _call(iface, "SubscribeMeters", True)["result"] == 2
+    assert _call(iface, "SubscribeMeters", False)["result"] == 1
 
 
 def test_meters_never_go_negative(iface):
-    _call(iface, "SubscribeMeters", False)
-    assert iface.api.meters_subscribed == 0
+    assert _call(iface, "SubscribeMeters", False)["result"] == 0
+
+
+def test_get_levels_is_empty_without_subscribers(iface):
+    assert _call(iface, "GetLevels")["result"] == {}
 
 
 def test_every_slot_returns_a_json_envelope(iface):

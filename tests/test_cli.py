@@ -284,3 +284,26 @@ def test_move_without_remember_creates_no_rule(cli):
     before = len(cli.iface.api.config.rules)
     run(["move", "42", "chat"])
     assert len(cli.iface.api.config.rules) == before
+
+
+def test_meters_subscribes_and_unsubscribes(cli, monkeypatch):
+    """Abonelik mutlaka kapatılmalı; yoksa ölçüm süreçleri sonsuza kadar açık kalır."""
+    meters = cli.iface.api.meters
+    monkeypatch.setattr(meters, "_start_sources", lambda: None)
+    monkeypatch.setattr(meters, "_stop_sources", lambda: None)
+    monkeypatch.setattr(meters, "_schedule", lambda: None)
+    run(["meters", "--seconds", "0"])
+    assert [c[0] for c in cli.calls if c[0] == "SubscribeMeters"] == [
+        "SubscribeMeters",
+        "SubscribeMeters",
+    ]
+    assert meters.subscribers == 0
+
+
+def test_meter_bar_maps_the_range():
+    from sonar.cli.__main__ import _meter_bar
+
+    assert _meter_bar(0.0).count("█") == 30
+    assert _meter_bar(-60.0).count("█") == 0
+    assert _meter_bar(-30.0).count("█") == 15
+    assert _meter_bar(-999.0).count("█") == 0

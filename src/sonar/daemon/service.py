@@ -52,6 +52,7 @@ class _ThreadBridge(QObject):
     """
 
     streams_changed = Signal()
+    levels_ready = Signal(str)
 
 
 class SonarDaemon:
@@ -65,6 +66,7 @@ class SonarDaemon:
             self.supervisor,
             on_change=self._queue_delta,
             on_rebuild=self._graph_rebuilt,
+            on_levels=self._queue_levels,
         )
         self.bus = QDBusConnection.sessionBus()
         self.iface = SonarDBusInterface(self.api, self.bus)
@@ -82,6 +84,7 @@ class SonarDaemon:
 
         self._bridge = _ThreadBridge()
         self._bridge.streams_changed.connect(self._streams_event)
+        self._bridge.levels_ready.connect(self._emit_levels)
         self.supervisor.on_failure.append(self._graph_failed)
 
     # ------------------------------------------------------------------ açılış
@@ -179,6 +182,22 @@ class SonarDaemon:
             "devices": self.api.get_devices(),
         }
         self.iface.emit_signal("StreamsChanged", json.dumps(payload, ensure_ascii=False))
+
+    def _queue_levels(self, levels) -> None:
+        """Ölçüm iş parçacığından gelir; D-Bus yayını Qt iş parçacığında yapılır."""
+        payload = {
+            node: {
+                "peak_db": round(level.peak_db, 2),
+                "rms_db": round(level.rms_db, 2),
+                "hold_db": round(level.hold_db, 2),
+                "clipped": level.clipped,
+            }
+            for node, level in levels.items()
+        }
+        self._bridge.levels_ready.emit(json.dumps(payload, ensure_ascii=False))
+
+    def _emit_levels(self, payload: str) -> None:
+        self.iface.emit_signal("LevelsUpdated", payload)
 
     def _graph_rebuilt(self) -> None:
         self.iface.emit_signal("GraphRebuilt")

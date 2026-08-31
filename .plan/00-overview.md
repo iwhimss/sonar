@@ -7,9 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 6 — Seviye ölçümü
+**Aktif faz:** Faz 7 — GUI tasarım sistemi ve Mixer görünümü
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 6 — `engine/meters.py`: talep üzerine çalışan seviye metreleri.
+**Sonraki adım:** Faz 7 — `qml/ui/Theme.qml` (köşe yarıçapı her yerde 0), `gui/bridge.py`,
+Mixer görünümü.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -19,8 +20,8 @@
 | 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟢 Tamamlandı |
 | 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟢 Tamamlandı |
 | 5 | [Uygulama yönlendirme](05-routing.md) | 🟢 Tamamlandı |
-| 6 | [Seviye ölçümü](06-meters.md) | 🟡 Sıradaki |
-| 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | ⚪ Bekliyor |
+| 6 | [Seviye ölçümü](06-meters.md) | 🟢 Tamamlandı |
+| 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟡 Sıradaki |
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | ⚪ Bekliyor |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | ⚪ Bekliyor |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | ⚪ Bekliyor |
@@ -29,7 +30,7 @@
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 442 test geçiyor, `ruff` temiz.
+**Test durumu:** 475 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -207,6 +208,16 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
 * **Kanal izolasyonu ve kişisel/yayın ayrımı doğrulandı.** Bir uygulama çalarken diğer
   kanallar dijital sessizlikte (-240 dBFS); bir kanalın yayın faderini kapatmak kulaklık
   miksini etkilemiyor.
+
+### Faz 6'da ölçümle doğrulananlar
+
+* **LSP'nin kendi metre portları kullanılamıyor.** `iml`/`sml` gibi çıkış kontrol portları
+  var ama PipeWire filter-chain yalnızca **giriş** portlarını `Props`'ta açığa çıkarıyor.
+* **`pw-cat --latency 500ms` bedava üç kat kazanç:** CPU %1.00 → %0.33, teslimat aralığı
+  (53 ms) ve tepki gecikmesi (53 ms) hiç değişmiyor.
+* **Ölçüm maliyeti %3–5** (hedef %2'ydi, tutturulamadı). Yalnızca mikser açıkken oluşuyor;
+  abone yokken sıfır süreç. Çözüm yolu backlog'da.
+* Peak-hold canlı doğrulandı: 1.5 s tutup 20 dB/s düşüyor.
 
 ### Canlı parametre yazımı
 

@@ -247,6 +247,40 @@ def _cmd_device(client: Client, args) -> int:
     return 0
 
 
+def _cmd_meters(client: Client, args) -> int:
+    """Seviye metrelerini terminalde göster. Abonelik açılır, çıkışta kapatılır."""
+    import time
+
+    client.call("SubscribeMeters", True)
+    try:
+        deadline = time.monotonic() + args.seconds
+        while time.monotonic() < deadline:
+            levels = client.call("GetLevels")
+            if args.json:
+                json.dump(levels, sys.stdout, ensure_ascii=False)
+                print()
+            else:
+                print("\033[2J\033[H", end="")  # ekranı temizle
+                for node, level in sorted(levels.items()):
+                    clip = " CLIP" if level["clipped"] else ""
+                    print(
+                        f"{node:<20} {_meter_bar(level['peak_db'])} "
+                        f"{level['peak_db']:6.1f} dB{clip}"
+                    )
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        client.call("SubscribeMeters", False)
+    return 0
+
+
+def _meter_bar(db: float, width: int = 30) -> str:
+    """-60 dB … 0 dB aralığını çubuğa döker."""
+    filled = round(max(0.0, min(1.0, (db + 60.0) / 60.0)) * width)
+    return "█" * filled + "·" * (width - filled)
+
+
 def _cmd_reload(client: Client, _args) -> int:
     client.call("Reload")
     print("yapılandırma yeniden okundu")
@@ -311,6 +345,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("device")
     p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
 
+    p = sub.add_parser("meters", help="seviye metrelerini canlı göster")
+    p.add_argument("--seconds", type=float, default=10.0, help="kaç saniye izlensin")
+
     sub.add_parser("reload", help="config.toml'u diskten yeniden oku")
     return parser
 
@@ -328,6 +365,7 @@ _COMMANDS = {
     "chatmix": _cmd_chatmix,
     "devices": _cmd_devices,
     "device": _cmd_device,
+    "meters": _cmd_meters,
     "reload": _cmd_reload,
 }
 

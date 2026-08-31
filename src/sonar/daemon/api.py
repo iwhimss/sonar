@@ -62,6 +62,7 @@ from sonar.core.model import (
     slugify,
 )
 from sonar.engine import confgen
+from sonar.engine.meters import Level, MeterManager, meter_sources
 from sonar.engine.router import Decision, Router
 from sonar.engine.supervisor import Supervisor
 
@@ -112,6 +113,7 @@ class SonarApi:
         save_delay: float = SAVE_DELAY,
         on_change: Callable[[dict], None] | None = None,
         on_rebuild: Callable[[], None] | None = None,
+        on_levels: Callable[[dict[str, Level]], None] | None = None,
     ) -> None:
         self.store = store
         self.supervisor = supervisor
@@ -126,12 +128,12 @@ class SonarApi:
         self.profiles: dict[str, Profile] = {}
         self._dirty_profiles: set[str] = set()
         self._dirty_config = False
-        #: Kaç istemci seviye metresi istiyor (Faz 6).
-        self.meters_subscribed = 0
         self._save_timer: threading.Timer | None = None
         self._lock = threading.RLock()
 
         supervisor.load_profile = self._profile_provider
+        self.meters = MeterManager(on_levels=on_levels)
+        self.meters.configure(meter_sources(self.config))
         self.router = Router(
             supervisor.state,
             supervisor.control.move_stream,
@@ -150,6 +152,7 @@ class SonarApi:
 
     def shutdown(self) -> None:
         self.flush_save()
+        self.meters.stop()
         self.supervisor.stop()
 
     # ------------------------------------------------------------------ okuma
@@ -498,11 +501,27 @@ class SonarApi:
         self._emit({"kind": "settings"})
         self._save_soon()
 
-    def set_meters_subscribed(self, enabled: bool) -> None:
-        """Seviye ölçümü aboneliği. Ölçüm Faz 6'da geliyor; sayaç şimdiden tutuluyor ki
-        arayüz tarafı API'yi bekletmeden yazılabilsin."""
-        self.meters_subscribed = max(0, self.meters_subscribed + (1 if enabled else -1))
-        self._emit({"kind": "meters", "subscribed": self.meters_subscribed})
+    def set_meters_subscribed(self, enabled: bool) -> int:
+        """Seviye ölçümü aboneliği.
+
+        İlk abone ölçüm süreçlerini başlatır, son abone gidince hepsi durur — daemon tek
+        başına çalışırken tek bir ölçüm süreci bile açık kalmaz.
+        """
+        count = self.meters.subscribe() if enabled else self.meters.unsubscribe()
+        self._emit({"kind": "meters", "subscribed": count})
+        return count
+
+    def get_levels(self) -> dict[str, dict]:
+        """Anlık seviyeler. Abone yoksa boş sözlük."""
+        return {
+            node: {
+                "peak_db": round(level.peak_db, 2),
+                "rms_db": round(level.rms_db, 2),
+                "hold_db": round(level.hold_db, 2),
+                "clipped": level.clipped,
+            }
+            for node, level in self.meters.levels().items()
+        }
 
     def reload(self) -> None:
         """Elle düzenlenmiş `config.toml`'u diskten okur ve grafa uygular."""
@@ -511,6 +530,7 @@ class SonarApi:
         self.store.ensure_default_profiles(self.config)
         self.profiles.clear()
         self.supervisor.reconcile(self.config)
+        self.meters.configure(meter_sources(self.config))
         self._emit({"kind": "reloaded"})
 
     # ------------------------------------------------------------------ kalıcılık
@@ -567,6 +587,8 @@ class SonarApi:
         self.supervisor.reconcile(self.config)
         # Node id'leri değişti; hangi akışın nereye gittiğine dair kayıt geçersiz.
         self.router.reset()
+        # Kanal eklendi/silindi olabilir: ölçüm noktaları yeniden bağlanmalı.
+        self.meters.configure(meter_sources(self.config))
         self._emit(delta)
         if self.on_rebuild is not None:
             self.on_rebuild()
