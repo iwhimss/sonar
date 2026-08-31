@@ -95,12 +95,49 @@ yönlendirildi: #390 pw-cat → game (pw-cat) — 3.6 ms
 | Kendi loopback'lerimiz | hiç ele alınmadı |
 | Elle taşıma | kural motoru geri almadı |
 
-**Ölçülemeyen bir senaryo:** hedefsiz açılan bir akışın *duyulabilir* yol testi
-(`sonar_media_fx`'ten kayıt) EasyEffects servis kipi çalışırken yapılamıyor — akış
-yönlendirildikten ~21 ms sonra EasyEffects geri çekiyor. Bu Faz 4'te belgelenen çakışmanın
-aynısı; yönlendirmenin kendisi değil, EasyEffects'in davranışı. Gecikme ölçümü bu
-çakışmadan etkilenmediği için asıl soru (yarış penceresi ne kadar?) yine de yanıtlandı.
-EasyEffects kapalıyken tekrarlanması Faz 10'a bırakıldı.
+### EasyEffects kapalıyken tekrarlanan doğrulama
+
+Kullanıcının izniyle EasyEffects geçici olarak durduruldu ve ölçülemeyen senaryolar
+tamamlandı.
+
+**Duyulabilir yarış penceresi.** 3.000 s'lik sinüs hedefsiz açıldı, router taşıdı,
+`sonar_media_fx`'ten kaydedildi:
+
+| | kanaldaki süre | kayıp |
+|---|---|---|
+| doğrudan `sonar_media`'ya (referans) | 3.000 s | 0 |
+| hedefsiz → router taşıyor | 2.979 s | **21 ms** |
+| aynısı, ikinci deneme | 2.979 s | **21 ms** |
+
+21 ms tam olarak bir PipeWire kuantumu (1024/48000 = 21.3 ms). Yani en fazla **tek bir
+tampon** varsayılan cihaza gidiyor. Karar gecikmesi ~4 ms olduğu için geri kalanı ses
+hattının tanecikliği; önceden hedef ayarlamayla da kazanılamazdı.
+
+**Çoklu uygulama.** Arc Raiders + Discord + Firefox aynı anda, üçü de kendi kuralıyla:
+
+```
+Firefox      → media (firefox)   —  4.4 ms
+Arc Raiders  → game  (\.exe$)    —  7.9 ms
+Discord      → chat  (Discord)   — 13.0 ms
+```
+
+**Kanal izolasyonu.** Her uygulama tek başına çalarken diğer kanallar dijital sessizlikte:
+
+| Uygulama | `game_fx` | `chat_fx` | `media_fx` |
+|---|---|---|---|
+| Arc Raiders | **-24.31** | -240.00 | -240.00 |
+| Discord | -240.00 | **-24.31** | -240.00 |
+| Firefox | -240.00 | -240.00 | **-24.30** |
+
+**Kişisel ↔ yayın ayrımı** (kullanıcının asıl isteği). Oyun + tarayıcı birlikte çalarken:
+
+| Durum | kulaklık | yayın |
+|---|---|---|
+| ikisi de açık | -18.25 | -18.25 |
+| media'nın **yayın** faderi kapalı | -18.29 (ikisi) | **-24.32 (sadece oyun)** |
+| game'in **kulaklık** faderi kapalı | **-24.32 (sadece media)** | -18.29 (ikisi) |
+
+İki miks tamamen bağımsız.
 
 ---
 
