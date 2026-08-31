@@ -55,6 +55,11 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["RUF001", "RUF002", "RUF003"]  # Türkçe metinlerde belirsiz Unicode uyarıları
 
+[tool.ruff.lint.per-file-ignores]
+# D-Bus metot adları protokolün parçası ve PascalCase olmak zorunda; `busctl` ile
+# çağrılırken birebir bu adlar kullanılıyor.
+"src/sonar/daemon/dbus_iface.py" = ["N802"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

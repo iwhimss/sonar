@@ -345,7 +345,19 @@ class SonarConfig:
         return next((c for c in self.channels if c.id == channel_id), None)
 
     def bus(self, bus_id: BusId | str) -> MasterBus | None:
-        key = BusId(bus_id) if isinstance(bus_id, str) else bus_id
+        """Bilinmeyen id'de `None` — `channel()` ve `mic()` ile aynı davranış.
+
+        Eskiden `BusId(bus_id)` doğrudan çağrılıyor ve bilinmeyen bir ad `ValueError`
+        yükseltiyordu; imza `| None` dediği hâlde. "Bu ad bir kanal mı, bus mu?" diye
+        yoklayan her çağrı yeri patlıyordu.
+        """
+        if isinstance(bus_id, str):
+            try:
+                key = BusId(bus_id)
+            except ValueError:
+                return None
+        else:
+            key = bus_id
         return next((b for b in self.buses if b.id is key), None)
 
     def mic(self, mic_id: str) -> MicChain | None:

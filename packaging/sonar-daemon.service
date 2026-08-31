@@ -1,0 +1,20 @@
+[Unit]
+Description=Sonar — PipeWire kanal mikseri
+Documentation=https://github.com/iwhimss/sonar
+# Graf PipeWire'ın içinde yaşıyor: PipeWire giderse daemon da gitmeli, gelince geri gelmeli.
+After=pipewire.service wireplumber.service
+Requires=pipewire.service
+PartOf=pipewire.service
+
+[Service]
+Type=dbus
+BusName=io.github.iwhimss.Sonar
+ExecStart=/usr/bin/sonar-daemon
+Restart=on-failure
+RestartSec=2
+# Kapanışta grafı düşürüp varsayılan ses cihazını kullanıcıya geri vermesi için süre tanı.
+TimeoutStopSec=10
+Environment=SONAR_LOG=info
+
+[Install]
+WantedBy=default.target

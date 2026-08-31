@@ -61,6 +61,7 @@ class StreamInfo:
     """Bir uygulamanın ses akışı — yönlendirme kurallarının eşleştirdiği nesne."""
 
     id: int
+    node_name: str = ""
     app_binary: str = ""
     app_name: str = ""
     media_name: str = ""
@@ -71,6 +72,16 @@ class StreamInfo:
     @property
     def label(self) -> str:
         return self.app_name or self.app_binary or self.media_name or f"#{self.id}"
+
+    @property
+    def is_internal(self) -> bool:
+        """Sonar'ın kendi tesisatı mı?
+
+        Kanal→bus loopback'leri ve bus çıkışları da `Stream/Output/Audio` sınıfında görünüyor;
+        envanterde dursunlar (graf doğru olsun) ama kullanıcıya "çalan uygulama" diye
+        gösterilmesinler, yönlendirme kuralları da onlara dokunmasın.
+        """
+        return self.node_name.startswith("sonar_")
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +201,7 @@ class GraphState:
         if media_class in _STREAM_CLASSES:
             stream = StreamInfo(
                 id=node_id,
+                node_name=name,
                 app_binary=props.get("application.process.binary", ""),
                 app_name=props.get("application.name", ""),
                 media_name=props.get("media.name", ""),

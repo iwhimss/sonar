@@ -7,10 +7,9 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 4 — Daemon ve D-Bus API
+**Aktif faz:** Faz 5 — Uygulama yönlendirme
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 4 — `daemon/service.py`, `daemon/dbus_iface.py`,
-`sonar-daemon.service`, `sonar-cli`.
+**Sonraki adım:** Faz 5 — `engine/router.py`: yeni akışları kurallara göre kanallara dağıt.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -18,8 +17,8 @@
 | 1 | [Veri modeli ve yapılandırma](01-model-config.md) | 🟢 Tamamlandı |
 | 2 | [graph.conf üreteci](02-confgen.md) | 🟢 Tamamlandı |
 | 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟢 Tamamlandı |
-| 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟡 Sıradaki |
-| 5 | [Uygulama yönlendirme](05-routing.md) | ⚪ Bekliyor |
+| 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟢 Tamamlandı |
+| 5 | [Uygulama yönlendirme](05-routing.md) | 🟡 Sıradaki |
 | 6 | [Seviye ölçümü](06-meters.md) | ⚪ Bekliyor |
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | ⚪ Bekliyor |
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | ⚪ Bekliyor |
@@ -30,8 +29,9 @@
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 273 test geçiyor, `ruff` temiz.
-**Graf durumu:** süpervizör gerçek sistemde graf kuruyor, canlı kontrol ediyor ve süreç öldürüldüğünde kendini toparlıyor.
+**Test durumu:** 391 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
 ---
 
@@ -179,6 +179,16 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
   tık üretmiyor. Kalan artefakt yalnızca ardışık yazımların rampayı kesmesinden.
 * DSP portları filter-chain'in **capture** node'unda (`sonar_mic_capture` 315 port,
   `sonar_mic` 0). `confgen.dsp_nodes()` bu eşlemenin tek kaynağı.
+
+### Faz 4'te ölçümle doğrulananlar
+
+* **`QDBusContext.sendErrorReply()` PySide6 6.11.2'de segfault ediyor** (çıkış 139).
+  Native D-Bus hatası kullanılamıyor; her metot JSON zarfı döndürüyor.
+* **PySide6 Qt sinyallerini D-Bus'a relay etmiyor.** Introspection sinyalleri gösterse bile
+  otobüse mesaj çıkmıyor; `QDBusMessage.createSignal()` ile elle gönderiliyor.
+* **EasyEffects servis kipi cihaz seçimini eziyor.** `target.object` doğru yazılsa da akış
+  `easyeffects_sink`'e çekiliyor ve elle taşıma geri alınıyor. Daemon bunu açılışta tespit
+  edip uyarıyor; `docs/TROUBLESHOOTING.md` çözümü anlatıyor.
 
 ### Canlı parametre yazımı
 

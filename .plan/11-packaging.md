@@ -13,6 +13,16 @@ dönüştürmek.
 
 ---
 
+## Faz 4'ten devreden
+
+- [ ] `sonar-daemon.service`'i gerçekten kurup `systemctl --user enable --now sonar-daemon`
+      ile doğrula. Unit Faz 4'te yazıldı ama `/usr/bin/sonar-daemon` gerektirdiği için
+      systemd altında denenmedi
+- [ ] Oturum kapat/aç → daemon otomatik başlıyor mu, kanallar hazır mı
+- [ ] Daemon'u öldür → systemd 2 sn içinde geri getiriyor mu
+
+---
+
 ## Görevler
 
 ### Arch / CachyOS paketi

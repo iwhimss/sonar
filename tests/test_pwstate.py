@@ -175,3 +175,16 @@ def test_sonar_nodes_filters_our_own():
     state = GraphState()
     state.apply([_node(1, "sonar_game", "Audio/Sink"), _node(2, "alsa_output.pci", "Audio/Sink")])
     assert set(state.sonar_nodes()) == {"sonar_game"}
+
+
+def test_our_own_loopbacks_are_marked_internal():
+    """Kanal→bus loopback'leri de Stream/Output/Audio; kullanıcıya uygulama diye görünmemeli."""
+    state = GraphState()
+    state.apply(
+        [
+            _node(1, "sonar_game_to_personal", "Stream/Output/Audio"),
+            _node(2, "firefox", "Stream/Output/Audio"),
+        ]
+    )
+    assert state.streams[1].is_internal is True
+    assert state.streams[2].is_internal is False

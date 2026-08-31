@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=io.github.iwhimss.Sonar
+Exec=/usr/bin/sonar-daemon
+SystemdService=sonar-daemon.service

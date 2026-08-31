@@ -235,3 +235,11 @@ def test_slugify(raw, expected):
 def test_slug_is_usable_as_a_node_name():
     channel = Channel(id=slugify("Voice Chat"), name="Voice Chat", color="#fff")
     assert channel.sink_node == "sonar_voice_chat"
+
+
+def test_bus_lookup_returns_none_for_unknown_names():
+    """`channel()` ve `mic()` gibi davranmalı; eskiden ValueError yükseltiyordu."""
+    config = default_config()
+    assert config.bus("game") is None
+    assert config.bus("") is None
+    assert config.bus("personal") is not None

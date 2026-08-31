@@ -186,6 +186,10 @@ class Supervisor:
         self._watchdog: threading.Thread | None = None
         self._crashes = 0
         self._previous_default = ""
+        #: Profil sağlayıcısı. Varsayılan olarak diskten okur; daemon bunu kendi
+        #: bellekteki (henüz kaydedilmemiş) profilleriyle değiştirir — aksi hâlde
+        #: kullanıcının canlı düzenlemeleri her yeniden inşada diske geri düşerdi.
+        self.load_profile: Callable[[str, str], Profile] = self.store.load_profile
         self.on_rebuild: list[Callable[[], None]] = []
         self.on_failure: list[Callable[[str], None]] = []
 
@@ -211,12 +215,32 @@ class Supervisor:
         Yeniden başlatmadan sonra **her şey** yeniden yazılmalıdır: conf nötr doğar, node
         id'leri değişmiştir ve grafın hiçbir eski değerden haberi yoktur.
         """
-        for node, params in live_params(cfg, self.store.load_profile).items():
+        for node, params in live_params(cfg, self.load_profile).items():
             self.control.set_params(node, params)
+        self.apply_volumes(cfg, flush=False)
+        self.control.flush()
+
+    def apply_volumes(self, cfg: SonarConfig, *, flush: bool = True) -> None:
+        """Tüm fader'ları yazar.
+
+        Tek bir fader değişse bile hepsini yazıyoruz: kalıcı `pw-cli` oturumunda yazım
+        maliyeti ölçülemeyecek kadar küçük (0.003 ms) ve böylece ChatMix'in iki kanalı
+        birden sürmesi gibi bağlı etkiler kendiliğinden doğru çıkıyor.
+        """
         for node, (volume, muted) in live_volumes(cfg).items():
             self.control.set_volume(node, volume)
             self.control.set_mute(node, muted)
+        if flush:
+            self.control.flush()
+
+    def apply_target(self, cfg: SonarConfig, target: str) -> bool:
+        """Tek bir hedefin DSP parametrelerini yazar (profil geçişi, EQ dokunuşu)."""
+        params = live_params(cfg, self.load_profile).get(confgen.dsp_nodes(cfg).get(target, ""))
+        if params is None:
+            return False
+        self.control.set_params(confgen.dsp_nodes(cfg)[target], params)
         self.control.flush()
+        return True
 
     def start_monitor(self) -> None:
         self.monitor.start()
