@@ -7,18 +7,18 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 3 — Engine: süreç yönetimi ve canlı kontrol
+**Aktif faz:** Faz 4 — Daemon ve D-Bus API
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 3 — `pwstate.py` (pw-dump izleyici), `supervisor.py` (reconcile),
-`control.py` (debounce + toplu yazım).
+**Sonraki adım:** Faz 4 — `daemon/service.py`, `daemon/dbus_iface.py`,
+`sonar-daemon.service`, `sonar-cli`.
 
 | # | Faz | Durum |
 |---|---|---|
 | 0 | [İskelet ve repo](00-overview.md) | 🟢 Tamamlandı |
 | 1 | [Veri modeli ve yapılandırma](01-model-config.md) | 🟢 Tamamlandı |
 | 2 | [graph.conf üreteci](02-confgen.md) | 🟢 Tamamlandı |
-| 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟡 Sıradaki |
-| 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | ⚪ Bekliyor |
+| 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟢 Tamamlandı |
+| 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟡 Sıradaki |
 | 5 | [Uygulama yönlendirme](05-routing.md) | ⚪ Bekliyor |
 | 6 | [Seviye ölçümü](06-meters.md) | ⚪ Bekliyor |
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | ⚪ Bekliyor |
@@ -30,8 +30,8 @@
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 212 test geçiyor, `ruff` temiz.
-**Graf durumu:** üretilen `graph.conf` gerçek sistemde çalıştırıldı — 32 node, ses ölçülerek doğrulandı.
+**Test durumu:** 273 test geçiyor, `ruff` temiz.
+**Graf durumu:** süpervizör gerçek sistemde graf kuruyor, canlı kontrol ediyor ve süreç öldürüldüğünde kendini toparlıyor.
 
 ---
 
@@ -168,13 +168,27 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
   **%21.1 → %6.6** düştü.
 * `wpctl set-volume` **kübik** ölçekli; fader için `Props.channelVolumes` (lineer) kullanılacak.
 
+### Faz 3'te ölçümle doğrulananlar
+
+* **Süreç açmak pahalı, yazmak bedava.** `pw-cli` süreci açmak 14.03 ms; aynı süreçte 64
+  portu tek çağrıda yazmak 12.97 ms; **kalıcı oturuma stdin'den yazmak 0.003 ms.**
+  Bu yüzden kalıcı bir `pw-cli` oturumu tutuluyor ve profil geçişi (~130 port) tek çağrı.
+* **Toplu yazım penceresi 40 ms** (plandaki 20 ms değil). Ölçüm: 60 Hz fader sürüklemesinde
+  0 ms → 3/3 denemede tık, 20 ms → 2/3, 30 ms → 2/4, **40 ms → 1/4**.
+* PipeWire seviye değişimini kendi yumuşatıyor: tek seferlik büyük sıçrama ve mute **hiç**
+  tık üretmiyor. Kalan artefakt yalnızca ardışık yazımların rampayı kesmesinden.
+* DSP portları filter-chain'in **capture** node'unda (`sonar_mic_capture` 315 port,
+  `sonar_mic` 0). `confgen.dsp_nodes()` bu eşlemenin tek kaynağı.
+
 ### Canlı parametre yazımı
 
-```bash
-pw-cli s <node-id> Props '{ params = [ "eq:g_3" 4.5 ] }'          # EQ band 3 (lineer kazanç)
-pw-cli s <node-id> Props '{ channelVolumes = [ 0.5, 0.5 ] }'      # fader — lineer, tam -6.02 dB
-pw-cli s <node-id> Props '{ mute = true }'                        # sustur
-pactl move-sink-input <stream-id> <yeni-cihaz>                    # cihaz değişimi (kesintisiz)
+Kalıcı `pw-cli` oturumuna gönderilen komutlar:
+
+```
+set-param <node-id> Props { params = [ "eq:g_3" 4.5 ] }        # EQ band 3 (lineer kazanç)
+set-param <node-id> Props { channelVolumes = [ 0.5, 0.5 ] }    # fader — lineer, tam -6.02 dB
+set-param <node-id> Props { mute = true }                      # sustur
+pactl move-sink-input <stream-id> <yeni-cihaz>                 # cihaz değişimi (kesintisiz)
 ```
 
 ---
@@ -209,7 +223,7 @@ Band N: `ft_N` (filtre tipi), `f_N` (frekans), `g_N` (kazanç), `q_N` (Q), `s_N`
 | ~~`pw-cli set-param` LSP LV2 portlarında çalışmazsa~~ | ✅ **Kapandı.** Faz 2'de ölçülerek doğrulandı; yedek plana (builtin biquad) gerek kalmadı |
 | Boştaki CPU tüketimi | LSP FFT analizörleri kapatıldı: %21.1 → %6.6. RSS ~136 MB (plandaki 15 MB tahmini yanlıştı) — kanal başına ayrı sürece göre yine çok düşük |
 | Yapısal değişikte ~200 ms kesinti | Kullanıcı tetikli ve nadir. Cihaz değişimi `move-sink-input` ile kesintisiz |
-| Fader sürüklerken `pw-cli` süreç fırtınası | 20 ms debounce + toplu yazım; gerekirse kalıcı `pw-cli` oturumu |
+| ~~Fader sürüklerken `pw-cli` süreç fırtınası~~ | ✅ **Kapandı.** Kalıcı `pw-cli` oturumu: yazım 14 ms yerine 0.003 ms. Pencere ölçümle 40 ms'ye ayarlandı |
 | DeepFilterNet 48 kHz zorunlu | Graf tamamen 48 kHz'e sabit (`audio.rate = 48000`) |
 | Varsayılan sink'i değiştirmenin yan etkileri | Varsayılan **kapalı**; daemon kapanırken eski değere döner |
 | Wayland global kısayol kısıtları | v1 dışı; portal tabanlı çözüm v1.1'de |

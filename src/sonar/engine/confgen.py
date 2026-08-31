@@ -31,7 +31,7 @@ from typing import Any
 from sonar.core.dsp.chain import build_chain, plan_chain
 from sonar.core.model import BusId, Channel, MasterBus, MicChain, SonarConfig
 
-__all__ = ["generate", "generate_modules"]
+__all__ = ["dsp_node_for", "dsp_nodes", "generate", "generate_modules"]
 
 #: Sanal kaynakların oturum önceliği. 0 = "beni asla varsayılan mikrofon seçme".
 #: EasyEffects'in `easyeffects_source` için kullandığı değerin aynısı; sistemdeki gerçek
@@ -96,6 +96,32 @@ def generate_modules(cfg: SonarConfig) -> list[dict]:
     for mic in cfg.mic_chains:
         modules.extend(_mic_modules(mic, cfg, rate, bands))
     return modules
+
+
+def dsp_nodes(cfg: SonarConfig) -> dict[str, str]:
+    """Profil hedefi → DSP portlarını taşıyan node adı.
+
+    Filter-chain'in kontrol portları **capture** node'unda açığa çıkar, playback'te değil
+    (ölçülerek doğrulandı: `sonar_mic_capture` 315 port, `sonar_mic` 0). Kanal ve bus'larda
+    capture node'u zaten sink'in kendisidir; mikrofonda ayrı bir `_capture` node'udur.
+
+    Bu eşleme burada duruyor çünkü node adlarını üreten tek yer burası; `engine.control`
+    ve `engine.supervisor` adları tahmin etmek yerine buradan alır.
+    """
+    nodes = {channel.id: channel.sink_node for channel in cfg.channels}
+    nodes.update({bus.id.value: bus.sink_node for bus in cfg.buses})
+    nodes.update(
+        {
+            mic.id: mic.source_node if mic.share_chain_with_mic else f"{mic.source_node}_capture"
+            for mic in cfg.mic_chains
+        }
+    )
+    return nodes
+
+
+def dsp_node_for(cfg: SonarConfig, target: str) -> str | None:
+    """Tek bir hedefin DSP node'u; hedef yoksa `None`."""
+    return dsp_nodes(cfg).get(target)
 
 
 # --------------------------------------------------------------------------- kanallar

@@ -76,3 +76,19 @@ EQ eğrisinin arkasında canlı frekans spektrumu (EasyEffects'teki gibi).
   GUI'yi etkilemez — `engine/` katmanı değişir
 - **Donanım entegrasyonu**: Arctis ve benzeri kulaklıklar için HID tabanlı kontrol
   (ChatMix tekeri, pil durumu, yan ton) — `headsetcontrol` projesiyle entegrasyon
+
+## Seviye rampasını kendimiz yürütmek
+
+Faz 3'te ölçüldü: PipeWire seviye değişimini yumuşatıyor (tek seferlik büyük sıçrama ve mute
+hiç tık üretmiyor), ama hızlı ardışık yazımlar birbirinin rampasını kesince çok hafif bir
+süreksizlik kalıyor — normal örnek adımının ~2 katı, dört denemenin birinde.
+
+40 ms'lik toplu yazım penceresi bunu belirgin biçimde azalttı (bkz. `engine/control.py`).
+Tamamen bitirmek için seçenekler:
+
+* Hedef seviyeye kendi rampamızla gitmek (birkaç ara değer, kuantum sınırına hizalı)
+* PipeWire'ın seviye rampası parametrelerini araştırmak (`node.volume-ramp*`)
+* Fader'ı loopback node'unun `channelVolumes`'ü yerine zincire eklenecek bir kazanç
+  aşamasında yürütmek — LSP eklentileri kendi içinde yumuşatıyor
+
+Kullanıcı şikâyet etmezse v1 için gereksiz; ölçüm kaydı burada dursun.
