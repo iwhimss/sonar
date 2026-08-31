@@ -62,6 +62,7 @@ from sonar.core.model import (
     slugify,
 )
 from sonar.engine import confgen
+from sonar.engine.router import Decision, Router
 from sonar.engine.supervisor import Supervisor
 
 __all__ = ["ApiError", "SonarApi", "envelope"]
@@ -131,6 +132,12 @@ class SonarApi:
         self._lock = threading.RLock()
 
         supervisor.load_profile = self._profile_provider
+        self.router = Router(
+            supervisor.state,
+            supervisor.control.move_stream,
+            lambda: self.config,
+            on_route=self._on_route,
+        )
 
     # ------------------------------------------------------------------ yaşam döngüsü
 
@@ -164,6 +171,10 @@ class SonarApi:
             "graph_ready": bool(state.sonar_nodes()),
             "conflicts": self.conflicts(),
         }
+
+    def sync_routing(self) -> list[Decision]:
+        """Yeni akışları kurallara göre dağıtır. `pwstate` değişiklik bildirdiğinde çağrılır."""
+        return self.router.sync()
 
     def get_streams(self) -> list[dict]:
         """Kullanıcıya gösterilecek akışlar — Sonar'ın kendi loopback'leri hariç."""
@@ -394,11 +405,34 @@ class SonarApi:
 
     # ------------------------------------------------------------------ yönlendirme
 
-    def move_stream(self, stream_id: int, channel: str) -> None:
+    def move_stream(self, stream_id: int, channel: str, remember: bool = False) -> None:
+        """Bir akışı elle taşır.
+
+        `remember` verilirse uygulamanın binary'sinden kalıcı bir kural üretilir —
+        arayüzdeki "bu uygulamayı hep buraya gönder" seçeneği bunu kullanır.
+        """
         node = self._channel(channel).sink_node
         if not self.supervisor.control.move_stream(int(stream_id), node):
             raise ApiError("move_failed", f"akış taşınamadı: {stream_id}")
+        # Kural motoru bu akışa bir daha dokunmasın: kullanıcının kararı kalıcıdır.
+        self.router.mark_manual(int(stream_id), channel)
         self._emit({"kind": "stream_moved", "stream": int(stream_id), "channel": channel})
+        if remember:
+            self._remember_stream(int(stream_id), channel)
+
+    def _remember_stream(self, stream_id: int, channel: str) -> None:
+        stream = self.supervisor.state.streams.get(stream_id)
+        if stream is None:
+            raise ApiError("unknown_stream", f"böyle bir akış yok: {stream_id}")
+        for key in (MatchKey.BINARY, MatchKey.APP_NAME, MatchKey.MEDIA_NAME):
+            value = _stream_field(stream, key)
+            if value:
+                self.set_rule(key.value, value, channel)
+                return
+        raise ApiError(
+            "not_identifiable",
+            "bu akışın kural üretilebilecek bir kimliği yok (binary/ad/medya adı boş)",
+        )
 
     def set_rule(self, match_key: str, pattern: str, channel: str, is_regex: bool = False) -> None:
         self._channel(channel)
@@ -498,6 +532,16 @@ class SonarApi:
 
     # ------------------------------------------------------------------ iç kısım
 
+    def _on_route(self, decision: Decision) -> None:
+        self._emit(
+            {
+                "kind": "stream_routed",
+                "stream": decision.stream_id,
+                "channel": decision.channel_id,
+                "reason": decision.reason,
+            }
+        )
+
     def _profile_provider(self, target: str, name: str) -> Profile:
         """Süpervizör grafı yeniden kurduğunda bellekteki hâli kullansın."""
         cached = self.profiles.get(target)
@@ -521,6 +565,8 @@ class SonarApi:
     def _structural(self, delta: dict) -> None:
         self._dirty_config = True
         self.supervisor.reconcile(self.config)
+        # Node id'leri değişti; hangi akışın nereye gittiğine dair kayıt geçersiz.
+        self.router.reset()
         self._emit(delta)
         if self.on_rebuild is not None:
             self.on_rebuild()
@@ -616,6 +662,12 @@ class SonarApi:
                 holder.active_profile = name
                 break
         self._dirty_config = True
+
+
+def _stream_field(stream, key: MatchKey) -> str:
+    from sonar.engine.router import stream_value
+
+    return stream_value(stream, key)
 
 
 def dsp_targets(config: SonarConfig) -> dict[str, str]:

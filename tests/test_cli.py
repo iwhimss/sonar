@@ -258,3 +258,29 @@ def test_status_counts_match_what_is_printed(config_store, capsys, monkeypatch):
     assert "ÇALAN UYGULAMALAR (1)" in out
     assert "MİKROFON KULLANANLAR (1)" in out
     assert "OBS" in out
+
+
+def test_move_remember_flag(cli):
+    cli.iface.api.supervisor.state.apply(
+        [
+            {
+                "id": 42,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": "mpv",
+                        "media.class": "Stream/Output/Audio",
+                        "application.process.binary": "mpv",
+                    }
+                },
+            }
+        ]
+    )
+    run(["move", "42", "chat", "--remember"])
+    assert any(r.pattern == "mpv" and r.channel_id == "chat" for r in cli.iface.api.config.rules)
+
+
+def test_move_without_remember_creates_no_rule(cli):
+    before = len(cli.iface.api.config.rules)
+    run(["move", "42", "chat"])
+    assert len(cli.iface.api.config.rules) == before

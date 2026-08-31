@@ -159,13 +159,26 @@ def test_close_flushes_then_closes(state):
 # --------------------------------------------------------------------------- nadir işlemler
 
 
-def test_move_stream_uses_pactl(state):
+def test_move_stream_uses_pw_metadata_with_the_node_id(state):
+    """`pactl move-sink-input` PulseAudio **indeksi** ister, bizim elimizde node id var;
+    node id'siyle çağrılınca sessizce başarısız oluyordu (ölçüldü)."""
     calls: list[list[str]] = []
     control = Control(
         state, FakeSession(), window_ms=0, runner=lambda argv: calls.append(argv) or True
     )
     assert control.move_stream(77, "sonar_chat") is True
-    assert calls == [["pactl", "move-sink-input", "77", "sonar_chat"]]
+    assert calls == [["pw-metadata", "77", "target.object", "sonar_chat"]]
+
+
+def test_move_target_is_passed_without_quotes(state):
+    """JSON tırnağı eklenirse WirePlumber adı eşleştiremiyor ve akışı varsayılana gönderiyor."""
+    calls: list[list[str]] = []
+    control = Control(
+        state, FakeSession(), window_ms=0, runner=lambda argv: calls.append(argv) or True
+    )
+    control.move_stream(77, "sonar_chat")
+    assert calls[0][-1] == "sonar_chat"
+    assert '"' not in calls[0][-1]
 
 
 def test_set_default_sink_prefers_the_resolved_id(state):

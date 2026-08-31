@@ -225,9 +225,10 @@ class SonarDBusInterface(QObject):
 
     # ------------------------------------------------------------------ yönlendirme
 
-    @Slot(int, str, result=str)
-    def MoveStream(self, stream_id: int, channel: str) -> str:
-        return reply(lambda: self.api.move_stream(stream_id, channel))
+    @Slot(int, str, bool, result=str)
+    def MoveStream(self, stream_id: int, channel: str, remember: bool) -> str:
+        """`remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir."""
+        return reply(lambda: self.api.move_stream(stream_id, channel, remember))
 
     @Slot(str, str, str, bool, result=str)
     def SetRule(self, match_key: str, pattern: str, channel: str, is_regex: bool) -> str:

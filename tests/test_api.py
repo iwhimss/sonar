@@ -429,9 +429,7 @@ def test_conflicting_system_processor_is_detected(api):
             {
                 "id": 1,
                 "type": "PipeWire:Interface:Node",
-                "info": {
-                    "props": {"node.name": "easyeffects_sink", "media.class": "Audio/Sink"}
-                },
+                "info": {"props": {"node.name": "easyeffects_sink", "media.class": "Audio/Sink"}},
             }
         ]
     )
@@ -440,3 +438,85 @@ def test_conflicting_system_processor_is_detected(api):
     assert conflicts[0]["name"] == "EasyEffects"
     assert "EasyEffects" in conflicts[0]["message"]
     assert api.get_state()["conflicts"] == conflicts
+
+
+# --------------------------------------------------------------------------- yönlendirme
+
+
+def _stream_obj(api, stream_id, name, **props):
+    api.supervisor.state.apply(
+        [
+            {
+                "id": stream_id,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": name,
+                        "media.class": "Stream/Output/Audio",
+                        **props,
+                    }
+                },
+            }
+        ]
+    )
+
+
+def test_sync_routing_places_new_streams(api):
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    decisions = api.sync_routing()
+    assert [(d.stream_id, d.channel_id) for d in decisions] == [(10, "media")]
+    assert api.supervisor.control.moved == [(10, "sonar_media")]
+
+
+def test_manual_move_stops_the_router_from_touching_it(api):
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.move_stream(10, "game")
+    assert api.sync_routing() == []
+    assert api.supervisor.control.moved == [(10, "sonar_game")]
+
+
+def test_move_with_remember_creates_a_rule_from_the_binary(api):
+    _stream_obj(api, 10, "cs2", **{"application.process.binary": "cs2_linux64"})
+    api.move_stream(10, "game", remember=True)
+    rule = next(r for r in api.config.rules if r.pattern == "cs2_linux64")
+    assert (rule.match_key, rule.channel_id) == ("binary", "game")
+
+
+def test_remember_falls_back_to_the_application_name(api):
+    _stream_obj(api, 11, "wine", **{"application.name": "Arc Raiders"})
+    api.move_stream(11, "game", remember=True)
+    rule = next(r for r in api.config.rules if r.pattern == "Arc Raiders")
+    assert rule.match_key == "app_name"
+
+
+def test_remember_refuses_an_unidentifiable_stream(api):
+    _stream_obj(api, 12, "anonim")
+    with pytest.raises(ApiError) as excinfo:
+        api.move_stream(12, "game", remember=True)
+    assert excinfo.value.code == "not_identifiable"
+
+
+def test_remember_on_a_vanished_stream_is_reported(api):
+    _stream_obj(api, 13, "mpv", **{"application.process.binary": "mpv"})
+    api.supervisor.state.apply([{"id": 13, "type": "PipeWire:Interface:Node", "info": None}])
+    with pytest.raises(ApiError) as excinfo:
+        api.move_stream(13, "game", remember=True)
+    assert excinfo.value.code == "unknown_stream"
+
+
+def test_routing_decisions_are_announced(config_store):
+    seen: list[dict] = []
+    api = SonarApi(config_store, FakeSupervisor(), save_delay=0, on_change=seen.append)
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.sync_routing()
+    assert seen[-1]["kind"] == "stream_routed"
+    assert seen[-1]["channel"] == "media"
+
+
+def test_structural_change_resets_the_router(api):
+    """Node id'leri değişti; hangi akışın nereye gittiğine dair kayıt geçersiz."""
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.sync_routing()
+    assert api.router.decided
+    api.set_mic_monitor("mic", True)
+    assert api.router.decided == {}

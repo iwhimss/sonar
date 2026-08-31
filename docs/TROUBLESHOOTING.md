@@ -5,7 +5,7 @@
 **En sık sebep: EasyEffects (veya JamesDSP) sistem geneli çalışıyor.**
 
 EasyEffects "service mode"da her oynatma akışını kendi sink'ine çeker — Sonar açıkça bir
-cihaz istese bile. Ölçüldü: `pactl move-sink-input` hatasız döner, bağlantı anında
+cihaz istese bile. Ölçüldü: taşıma komutu hatasız döner, bağlantı anında
 `easyeffects_sink`'e geri alınır. Hiçbir hata mesajı görünmez, ses "yanlış yerden" gelir.
 
 Sonar zaten EasyEffects'in yaptığı işi (LSP eklentileriyle EQ, gate, kompresör, limiter)

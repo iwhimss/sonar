@@ -82,7 +82,7 @@ def test_next_channel_order_appends():
 
 def test_suggested_rules_point_at_real_channels():
     ids = {c.id for c in default_config().channels}
-    for _key, _pattern, channel in SUGGESTED_RULES:
+    for _key, _pattern, channel, _is_regex in SUGGESTED_RULES:
         assert channel in ids
 
 

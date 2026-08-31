@@ -25,7 +25,7 @@ import os
 import signal
 import sys
 
-from PySide6.QtCore import QCoreApplication, QSocketNotifier, QTimer
+from PySide6.QtCore import QCoreApplication, QObject, QSocketNotifier, QTimer, Signal
 from PySide6.QtDBus import QDBusConnection
 
 from sonar.core import config as config_mod
@@ -40,6 +40,18 @@ log = logging.getLogger(__name__)
 
 #: Durum sinyallerinin biriktirme penceresi.
 SIGNAL_DEBOUNCE_MS = 50
+
+
+class _ThreadBridge(QObject):
+    """`pwstate`'in okuma iş parçacığından Qt olay döngüsüne geçiş köprüsü.
+
+    `QTimer.singleShot(0, ...)` yabancı bir iş parçacığından çağrıldığında **sessizce
+    hiçbir şey yapmıyor** — uyarı bile vermiyor. Bu yüzden yönlendirme hiç tetiklenmiyordu.
+    Qt sinyalleri ise iş parçacığı güvenli: farklı bir iş parçacığından emit edildiğinde
+    otomatik olarak kuyruğa alınıp alıcının iş parçacığında çalıştırılır.
+    """
+
+    streams_changed = Signal()
 
 
 class SonarDaemon:
@@ -68,6 +80,8 @@ class SonarDaemon:
         self._streams_timer.setInterval(SIGNAL_DEBOUNCE_MS)
         self._streams_timer.timeout.connect(self._emit_streams)
 
+        self._bridge = _ThreadBridge()
+        self._bridge.streams_changed.connect(self._streams_event)
         self.supervisor.on_failure.append(self._graph_failed)
 
     # ------------------------------------------------------------------ açılış
@@ -143,7 +157,13 @@ class SonarDaemon:
     def _graph_changed(self, changed: frozenset[str]) -> None:
         """`pwstate` iş parçacığından gelir — Qt nesnelerine dokunmadan kuyruğa al."""
         if GraphState.STREAMS in changed or GraphState.DEVICES in changed:
-            QTimer.singleShot(0, self._start_streams_timer)
+            self._bridge.streams_changed.emit()
+
+    def _streams_event(self) -> None:
+        """Yönlendirme kararı Qt iş parçacığında alınır; `pwstate` kendi iş parçacığından
+        doğrudan alt süreç çağırmasın diye kuyruğa alınıyor."""
+        self.api.sync_routing()
+        self._start_streams_timer()
 
     def _start_streams_timer(self) -> None:
         if not self._streams_timer.isActive():

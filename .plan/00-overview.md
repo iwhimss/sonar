@@ -7,9 +7,9 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 5 — Uygulama yönlendirme
+**Aktif faz:** Faz 6 — Seviye ölçümü
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 5 — `engine/router.py`: yeni akışları kurallara göre kanallara dağıt.
+**Sonraki adım:** Faz 6 — `engine/meters.py`: talep üzerine çalışan seviye metreleri.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -18,8 +18,8 @@
 | 2 | [graph.conf üreteci](02-confgen.md) | 🟢 Tamamlandı |
 | 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟢 Tamamlandı |
 | 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | 🟢 Tamamlandı |
-| 5 | [Uygulama yönlendirme](05-routing.md) | 🟡 Sıradaki |
-| 6 | [Seviye ölçümü](06-meters.md) | ⚪ Bekliyor |
+| 5 | [Uygulama yönlendirme](05-routing.md) | 🟢 Tamamlandı |
+| 6 | [Seviye ölçümü](06-meters.md) | 🟡 Sıradaki |
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | ⚪ Bekliyor |
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | ⚪ Bekliyor |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | ⚪ Bekliyor |
@@ -29,7 +29,7 @@
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 391 test geçiyor, `ruff` temiz.
+**Test durumu:** 442 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -190,6 +190,20 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
   `easyeffects_sink`'e çekiliyor ve elle taşıma geri alınıyor. Daemon bunu açılışta tespit
   edip uyarıyor; `docs/TROUBLESHOOTING.md` çözümü anlatıyor.
 
+### Faz 5'te ölçümle doğrulananlar
+
+* **Yönlendirme gecikmesi 3.5–4.8 ms.** Planın endişelendiği 10–20 ms'lik yarış penceresinin
+  çok altında ve bir PipeWire kuantumundan (≈21 ms) kısa. `pw-metadata` ile **önceden**
+  hedef ayarlama yoluna gerek kalmadı.
+* **`pactl move-sink-input` node id ile çalışmıyor** — PulseAudio indeksi bekliyor ve
+  sessizce `exit 1` veriyor. Akış taşıma `pw-metadata <node-id> target.object <ad>` ile.
+* **`pw-metadata` değeri tırnaksız olmalı;** JSON tırnağı eklenirse akış sessizce
+  varsayılan cihaza gider.
+* **PipeWire node id'leri geri dönüştürüyor.** Yönlendirme kayıtları `object.serial` ile
+  tutuluyor; id ile tutulurken beş akıştan ikisi yönlendirilmiyordu.
+* **`QTimer.singleShot(0, …)` yabancı iş parçacığından sessizce çalışmıyor.** İş parçacığı
+  geçişi Qt sinyaliyle yapılıyor.
+
 ### Canlı parametre yazımı
 
 Kalıcı `pw-cli` oturumuna gönderilen komutlar:
@@ -198,7 +212,7 @@ Kalıcı `pw-cli` oturumuna gönderilen komutlar:
 set-param <node-id> Props { params = [ "eq:g_3" 4.5 ] }        # EQ band 3 (lineer kazanç)
 set-param <node-id> Props { channelVolumes = [ 0.5, 0.5 ] }    # fader — lineer, tam -6.02 dB
 set-param <node-id> Props { mute = true }                      # sustur
-pactl move-sink-input <stream-id> <yeni-cihaz>                 # cihaz değişimi (kesintisiz)
+pw-metadata <node-id> target.object <hedef-node>               # akışı taşı (kesintisiz)
 ```
 
 ---
@@ -232,7 +246,7 @@ Band N: `ft_N` (filtre tipi), `f_N` (frekans), `g_N` (kazanç), `q_N` (Q), `s_N`
 |---|---|
 | ~~`pw-cli set-param` LSP LV2 portlarında çalışmazsa~~ | ✅ **Kapandı.** Faz 2'de ölçülerek doğrulandı; yedek plana (builtin biquad) gerek kalmadı |
 | Boştaki CPU tüketimi | LSP FFT analizörleri kapatıldı: %21.1 → %6.6. RSS ~136 MB (plandaki 15 MB tahmini yanlıştı) — kanal başına ayrı sürece göre yine çok düşük |
-| Yapısal değişikte ~200 ms kesinti | Kullanıcı tetikli ve nadir. Cihaz değişimi `move-sink-input` ile kesintisiz |
+| Yapısal değişikte ~200 ms kesinti | Kullanıcı tetikli ve nadir. Akış taşıma `pw-metadata` ile kesintisiz |
 | ~~Fader sürüklerken `pw-cli` süreç fırtınası~~ | ✅ **Kapandı.** Kalıcı `pw-cli` oturumu: yazım 14 ms yerine 0.003 ms. Pencere ölçümle 40 ms'ye ayarlandı |
 | DeepFilterNet 48 kHz zorunlu | Graf tamamen 48 kHz'e sabit (`audio.rate = 48000`) |
 | Varsayılan sink'i değiştirmenin yan etkileri | Varsayılan **kapalı**; daemon kapanırken eski değere döner |

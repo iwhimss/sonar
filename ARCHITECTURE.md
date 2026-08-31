@@ -160,7 +160,7 @@ pw-cli s <node-id> Props '{ params = [ "eq:g_3" 4.5 ] }'
 pw-cli s <loopback-node-id> Props '{ channelVolumes = [ 0.72, 0.72 ] }'   # lineer
 
 # Çıkış cihazını değiştir (kesintisiz)
-pactl move-sink-input <stream-id> <yeni-cihaz>
+pw-metadata <node-id> target.object <hedef-node-adı>   # akışı taşı (kesintisiz)
 ```
 
 Daemon `pw-dump -m` ile grafı izler ve `node.name → id` haritasını günceller.

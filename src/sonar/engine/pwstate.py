@@ -28,6 +28,7 @@ import json
 import logging
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
@@ -61,6 +62,10 @@ class StreamInfo:
     """Bir uygulamanın ses akışı — yönlendirme kurallarının eşleştirdiği nesne."""
 
     id: int
+    #: PipeWire'ın **asla tekrar kullanmadığı** artan sayaç. `id` geri dönüştürülüyor:
+    #: kapanan bir akışın id'si saniyeler içinde yeni bir akışa verilebiliyor. Yönlendirme
+    #: kayıtları bu yüzden `serial` ile tutuluyor.
+    serial: int = 0
     node_name: str = ""
     app_binary: str = ""
     app_name: str = ""
@@ -137,6 +142,10 @@ class GraphState:
     nodes: dict[str, int] = field(default_factory=dict)
     streams: dict[int, StreamInfo] = field(default_factory=dict)
     devices: dict[int, DeviceInfo] = field(default_factory=dict)
+    #: Akışın ilk görüldüğü an (`time.monotonic`). Yönlendirme gecikmesini ölçmek için
+    #: ayrı tutuluyor — `StreamInfo`'ya konsaydı her güncelleme "değişmiş" görünür ve
+    #: gereksiz sinyal yağardı.
+    stream_seen: dict[int, float] = field(default_factory=dict, repr=False)
     _by_id: dict[int, NodeInfo] = field(default_factory=dict, repr=False)
 
     NODES = "nodes"
@@ -168,6 +177,7 @@ class GraphState:
         """Tam yeniden senkron öncesi envanteri boşaltır."""
         self.nodes.clear()
         self.streams.clear()
+        self.stream_seen.clear()
         self.devices.clear()
         self._by_id.clear()
 
@@ -201,6 +211,7 @@ class GraphState:
         if media_class in _STREAM_CLASSES:
             stream = StreamInfo(
                 id=node_id,
+                serial=int(props.get("object.serial", 0) or 0),
                 node_name=name,
                 app_binary=props.get("application.process.binary", ""),
                 app_name=props.get("application.name", ""),
@@ -209,7 +220,12 @@ class GraphState:
                 pid=int(props.get("application.process.id", 0) or 0),
                 is_capture=media_class == "Stream/Input/Audio",
             )
-            if self.streams.get(node_id) != stream:
+            previous_stream = self.streams.get(node_id)
+            if previous_stream is None or previous_stream.serial != stream.serial:
+                # Geri dönüştürülmüş bir id yeni bir akıştır: zaman damgası sıfırlanmalı,
+                # yoksa yönlendirme gecikmesi eski akıştan sayılır (ölçümde 3.2 s görüldü).
+                self.stream_seen[node_id] = time.monotonic()
+            if previous_stream != stream:
                 self.streams[node_id] = stream
                 changed.add(self.STREAMS)
         elif media_class in _SINK_CLASSES or media_class in _SOURCE_CLASSES:
@@ -231,6 +247,7 @@ class GraphState:
         if info is not None and self.nodes.get(info.name) == node_id:
             del self.nodes[info.name]
             changed.add(self.NODES)
+        self.stream_seen.pop(node_id, None)
         if self.streams.pop(node_id, None) is not None:
             changed.add(self.STREAMS)
         if self.devices.pop(node_id, None) is not None:
@@ -296,8 +313,6 @@ class PwMonitor:
 
     def wait_for_node(self, name: str, timeout: float = 5.0, interval: float = 0.05) -> int | None:
         """Bir node adının haritada belirmesini bekler; graf yeniden kurulduktan sonra şart."""
-        import time
-
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             node_id = self.state.node_id(name)

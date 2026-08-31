@@ -461,20 +461,27 @@ BUILTIN_CHANNELS: tuple[tuple[str, str, str, str], ...] = (
 )
 
 #: İlk kurulumda önerilen yönlendirme kuralları.
-SUGGESTED_RULES: tuple[tuple[MatchKey, str, str], ...] = (
-    (MatchKey.BINARY, "Discord", "chat"),
-    (MatchKey.BINARY, "discord", "chat"),
-    (MatchKey.BINARY, "vesktop", "chat"),
-    (MatchKey.BINARY, "TeamSpeak3", "chat"),
-    (MatchKey.BINARY, "mumble", "chat"),
-    (MatchKey.APP_NAME, "WEBRTC VoiceEngine", "chat"),
-    (MatchKey.BINARY, "firefox", "media"),
-    (MatchKey.BINARY, "chrome", "media"),
-    (MatchKey.BINARY, "chromium", "media"),
-    (MatchKey.BINARY, "brave", "media"),
-    (MatchKey.BINARY, "spotify", "media"),
-    (MatchKey.BINARY, "mpv", "media"),
-    (MatchKey.BINARY, "vlc", "media"),
+#: İlk kurulumda yazılan yönlendirme kuralları: `(anahtar, desen, kanal, regex mi)`.
+#: Hepsi öneridir — kullanıcı arayüzden veya `config.toml`'dan düzenleyebilir.
+SUGGESTED_RULES: tuple[tuple[MatchKey, str, str, bool], ...] = (
+    (MatchKey.BINARY, "Discord", "chat", False),
+    (MatchKey.BINARY, "discord", "chat", False),
+    (MatchKey.BINARY, "vesktop", "chat", False),
+    (MatchKey.BINARY, "TeamSpeak3", "chat", False),
+    (MatchKey.BINARY, "mumble", "chat", False),
+    (MatchKey.APP_NAME, "WEBRTC VoiceEngine", "chat", False),
+    (MatchKey.BINARY, "firefox", "media", False),
+    (MatchKey.BINARY, "chrome", "media", False),
+    (MatchKey.BINARY, "chromium", "media", False),
+    (MatchKey.BINARY, "brave", "media", False),
+    (MatchKey.BINARY, "spotify", "media", False),
+    (MatchKey.BINARY, "mpv", "media", False),
+    (MatchKey.BINARY, "vlc", "media", False),
+    # Oyunlar: Proton/Wine altındaki süreçler ve Steam'in kendi başlattığı binary'ler.
+    # Bunlar sezgisel; yanlış yakalarsa kullanıcı kuralı silebilir.
+    (MatchKey.BINARY, r"\.exe$", "game", True),
+    (MatchKey.BINARY, r"^wine", "game", True),
+    (MatchKey.BINARY, r"^steam_app_", "game", True),
 )
 
 
@@ -493,8 +500,8 @@ def default_config() -> SonarConfig:
         MicChain(id="stream_mic", name="Stream Mic", share_chain_with_mic=False),
     ]
     rules = [
-        RoutingRule(match_key=key, pattern=pattern, channel_id=channel)
-        for key, pattern, channel in SUGGESTED_RULES
+        RoutingRule(match_key=key, pattern=pattern, channel_id=channel, is_regex=is_regex)
+        for key, pattern, channel, is_regex in SUGGESTED_RULES
     ]
     return SonarConfig(channels=channels, buses=buses, mic_chains=mics, rules=rules)
 

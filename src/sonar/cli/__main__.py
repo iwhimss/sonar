@@ -214,8 +214,9 @@ def _cmd_rules(client: Client, args) -> int:
 
 
 def _cmd_move(client: Client, args) -> int:
-    client.call("MoveStream", args.stream, args.channel)
-    print(f"#{args.stream} → {args.channel}")
+    client.call("MoveStream", args.stream, args.channel, args.remember)
+    suffix = " (kural olarak kaydedildi)" if args.remember else ""
+    print(f"#{args.stream} → {args.channel}{suffix}")
     return 0
 
 
@@ -296,6 +297,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("move", help="çalan bir akışı başka kanala taşı")
     p.add_argument("stream", type=int)
     p.add_argument("channel")
+    p.add_argument(
+        "--remember", action="store_true", help="bu uygulamayı bundan sonra hep bu kanala gönder"
+    )
 
     p = sub.add_parser("chatmix", help="ChatMix konumu (0-100)")
     p.add_argument("value", type=float)

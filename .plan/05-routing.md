@@ -1,8 +1,8 @@
 # Faz 5 — Uygulama yönlendirme
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 4
-**Çıktı:** `src/sonar/engine/router.py`, `tests/test_router.py`
+**Çıktı:** `src/sonar/engine/router.py`, `tests/test_router.py` — 51 yeni test (toplam 442)
 
 ---
 
@@ -14,72 +14,123 @@ kalıcı kural hâline getirmek.
 
 ---
 
+## Ölçüm: yarış koşulu ne kadar büyük?
+
+Plan, akış oluşturulduktan sonra taşımanın sesin ilk 10–20 ms'sini yanlış cihazda
+çalabileceğinden endişeleniyordu ve `pw-metadata` ile **önceden** hedef ayarlamayı birincil
+yol olarak öneriyordu.
+
+Router'a gecikme ölçümü eklendi (akışın ilk görülmesinden taşımanın tamamlanmasına).
+Altı ardışık akışta ölçülen:
+
+```
+3.5 ms · 3.7 ms · 3.7 ms · 4.1 ms · 4.3 ms · 4.8 ms
+```
+
+**Karar: önceden ayarlama yolu gereksiz.** ~4 ms endişe edilen aralığın çok altında ve
+tipik bir PipeWire kuantumundan (1024/48000 ≈ 21 ms) kısa; pratikte tek bir tampon bile
+yanlış yere gitmiyor. Basit tepkisel yol korunuyor, karmaşıklık eklenmiyor.
+
+Gecikme her yönlendirmede loglanıyor:
+```
+yönlendirildi: #390 pw-cat → game (pw-cat) — 3.6 ms
+```
+
+---
+
 ## Görevler
 
 ### `engine/router.py` — kural motoru
-- [ ] `PwState.streams_changed` → yeni akışları tespit et (id bazlı diff)
-- [ ] **Eşleştirme anahtarları, öncelik sırasıyla:**
-  1. `application.process.binary` (ör. `cs2`, `Discord`, `firefox`) — en güvenilir
-  2. `application.name` (ör. `Firefox`, `Spotify`)
-  3. `media.name` regex (ör. `.*YouTube.*`)
-- [ ] Aynı öncelikte birden fazla kural eşleşirse: daha uzun/spesifik desen kazanır
-- [ ] Eşleşme yoksa → `settings.default_channel` (varsayılan: `media`)
-- [ ] Zaten doğru hedefteki akış tekrar taşınmaz (gereksiz `pactl` çağrısı yok)
-- [ ] Kullanıcının **elle** taşıdığı akış o oturum boyunca kural motoru tarafından geri alınmaz
-      (manuel override kaydı, akış kapanınca temizlenir)
+- [x] `pwstate` değişiklik bildirimi → yeni akışları tespit et
+- [x] Eşleştirme anahtarları öncelik sırasıyla: `binary` → `app_name` → `media_name`
+- [x] Aynı öncelikte daha spesifik (daha uzun desenli) kural kazanır
+- [x] Eşleşme yoksa → `settings.default_channel`
+- [x] Silinmiş kanalı gösteren yetim kural yok sayılır
+- [x] Bozuk regex sessizce hiç eşleşmez, hata yükseltmez
+- [x] **Her akış yalnızca bir kez yönlendirilir.** Sürekli izleyip düzeltmek kullanıcıyla
+      kavga etmek olurdu: pavucontrol'den elle taşıdığını anında geri çekerdik. Ayrıca
+      akışın gerçekte nereye bağlı olduğunu `target.object`'ten güvenilir okuyamıyoruz —
+      WirePlumber kendi bağladığında bu alan boş kalıyor
+- [x] Elle taşınan akışa kural motoru bir daha dokunmaz (`mark_manual`)
+- [x] Kendi loopback'lerimiz ve kayıt akışları hiç ele alınmaz
+- [x] Başarısız taşıma döngüye girmez (her olayda yeniden denenmez)
+- [x] Yönlendirme gecikmesi ölçülüp loglanıyor
 
 ### Yarış koşulu koruması
-Akış oluşturulduktan sonra taşımak, sesin ilk 10–20 ms'sini yanlış cihazda çalabilir.
-- [ ] **Birincil yol:** `pw-metadata` ile ilgili uygulama için `target.object` **önceden** ayarlanır
-      (uygulama bilinen bir binary ise, akış açılmadan)
-- [ ] **Yedek yol:** akış göründüğü an `pactl move-sink-input` (birincil yol tutmazsa)
-- [ ] Ölçüm: yönlendirme gecikmesi loglanır, kabul edilebilir mi görülür
+- [x] Ölçüldü: ~4 ms. **Önceden `pw-metadata` ile hedef ayarlama yoluna gerek kalmadı**
+- [x] Tepkisel yol tek yol; `pw-metadata <node-id> target.object <ad>` ile taşınıyor
 
 ### Kalıcı kurallar
-- [ ] GUI'den elle taşıma → "Bu uygulamayı hep **Game**'e gönder" onay kutusu → `SetRule`
-- [ ] Kurallar `config.toml` içinde `[[rules]]` listesinde tutulur, elle düzenlenebilir
-- [ ] Varsayılan ön tanımlı kurallar (ilk kurulumda önerilir, kullanıcı onaylar):
-  - Chat ← `Discord`, `discord`, `TeamSpeak`, `Mumble`, `WEBRTC VoiceEngine`
-  - Media ← `firefox`, `chrome`, `chromium`, `brave`, `spotify`, `mpv`, `vlc`
-  - Game ← Steam/Proton altındaki süreçler (`steam_app_*`, `wine`, `proton`)
-- [ ] Kural listesi GUI'de düzenlenebilir (ekle/sil/sırala)
+- [x] `MoveStream(id, kanal, remember)` — `remember` ile akışın binary'sinden kalıcı kural
+      üretilir (arayüzdeki "bu uygulamayı hep buraya gönder" seçeneği bunu kullanacak)
+- [x] Kimlik binary → app adı → medya adı sırasıyla aranır; hiçbiri yoksa anlaşılır hata
+- [x] `sonar-cli move <id> <kanal> --remember`
+- [x] Kurallar `config.toml` içinde, elle düzenlenebilir
+- [x] Varsayılan kurallar: Chat ← Discord/vesktop/TeamSpeak/Mumble/WebRTC;
+      Media ← firefox/chrome/chromium/brave/spotify/mpv/vlc;
+      **Game ← `\.exe$`, `^wine`, `^steam_app_`** (regex, bu fazda eklendi)
 
-### Varsayılan sink devralma (opsiyonel, varsayılan kapalı)
-- [ ] `settings.take_over_default_sink = true` ise sistem varsayılan sink'i `sonar_media` yapılır
-- [ ] Daemon kapanırken **mutlaka** eski değere geri alınır (kullanıcı sessiz sistemle kalmasın)
-- [ ] Kapalıyken hiçbir sistem ayarına dokunulmaz — kullanıcı cihazları elle seçer
+### Varsayılan sink devralma
+- [x] `settings.take_over_default_sink` (Faz 3'te uygulandı, varsayılan kapalı)
+- [x] Kapanışta eski değere geri dönülüyor
+- [x] Kapalıyken hiçbir sistem ayarına dokunulmuyor
 
-### Testler
-- [ ] `test_router.py` — kural önceliği (binary > app_name > media_name)
-- [ ] Regex eşleşmesi ve hatalı regex'in güvenli reddi
-- [ ] Çakışan kurallarda spesifiklik kazanıyor mu
-- [ ] Eşleşme yoksa varsayılan kanala düşüyor mu
-- [ ] Manuel override kural tarafından ezilmiyor mu
+### Testler — 51 yeni test
+- [x] Kural önceliği, spesifiklik, regex, bozuk regex, kapalı kural, yetim kural
+- [x] Manuel taşımanın ezilmemesi, tek seferlik yönlendirme, başarısız taşımanın döngüye
+      girmemesi
+- [x] **id geri dönüşümü** (aşağıya bak), kapanan akışın unutulması
+- [x] Aynı uygulamanın çoklu akışları, kural değişiminin yalnızca yeni akışları etkilemesi
+- [x] Varsayılan oyun kurallarının normal uygulamaları yakalamaması
 
 ---
 
-## Doğrulama
+## Doğrulama — ✅ gerçek sistemde
+
+| Test | Sonuç |
+|---|---|
+| 6 ardışık akış | **6/6** doğru kanala yönlendirildi |
+| Yönlendirme gecikmesi | **3.5 – 4.8 ms** |
+| `sonar-cli route --key app_name pw-cat game` | sonraki akış `game`'e düştü |
+| Kendi loopback'lerimiz | hiç ele alınmadı |
+| Elle taşıma | kural motoru geri almadı |
+
+**Ölçülemeyen bir senaryo:** hedefsiz açılan bir akışın *duyulabilir* yol testi
+(`sonar_media_fx`'ten kayıt) EasyEffects servis kipi çalışırken yapılamıyor — akış
+yönlendirildikten ~21 ms sonra EasyEffects geri çekiyor. Bu Faz 4'te belgelenen çakışmanın
+aynısı; yönlendirmenin kendisi değil, EasyEffects'in davranışı. Gecikme ölçümü bu
+çakışmadan etkilenmediği için asıl soru (yarış penceresi ne kadar?) yine de yanıtlandı.
+EasyEffects kapalıyken tekrarlanması Faz 10'a bırakıldı.
+
+---
+
+## Yol boyunca yakalananlar
+
+1. **`pactl move-sink-input` node id ile çalışmıyor.** PulseAudio **sink-input indeksi**
+   bekliyor; ikisi ayrı numaralandırma (ölçüldü: node 251 ↔ indeks 13163) ve node id'siyle
+   çağrılınca sessizce `exit 1` veriyor. Yani akış taşıma Faz 4'ten beri gerçek kullanımda
+   hiç çalışmamıştı — birim testleri sahte bir `control` kullandığı için görünmüyordu.
+   `pw-metadata <node-id> target.object <ad>` ile değiştirildi.
+2. **`pw-metadata` değeri tırnaksız verilmeli.** `'"sonar_media"'` gibi JSON tırnağı
+   eklendiğinde ad eşleşmiyor ve WirePlumber akışı **sessizce varsayılan cihaza**
+   gönderiyor — taşındı ama yanlış yere.
+3. **`QTimer.singleShot(0, …)` yabancı iş parçacığından sessizce hiçbir şey yapmıyor.**
+   Uyarı bile vermiyor; yönlendirme hiç tetiklenmiyordu. Qt sinyalleri iş parçacığı güvenli
+   olduğu için araya bir `_ThreadBridge` konuldu.
+4. **PipeWire node id'leri geri dönüştürüyor.** Kapanan akışın id'si saniyeler içinde
+   yenisine veriliyor; silinme olayı bize ulaşmadan yeni akış "zaten karar verilmiş"
+   sanılıyordu — ölçümde **beş akıştan ikisi yönlendirilmedi**. Kayıtlar artık asla
+   tekrarlanmayan `object.serial` ile tutuluyor. Düzeltmeden sonra 6/6.
+5. **Geri dönüştürülen id, gecikme ölçümünü de bozuyordu** — zaman damgası eski akıştan
+   kalıyor ve 3.2 saniyelik sahte gecikmeler loglanıyordu.
+
+---
+
+## Tamamlanma kriteri — ✅ karşılandı
+
+Uygulamalar açıldıkları anda (~4 ms içinde) doğru kanala düşüyor; elle taşıma çalışıyor ve
+`--remember` ile kalıcılaşıyor; bozuk kural sistemi bozmuyor.
 
 ```bash
-mpv müzik.mp3 &
-pactl list short sink-inputs        # sonar_media'ya bağlı olmalı
-
-sonar-cli route mpv game
-pkill mpv; mpv müzik.mp3 &
-pactl list short sink-inputs        # şimdi sonar_game'e bağlı olmalı
+ruff check src/ tests/ && pytest -q          # 442 test geçti, lint temiz
 ```
-
-**Çoklu uygulama testi:** Bir oyun + Discord + tarayıcı aynı anda açık;
-`sonar-cli status` üçünü de doğru kanallarda göstermeli.
-
-**Kenar durumlar:**
-- Uygulama açılırken kanal henüz hazır değilse ne oluyor (graf restart sırasında)
-- Aynı uygulamanın birden fazla akışı (tarayıcı sekmeleri)
-- Akış kapanıp hemen yeniden açılıyorsa
-
----
-
-## Tamamlanma kriteri
-
-Uygulamalar açıldıkları anda doğru kanala düşüyor; elle taşıma çalışıyor ve
-istenirse kalıcılaşıyor; hatalı kural sistemi bozmuyor.

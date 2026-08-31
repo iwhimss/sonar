@@ -188,3 +188,25 @@ def test_our_own_loopbacks_are_marked_internal():
     )
     assert state.streams[1].is_internal is True
     assert state.streams[2].is_internal is False
+
+
+def test_recycled_id_resets_the_seen_timestamp():
+    """Yoksa yönlendirme gecikmesi eski akıştan sayılır (ölçümde 3.2 s görüldü)."""
+    import time
+
+    state = GraphState()
+    state.apply([_node(10, "mpv", "Stream/Output/Audio", **{"object.serial": 100})])
+    first = state.stream_seen[10]
+    time.sleep(0.01)
+    state.apply([_node(10, "firefox", "Stream/Output/Audio", **{"object.serial": 200})])
+    assert state.stream_seen[10] > first
+
+
+def test_same_serial_keeps_the_original_timestamp():
+    state = GraphState()
+    state.apply([_node(10, "mpv", "Stream/Output/Audio", **{"object.serial": 100})])
+    first = state.stream_seen[10]
+    state.apply(
+        [_node(10, "mpv", "Stream/Output/Audio", **{"object.serial": 100, "media.name": "x"})]
+    )
+    assert state.stream_seen[10] == first

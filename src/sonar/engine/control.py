@@ -20,12 +20,24 @@
 Debounce yine de var ama artık zorunluluk değil, nezaket: PipeWire'ın kendi tarafındaki
 gereksiz yeniden hesaplamayı azaltıyor.
 
-## Neden hâlâ `pactl` / `wpctl` var
+## Akış taşıma neden `pactl` ile değil
 
-Akış taşıma ve varsayılan cihaz değiştirme nadir, kullanıcı tetikli işlemler; oradaki 15 ms
-görünmez. Ses seviyesi ise **`wpctl` ile yazılmaz**: `wpctl set-volume` kübik ölçek uygular
-(0.5 → -18 dB ölçüldü), modelimiz lineer tutar (0.5 → -6.02 dB). Doğrudan
-`Props.channelVolumes` yazıyoruz.
+`pactl move-sink-input` **PulseAudio sink-input indeksi** ister; bizim elimizdeki ise
+PipeWire **node id**'si. İkisi ayrı numaralandırma (ölçüldü: node 251 ↔ indeks 13163) ve
+node id'siyle çağrıldığında komut sessizce `exit 1` veriyor. Yerine PipeWire'ın kendi yolu:
+
+```
+pw-metadata <node-id> target.object <hedef node adı>
+```
+
+Bu doğrudan node id'siyle çalışıyor ve akışı kesintisiz taşıyor (ölçüldü). Değerin
+**tırnaksız** verilmesi şart: `'"sonar_media"'` gibi JSON tırnağı eklendiğinde ad eşleşmiyor
+ve WirePlumber akışı sessizce varsayılan cihaza gönderiyor.
+
+## Ses seviyesi neden `wpctl` ile değil
+
+`wpctl set-volume` kübik ölçek uygular (0.5 → -18 dB ölçüldü), modelimiz lineer tutar
+(0.5 → -6.02 dB). Doğrudan `Props.channelVolumes` yazıyoruz.
 """
 
 from __future__ import annotations
@@ -202,8 +214,12 @@ class Control:
     # ------------------------------------------------------------------ nadir işlemler
 
     def move_stream(self, stream_id: int, target_node: str) -> bool:
-        """Bir uygulama akışını başka bir kanala taşır. Kesintisiz."""
-        return self._run(["pactl", "move-sink-input", str(stream_id), target_node])
+        """Bir uygulama akışını başka bir kanala taşır. Kesintisiz.
+
+        `stream_id` bir PipeWire node id'sidir. Hedef adı tırnaksız gönderilir — bkz.
+        modül başlığı.
+        """
+        return self._run(["pw-metadata", str(int(stream_id)), "target.object", target_node])
 
     def set_default_sink(self, node: str) -> bool:
         return self._run(["wpctl", "set-default", str(self.state.node_id(node) or node)])
