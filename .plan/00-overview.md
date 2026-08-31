@@ -7,16 +7,17 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 2 — graph.conf üreteci
+**Aktif faz:** Faz 3 — Engine: süreç yönetimi ve canlı kontrol
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 2 — graph.conf üreteci (ilk iş: canlı parametre doğrulaması).
+**Sonraki adım:** Faz 3 — `pwstate.py` (pw-dump izleyici), `supervisor.py` (reconcile),
+`control.py` (debounce + toplu yazım).
 
 | # | Faz | Durum |
 |---|---|---|
 | 0 | [İskelet ve repo](00-overview.md) | 🟢 Tamamlandı |
 | 1 | [Veri modeli ve yapılandırma](01-model-config.md) | 🟢 Tamamlandı |
-| 2 | [graph.conf üreteci](02-confgen.md) | 🟡 Sıradaki |
-| 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | ⚪ Bekliyor |
+| 2 | [graph.conf üreteci](02-confgen.md) | 🟢 Tamamlandı |
+| 3 | [Engine: süreç yönetimi ve canlı kontrol](03-engine.md) | 🟡 Sıradaki |
 | 4 | [Daemon ve D-Bus API](04-daemon-dbus.md) | ⚪ Bekliyor |
 | 5 | [Uygulama yönlendirme](05-routing.md) | ⚪ Bekliyor |
 | 6 | [Seviye ölçümü](06-meters.md) | ⚪ Bekliyor |
@@ -29,7 +30,8 @@
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 176 test geçiyor, `ruff` temiz.
+**Test durumu:** 212 test geçiyor, `ruff` temiz.
+**Graf durumu:** üretilen `graph.conf` gerçek sistemde çalıştırıldı — 32 node, ses ölçülerek doğrulandı.
 
 ---
 
@@ -149,12 +151,30 @@ Topoloji **hiç değişmez** → efekt açıp kapatmak sadece bir parametre yaz�
 * Band varsayılan frekansları ISO R10 (1/3 oktav) serisidir.
 * DeepFilterNet'in `enabled` portu yoktur; bypass = azaltma sınırı 0 dB.
 
+### Faz 2'de ölçümle doğrulananlar
+
+Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — kulakla değil.
+
+* **Canlı parametre yazımı çalışıyor.** `eq:g_3 = 8.0` → tam +18.06 dB (teorik 20·log₁₀8).
+  Tek çağrıda çoklu anahtar yazımı da çalışıyor (Faz 3'ün toplu yazım tasarımı geçerli).
+* **Klik/kesinti yok.** 3 saniyede 100 ardışık yazım: 0 dropout, ölçülen maksimum örnek
+  adımı teorik maksimumun 1.00 katı.
+* **Bypass bit-şeffaf.** Beş aşamanın tamamı kapalıyken çıkış girişe birebir eşit.
+* `Audio/Source/Virtual` filter-chain içinde **çalışmıyor** (PipeWire 1.6.8, `-28`).
+  `Audio/Source` + `priority.session = 0` kullanılıyor.
+* LSP limiter'ın `boost` ve `alr` portları varsayılan **açık** ve `th`'yi tavan olmaktan
+  çıkarıyor; ikisi de 0'a sabitleniyor.
+* LSP EQ'nun FFT analizörleri bypass'ta bile çalışıyor — kapatınca grafın boştaki CPU'su
+  **%21.1 → %6.6** düştü.
+* `wpctl set-volume` **kübik** ölçekli; fader için `Props.channelVolumes` (lineer) kullanılacak.
+
 ### Canlı parametre yazımı
 
 ```bash
-pw-cli s <node-id> Props '{ params = [ "eq:g_3" 4.5 ] }'   # EQ band 3 → +4.5 dB
-wpctl set-volume <loopback-node-id> 0.72                    # fader
-pactl move-sink-input <stream-id> <yeni-cihaz>              # cihaz değişimi (kesintisiz)
+pw-cli s <node-id> Props '{ params = [ "eq:g_3" 4.5 ] }'          # EQ band 3 (lineer kazanç)
+pw-cli s <node-id> Props '{ channelVolumes = [ 0.5, 0.5 ] }'      # fader — lineer, tam -6.02 dB
+pw-cli s <node-id> Props '{ mute = true }'                        # sustur
+pactl move-sink-input <stream-id> <yeni-cihaz>                    # cihaz değişimi (kesintisiz)
 ```
 
 ---
@@ -186,7 +206,8 @@ Band N: `ft_N` (filtre tipi), `f_N` (frekans), `g_N` (kazanç), `q_N` (Q), `s_N`
 
 | Risk | Karşılık |
 |---|---|
-| `pw-cli set-param` LSP LV2 portlarında çalışmazsa | **Faz 2'nin ilk işi bunu doğrulamak.** Yedek: PipeWire `builtin` `bq_*` biquad node'ları + `builtin noisegate` + Zam LADSPA |
+| ~~`pw-cli set-param` LSP LV2 portlarında çalışmazsa~~ | ✅ **Kapandı.** Faz 2'de ölçülerek doğrulandı; yedek plana (builtin biquad) gerek kalmadı |
+| Boştaki CPU tüketimi | LSP FFT analizörleri kapatıldı: %21.1 → %6.6. RSS ~136 MB (plandaki 15 MB tahmini yanlıştı) — kanal başına ayrı sürece göre yine çok düşük |
 | Yapısal değişikte ~200 ms kesinti | Kullanıcı tetikli ve nadir. Cihaz değişimi `move-sink-input` ile kesintisiz |
 | Fader sürüklerken `pw-cli` süreç fırtınası | 20 ms debounce + toplu yazım; gerekirse kalıcı `pw-cli` oturumu |
 | DeepFilterNet 48 kHz zorunlu | Graf tamamen 48 kHz'e sabit (`audio.rate = 48000`) |

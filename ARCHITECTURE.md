@@ -66,7 +66,7 @@ uygulama yönlendirme.
 ```
      UYGULAMALAR                                       ÇIKIŞLAR
   ┌───────────────┐
-  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐  (Audio/Source/Virtual → OBS)
+  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐  (Audio/Source → OBS)
   │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤
   │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤
   │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤
@@ -75,7 +75,7 @@ uygulama yönlendirme.
                      ┌────────────────────────────────────────┘
                      │
        personal fader ├──▶ [sonar_personal] ─master DSP─▶ ► fiziksel kulaklık
-       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► monitor → OBS
+       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
 
      MİKROFON
   fiziksel ─┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord vb.)
@@ -89,22 +89,29 @@ uygulama yönlendirme.
 | Node | Sınıf | Amaç |
 |---|---|---|
 | `sonar_<kanal>` | `Audio/Sink` | Uygulamalar buraya çalar |
-| `sonar_<kanal>_fx` | `Audio/Source/Virtual` | DSP sonrası çıkış — OBS bunu yakalar |
+| `sonar_<kanal>_fx` | `Audio/Source` | DSP sonrası çıkış — OBS bunu yakalar |
 | `sonar_<kanal>_to_personal` | loopback | Personal fader'ı bu node'a uygulanır |
 | `sonar_<kanal>_to_stream` | loopback | Stream fader'ı bu node'a uygulanır |
 | `sonar_personal` | `Audio/Sink` | Kişisel miks bus'ı → fiziksel çıkış |
-| `sonar_stream` | `Audio/Sink` | Yayın miksi → monitörü OBS yakalar |
-| `sonar_mic` | `Audio/Source/Virtual` | İşlenmiş mikrofon (uygulamalar için) |
-| `sonar_stream_mic` | `Audio/Source/Virtual` | İşlenmiş mikrofon (yayın için) |
+| `sonar_stream` | `Audio/Sink` | Yayın miksi (uygulamalar doğrudan da hedefleyebilir) |
+| `sonar_stream_out` | `Audio/Source` | Yayın miksinin çıkışı — OBS bunu seçer |
+| `sonar_mic` | `Audio/Source` | İşlenmiş mikrofon (uygulamalar için) |
+| `sonar_stream_mic` | `Audio/Source` | İşlenmiş mikrofon (yayın için) |
 
-`_fx` node'ları `Audio/Source/Virtual` sınıfında olduğu için WirePlumber onları hiçbir yere
+> **Neden `Audio/Source/Virtual` değil?** PipeWire 1.6.8'de `filter-chain`'in
+> `playback.props` bölümünde bu sınıf verildiğinde node kurulamıyor (`can't add port: -28`)
+> ve süreç sessizce boş bir grafla ayakta kalıyor. `Audio/Source` sorunsuz çalışıyor;
+> varsayılan mikrofon seçilmemeleri için hepsine `priority.session = 0` veriliyor
+> (EasyEffects'in kendi sanal kaynağında kullandığı yöntemin aynısı).
+
+`_fx` node'ları ayrı birer sanal kaynak olduğu için WirePlumber onları hiçbir yere
 otomatik bağlamaz. Sadece bizim loopback'lerimiz ve OBS onlardan okur — bu yüzden kanal
 başına ayrı OBS çıkışı **ek maliyet getirmez**.
 
 ### OBS'in üç erişim noktası
 
 1. **`sonar_<kanal>_fx`** — DSP sonrası, fader'lardan bağımsız. Kanal başına ayrı track için.
-2. **`Sonar Stream Mix` monitörü** — stream fader'larıyla mikslenmiş birleşik ses.
+2. **`Sonar Stream Mix` (`sonar_stream_out`)** — stream fader'larıyla mikslenmiş birleşik ses.
 3. **`Sonar Stream Mic`** — mikrofonun yayına özel zinciri.
 
 ---
@@ -150,7 +157,7 @@ Bu aynı zamanda zincir içinde örnekleme hızı dönüşümü olmamasını gar
 pw-cli s <node-id> Props '{ params = [ "eq:g_3" 4.5 ] }'
 
 # Kanal fader'ı
-wpctl set-volume <loopback-node-id> 0.72
+pw-cli s <loopback-node-id> Props '{ channelVolumes = [ 0.72, 0.72 ] }'   # lineer
 
 # Çıkış cihazını değiştir (kesintisiz)
 pactl move-sink-input <stream-id> <yeni-cihaz>

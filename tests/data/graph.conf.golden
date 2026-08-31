@@ -1,0 +1,1013 @@
+# Sonar — PipeWire graf yapılandırması
+#
+# BU DOSYA OTOMATİK ÜRETİLİR. Elle yapılan değişiklikler bir sonraki yeniden inşada
+# kaybolur; kalıcı değişiklik için ~/.config/sonar/config.toml dosyasını düzenleyin.
+#
+# Çalıştırma:  pipewire -c <bu dosya>
+
+context.properties = {
+    log.level = 2
+    default.clock.rate = 48000
+    default.clock.allowed-rates = [ 48000 ]
+}
+context.spa-libs = {
+    audio.convert.* = "audioconvert/libspa-audioconvert"
+    support.* = "support/libspa-support"
+}
+context.modules = [
+    {
+        name = "libpipewire-module-rt"
+        args = {
+            nice.level = -11
+            rt.prio = 88
+        }
+        flags = [ "ifexists" "nofail" ]
+    }
+    {
+        name = "libpipewire-module-protocol-native"
+    }
+    {
+        name = "libpipewire-module-client-node"
+    }
+    {
+        name = "libpipewire-module-adapter"
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Game"
+            media.name = "Sonar Game"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_game"
+                node.description = "Sonar Game"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_game_fx"
+                node.description = "Sonar Game (FX)"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Chat"
+            media.name = "Sonar Chat"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_chat"
+                node.description = "Sonar Chat"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_chat_fx"
+                node.description = "Sonar Chat (FX)"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Media"
+            media.name = "Sonar Media"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_media"
+                node.description = "Sonar Media"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_media_fx"
+                node.description = "Sonar Media (FX)"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Aux"
+            media.name = "Sonar Aux"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_aux"
+                node.description = "Sonar Aux"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_aux_fx"
+                node.description = "Sonar Aux (FX)"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Personal Mix"
+            media.name = "Sonar Personal Mix"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_personal"
+                node.description = "Sonar Personal Mix"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_personal_out"
+                node.description = "Sonar Personal Mix (çıkış)"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Stream Mix"
+            media.name = "Sonar Stream Mix"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "gate:in_l" "gate:in_r" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_stream"
+                node.description = "Sonar Stream Mix"
+                media.class = "Audio/Sink"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_stream_out"
+                node.description = "Sonar Stream Mix"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Game → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_game_to_personal_capture"
+                node.passive = true
+                target.object = "sonar_game_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_game_to_personal"
+                node.description = "Sonar Game"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Game → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_game_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_game_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_game_to_stream"
+                node.description = "Sonar Game"
+                target.object = "sonar_stream"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Chat → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_chat_to_personal_capture"
+                node.passive = true
+                target.object = "sonar_chat_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_chat_to_personal"
+                node.description = "Sonar Chat"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Chat → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_chat_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_chat_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_chat_to_stream"
+                node.description = "Sonar Chat"
+                target.object = "sonar_stream"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Media → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_media_to_personal_capture"
+                node.passive = true
+                target.object = "sonar_media_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_media_to_personal"
+                node.description = "Sonar Media"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Media → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_media_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_media_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_media_to_stream"
+                node.description = "Sonar Media"
+                target.object = "sonar_stream"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Aux → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_aux_to_personal_capture"
+                node.passive = true
+                target.object = "sonar_aux_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_aux_to_personal"
+                node.description = "Sonar Aux"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Aux → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_aux_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_aux_fx"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_aux_to_stream"
+                node.description = "Sonar Aux"
+                target.object = "sonar_stream"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Mic"
+            media.name = "Sonar Mic"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "ladspa"
+                        name = "df"
+                        plugin = "libdeep_filter_ladspa.so"
+                        label = "deep_filter_stereo"
+                        control = {
+                            "Attenuation Limit (dB)" = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "df:Audio In L" "df:Audio In R" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "df:Audio Out L"
+                        input = "gate:in_l"
+                    }
+                    {
+                        output = "df:Audio Out R"
+                        input = "gate:in_r"
+                    }
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_mic_capture"
+                node.description = "Sonar Mic (giriş)"
+                node.passive = true
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_mic"
+                node.description = "Sonar Mic"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-filter-chain"
+        args = {
+            node.description = "Sonar Stream Mic"
+            media.name = "Sonar Stream Mic"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = "ladspa"
+                        name = "df"
+                        plugin = "libdeep_filter_ladspa.so"
+                        label = "deep_filter_stereo"
+                        control = {
+                            "Attenuation Limit (dB)" = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "gate"
+                        plugin = "http://lsp-plug.in/plugins/lv2/gate_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "eq"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        control = {
+                            enabled = 0.0
+                            ife_l = 0.0
+                            ife_r = 0.0
+                            ofe_l = 0.0
+                            ofe_r = 0.0
+                            rfe_l = 0.0
+                            rfe_r = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "comp"
+                        plugin = "http://lsp-plug.in/plugins/lv2/compressor_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                    {
+                        type = "lv2"
+                        name = "lim"
+                        plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
+                        control = {
+                            enabled = 0.0
+                        }
+                    }
+                ]
+                inputs = [ "df:Audio In L" "df:Audio In R" ]
+                outputs = [ "lim:out_l" "lim:out_r" ]
+                links = [
+                    {
+                        output = "df:Audio Out L"
+                        input = "gate:in_l"
+                    }
+                    {
+                        output = "df:Audio Out R"
+                        input = "gate:in_r"
+                    }
+                    {
+                        output = "gate:out_l"
+                        input = "eq:in_l"
+                    }
+                    {
+                        output = "gate:out_r"
+                        input = "eq:in_r"
+                    }
+                    {
+                        output = "eq:out_l"
+                        input = "comp:in_l"
+                    }
+                    {
+                        output = "eq:out_r"
+                        input = "comp:in_r"
+                    }
+                    {
+                        output = "comp:out_l"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "comp:out_r"
+                        input = "lim:in_r"
+                    }
+                ]
+            }
+            capture.props = {
+                node.name = "sonar_stream_mic_capture"
+                node.description = "Sonar Stream Mic (giriş)"
+                node.passive = true
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_stream_mic"
+                node.description = "Sonar Stream Mic"
+                media.class = "Audio/Source"
+                priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+]

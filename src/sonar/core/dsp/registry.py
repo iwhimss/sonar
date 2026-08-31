@@ -29,9 +29,11 @@ __all__ = [
     "PluginSpec",
     "PortSpec",
     "available_plugins",
+    "eq_analyzer_ports",
     "eq_plugin_for",
     "is_available",
     "plugin",
+    "plugin_reference",
 ]
 
 
@@ -137,9 +139,30 @@ _EQ_GLOBAL_PORTS = _ports(
 )
 
 
+#: Spektrum analizörü anahtarları — giriş / çıkış / dönüş FFT'si. Üçü de eklentide
+#: **varsayılan olarak açık** gelir ve bypass'ta bile çalışırlar: ölçümde altı analizör
+#: kapatıldığında altı kanallık grafın boştaki CPU'su %16.1'den %4.4'e düştü. Bize hiçbiri
+#: gerekmiyor, EQ eğrisini kendimiz numpy ile çiziyoruz (`core.dsp.response`).
+#: Stereo varyantta `_l`/`_r` ekli, mono varyantta eksiz — bu yüzden port adları kanal
+#: sayısına göre üretiliyor.
+_EQ_ANALYZER_PREFIXES = ("ife", "ofe", "rfe")
+
+
+def eq_analyzer_ports(spec: PluginSpec) -> tuple[str, ...]:
+    """EQ eklentisinin FFT analizör anahtarları. Hepsi 0 yazılmalı."""
+    return tuple(
+        symbol
+        for symbol in spec.ports
+        if symbol.split("_")[0] in _EQ_ANALYZER_PREFIXES and not symbol[0].isdigit()
+    )
+
+
 def _eq_spec(bands: int, channels: int) -> PluginSpec:
     suffix = "stereo" if channels == 2 else "mono"
     ports = dict(_EQ_GLOBAL_PORTS)
+    for prefix in _EQ_ANALYZER_PREFIXES:
+        for symbol in (f"{prefix}_l", f"{prefix}_r") if channels == 2 else (prefix,):
+            ports[symbol] = PortSpec(symbol, f"Analizör {symbol}", 0, 1, 1, "", False, True)
     freqs = _band_default_freqs(bands)
     for n in range(bands):
         for row in _EQ_BAND_PORTS:
@@ -210,6 +233,10 @@ _LIMITER_PORTS = _ports(
     ("rt", "Bırakma", 0.25, 20.0, 5.0, "ms", True),
     ("g_in", "Giriş kazancı", 0.0, 1000.0, 1.0, "", True),
     ("g_out", "Çıkış kazancı", 0.0, 1000.0, 1.0, "", True),
+    # Bu ikisi eklentide varsayılan olarak AÇIK gelir ve `th`'yi tavan olmaktan çıkarır;
+    # `params._STAGE_FIXED` ikisini de 0'a sabitler. Ayrıntı: .plan/02-confgen.md
+    ("boost", "Kazanç yükseltme", 0, 1, 1, "", False, True),
+    ("alr", "Otomatik seviye düzenleme", 0, 1, 1, "", False, True),
 )
 
 
@@ -360,6 +387,19 @@ def _ladspa_library(filename: str) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def plugin_reference(spec: PluginSpec) -> str:
+    """`filter.graph` içindeki `plugin` alanına yazılacak değer.
+
+    LV2 için URI. LADSPA için **mutlak yol**: daemon `systemd --user` altında çalışırken
+    kullanıcının kabuğundaki `LADSPA_PATH` miras alınmaz, çıplak dosya adı bulunamayabilir.
+    Kütüphane hiç bulunamazsa çıplak ad döner — hata mesajı o zaman anlaşılır olur.
+    """
+    if spec.kind is PluginKind.LV2:
+        return spec.uri
+    found = _ladspa_library(spec.uri)
+    return str(found) if found else spec.uri
 
 
 def is_available(key: str) -> bool:

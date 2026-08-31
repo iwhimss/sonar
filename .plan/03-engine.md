@@ -42,7 +42,9 @@ kontrolleri (volume, parametre, cihaz taşıma) kesintisiz uygulamak.
 ### `engine/control.py` — canlı kontrol arayüzü
 - [ ] `set_param(node_name, port, value)` — `pw-cli s <id> Props '{ params = [ "<port>" <v> ] }'`
 - [ ] `set_params(node_name, {port: value, ...})` — tek çağrıda toplu yazım (profil geçişi için kritik)
-- [ ] `set_volume(node_name, v)` / `set_mute(node_name, bool)` — `wpctl`
+- [ ] `set_volume(node_name, v)` / `set_mute(node_name, bool)` — **`wpctl` değil**,
+      `pw-cli s <id> Props '{ channelVolumes = [...] }'`. Faz 2'de ölçüldü: `wpctl set-volume`
+      kübik ölçek uyguluyor (0.5 → -18 dB), modelimiz ise lineer tutuyor (0.5 → -6.02 dB)
 - [ ] `move_stream(stream_id, target_node)` — `pactl move-sink-input`
 - [ ] `set_default_sink(node_name)` — `wpctl set-default`
 - [ ] **Debounce + toplu yazım:** fader sürüklerken saniyede 60 süreç açılmaz.

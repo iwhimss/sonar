@@ -29,9 +29,11 @@ __all__ = [
     "BAND_TYPE_TO_LSP",
     "SILENCE_DB",
     "db_to_linear",
+    "eq_bypass_ports",
     "linear_to_db",
     "param_key",
     "profile_to_params",
+    "stage_bypass_ports",
     "stage_params",
 ]
 
@@ -98,6 +100,7 @@ def eq_params(eq: EqState, capacity: int) -> dict[str, float]:
         "mode": float(LSP_EQ_MODE_IIR),
         "g_in": db_to_linear(eq.preamp_db),
         "g_out": 1.0,
+        **dict.fromkeys(registry.eq_analyzer_ports(spec), 0.0),
     }
     bands = eq.active_bands()
     for index in range(capacity):
@@ -170,6 +173,38 @@ _STAGE_BYPASS: dict[FilterStage, dict[str, float]] = {
     FilterStage.DEEPFILTER: {"Attenuation Limit (dB)": 0.0},
 }
 
+#: Aşama **açıkken** her zaman sabitlenen portlar.
+#:
+#: LSP limiter varsayılan olarak `boost` (Gain boost) ve `alr` (Automatic Level Regulation)
+#: açık gelir. Bu hâliyle `th` bir tavan değil, sinyali 0 dBFS'e taşıyan bir hedef seviyedir:
+#: ölçümde `th = -30 dB` verilen bir limiter, -20 dBFS'lik girişi **yükseltti**. İkisi de
+#: kapatıldığında `th` tam olarak tavan oluyor (-30 dB → -30.01 dBFS ölçüldü). Kullanıcı
+#: "limiter aç" dediğinde sesin yükselmesi beklenmedik olurdu, bu yüzden sabitliyoruz.
+_STAGE_FIXED: dict[FilterStage, dict[str, float]] = {
+    FilterStage.LIMITER: {"boost": 0.0, "alr": 0.0},
+}
+
+
+def stage_bypass_ports(stage: FilterStage) -> dict[str, float]:
+    """Aşamayı fiilen devre dışı bırakan port değerleri (anahtarlar önekSİZ).
+
+    `graph.conf`'a yazılacak başlangıç değerleri de budur: zincir bypass'ta doğar, gerçek
+    profil açılışta canlı yazımla uygulanır.
+    """
+    if stage is FilterStage.EQ:
+        return {"enabled": 0.0}
+    return dict(_STAGE_BYPASS[stage])
+
+
+def eq_bypass_ports(spec: registry.PluginSpec) -> dict[str, float]:
+    """EQ'nun bypass başlangıç değerleri — analizörler dâhil.
+
+    Analizörleri kapatmak sadece bir optimizasyon değil, **zorunlu**: LSP'nin FFT'leri
+    varsayılan olarak açık ve `enabled = 0` iken de çalışıyorlar. Ölçüm: altı kanallık
+    grafın boştaki CPU'su %16.1 → %4.4 (bkz. .plan/02-confgen.md).
+    """
+    return {"enabled": 0.0, **dict.fromkeys(registry.eq_analyzer_ports(spec), 0.0)}
+
 
 def stage_params(
     stage: FilterStage, state: FilterState, spec: registry.PluginSpec | None = None
@@ -183,6 +218,7 @@ def stage_params(
         ports = dict(_STAGE_BYPASS[stage])
     else:
         ports = {} if stage is FilterStage.DEEPFILTER else {"enabled": 1.0}
+        ports.update(_STAGE_FIXED.get(stage, {}))
         defaults = _default_params(stage)
         for name, (port, kind) in mapping.items():
             value = state.params.get(name, defaults.get(name, 0.0))
