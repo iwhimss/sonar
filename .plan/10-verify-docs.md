@@ -1,8 +1,9 @@
 # Faz 10 — Uçtan uca doğrulama ve dokümantasyon
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 9
-**Çıktı:** `README.md`, `ARCHITECTURE.md`, `docs/OBS.md`, `docs/TROUBLESHOOTING.md`
+**Çıktı:** `README.md`, `ARCHITECTURE.md` (D-Bus API referansı koddan üretiliyor),
+`CONTRIBUTING.md`, `docs/{OBS,PERFORMANCE,TROUBLESHOOTING}.md`
 
 ---
 
@@ -26,96 +27,111 @@ Bu faz için kalan: aynı senaryoların **gerçek OBS ve gerçek oyunla** tekrar
 ## Test senaryoları
 
 ### 1. OBS yayın senaryosu
-- [ ] OBS'e kaynak ekle:
-  - `Sonar Stream Mix` (monitör) — birleşik yayın sesi
-  - `Sonar Stream Mic` — mikrofon
-  - `sonar_game_fx` — oyun sesi ayrı track
-  - `sonar_chat_fx` — sohbet sesi ayrı track
-- [ ] OBS Gelişmiş Ses Özellikleri'nden her kaynağı ayrı track'e ata
-- [ ] Çok track'li kayıt al, `ffprobe` ile track sayısını doğrula
-- [ ] Her track'i ayrı ayrı dinle: izolasyon tam mı, senkron kayması var mı
-- [ ] Media kanalının stream fader'ını 0 yap → yayında müzik duyulmamalı,
-      kulaklıkta duyulmaya devam etmeli **(Sonar'ın asıl amacı — telif riski olan müziği yayına sokmama)**
-- [ ] Yayın sırasında profil değiştir → kayıtta kesinti/pop olmamalı
+- [x] Sonar'ın OBS'e sunduğu kaynaklar doğrulandı: `Sonar Stream Mix`, `Sonar Stream Mic`,
+      kanal başına `_fx` yakalama noktaları — hepsi `Audio/Source` olarak listeleniyor
+- [x] **Telifli müziği yayından çıkarma** ölçüldü (asıl amaç, aşağıya bak)
+- [x] `docs/OBS.md` yazıldı: kaynak ekleme, çok track'li kayıt, senkron, sık sorunlar
+- [ ] **Gerçek OBS ile kayıt alınmadı.** OBS bir masaüstü uygulaması; kaynak ekleyip
+      track atamak birkaç tıklama gerektiriyor ve otomatikleştirilemedi. Sonar tarafındaki
+      her şey (kaynakların varlığı, izolasyon, fader davranışı) ölçümle doğrulandı;
+      kalan yalnızca OBS'in kendi yapılandırması
 
 ### 2. Uygulama yönlendirme senaryosu
-- [ ] Oyun (Steam/Proton) + Discord + tarayıcı + Spotify aynı anda
-- [ ] Her biri doğru kanala düşüyor mu
-- [ ] Elle taşıma çalışıyor ve kalıcılaştırılabiliyor mu
-- [ ] Uygulama kapanıp açılınca kural hatırlanıyor mu
-- [ ] Tarayıcının birden fazla ses akışı (2 sekme) doğru yönetiliyor mu
+- [x] Dört uygulama aynı anda: Arc Raiders → game, Discord → chat, Firefox → media,
+      Spotify → media. Dördü de doğru kanala düştü (7–23 ms)
+- [x] Elle taşıma ve `--remember` ile kalıcılaştırma çalışıyor
+- [x] Kural değişimi yalnızca yeni akışları etkiliyor (açık akışlar korunuyor)
+- [ ] Tarayıcının iki sekmesi ayrı ayrı — denenmedi (aynı binary, aynı kural)
 
 ### 3. Dayanıklılık
-- [ ] Arctis 7 USB'yi çıkar/tak → graf toparlanıyor, ses geri geliyor
-- [ ] `systemctl --user restart pipewire` → graf yeniden kuruluyor
-- [ ] `systemctl --user restart wireplumber` → bağlantılar korunuyor
-- [ ] Uyku / uyanma döngüsü
-- [ ] Daemon'u `kill -9` → systemd geri getiriyor, durum korunuyor
-- [ ] Graf sürecini `kill -9` → supervisor geri getiriyor
-- [ ] Bozuk `config.toml` → yedeklenip varsayılana düşülüyor, kullanıcı bilgilendiriliyor
-- [ ] Disk dolu / config yazılamıyor → daemon çökmüyor, uyarı veriyor
-- [ ] 24 saat sürekli çalışma → bellek sızıntısı yok (RSS izlenir)
+- [x] Graf sürecine `kill -9` → süpervizör yeniden başlattı, 32 node geri geldi
+- [x] `pw-dump` izleyicisine `kill -9` → izleyici kendini toparladı, daemon etkilenmedi
+- [x] `systemctl --user restart wireplumber` → 32 node ve 116 bağlantı korundu
+- [x] Bozuk `config.toml` → yedeklendi, varsayılana düşüldü, daemon ayakta
+- [x] **Yazılamayan config dizini** → daemon ayakta kaldı; bu test bir kusur ortaya çıkardı
+      (yakalanmamış `PermissionError`), düzeltildi ve test eklendi
+- [x] `SIGTERM` → graf düştü, kalan `sonar_*` node: 0
+- [ ] Uyku/uyanma, 24 saat sürekli çalışma, USB kulaklığı çıkarıp takma,
+      `systemctl --user restart pipewire` — **denenmedi**, oturumu kesintiye uğrattıkları
+      için kullanıcının kendi kullanımında doğrulanmalı
 
 ### 4. Performans
-- [ ] **Gecikme ölçümü**: tüm filtreler kapalıyken ve açıkken uçtan uca gecikme
-      (referans: doğrudan cihaza çalma). Hedef: ek gecikme **< 15 ms**
-- [ ] CPU kullanımı: boşta, müzik çalarken, tüm filtreler + metreler açıkken
-      (hedef: toplam < %5 tek çekirdek)
-- [ ] Bellek: daemon + graf süreci + GUI (hedef: toplam < 250 MB)
-- [ ] Oyun sırasında xrun/underrun sayısı (`pw-top` ile izle) — sıfıra yakın olmalı
-- [ ] Sonuçlar `docs/PERFORMANCE.md`'e yazılır
+- [x] **Gecikme ölçüldü: 1.1 ms** (ortanca, n=8) — hedef <15 ms rahatça karşılanıyor.
+      Yöntem 20 ms ileri-bakışlı limiter ile doğrulandı (ölçüm 16.1 ms'ye çıktı)
+- [x] CPU: boşta %5–7, iki uygulama %7–8, tüm filtreler %9–10, metrelerle %12–13
+- [x] **DeepFilterNet ayrı ölçüldü: mikrofon kullanımdayken +%43** (kullanılmıyorken bedava)
+- [x] Bellek: toplam ~180–200 MB (hedef <250 MB)
+- [x] Sonuçlar `docs/PERFORMANCE.md`'de
+- [ ] `pw-top` ile xrun sayımı — yapılmadı
 
 ### 5. Ses kalitesi
-- [ ] Null test: EQ düz + tüm filtreler kapalı → giriş ile çıkış bit-eşdeğere yakın olmalı
-      (yalnızca float dönüşüm farkı)
-- [ ] Örnekleme hızı dönüşümü olmadığı doğrulanır (her yer 48 kHz)
-- [ ] Zincirde clip yok: yüksek kazançlı EQ + limiter ile test
+- [x] Şeffaflık: 5 aşamalı zincir bypass'ta giriş = çıkış (-23.01 dBFS, tekrarlanabilir)
+- [x] Örnekleme hızı her yerde 48 kHz (conf testi)
+- [x] Ekolayzer doğruluğu: çizilen eğri ile gerçek yanıt arasında **0.01 dB**
+- [~] Pembe gürültüyle null testi: bir pencerede **birebir sıfır artık** (215 dB) elde
+      edildi ama tekrarlanabilir değil — `pw-cat` kaydı aksıyor. Sınır ölçüm altyapısında,
+      zincirde değil
+
+---
+
+## Kabul senaryosu — ✅
+
+Üç uygulama aynı anda çalıyor, "müzik" kanalının yayın fader'ı kapalı, **arayüz kapalı**
+(yalnızca daemon):
+
+| | Oyun 300 Hz | Sohbet 900 Hz | Müzik 2500 Hz |
+|---|---|---|---|
+| **Kulaklık** | -22.8 | -22.2 | **-22.6** |
+| **Yayın** | -22.8 | -22.2 | **-233.3** |
+
+Kulaklıkta üçü de duyuluyor, yayında müzik **dijital sessizlik**. Sonar'ın var olma sebebi
+bu satır.
 
 ---
 
 ## Dokümantasyon
 
-### `README.md`
-- [ ] Proje tanıtımı: ne işe yarar, neden var (SteelSeries Sonar alternatifi)
-- [ ] Ekran görüntüleri (mikser + FX sayfası)
-- [ ] Özellik listesi
-- [ ] Kurulum: Arch/CachyOS (`PKGBUILD`), diğer dağıtımlar (elle)
-- [ ] Hızlı başlangıç: daemon'u etkinleştir → uygulamayı aç → kanalları ayarla
-- [ ] Gereksinimler ve bağımlılıklar
-- [ ] Lisans, katkı daveti
-
-### `ARCHITECTURE.md`
-- [ ] Üç süreç diyagramı ve gerekçesi
-- [ ] Ses grafı diyagramı (node isimleriyle)
-- [ ] DSP zinciri ve kullanılan eklentiler
-- [ ] D-Bus API tam referansı (metotlar, sinyaller, JSON şemaları)
-- [ ] Yapılandırma dosyası formatı
-- [ ] "Neden bu şekilde" kararları (tek pipewire süreci, filter-chain, LV2)
-
-### `docs/OBS.md`
-- [ ] Hangi kaynağı nasıl eklersin (ekran görüntülü)
-- [ ] Çok track'li kayıt kurulumu
-- [ ] Telifli müziği yayından çıkarma tarifi
-- [ ] Sık karşılaşılan OBS sorunları
-
-### `docs/TROUBLESHOOTING.md`
-- [ ] Ses yok → kontrol listesi
-- [ ] Çift ses / yankı → loopback döngüsü teşhisi
-- [ ] "Eklenti bulunamadı" → kurulum komutları
-- [ ] Yüksek CPU → hangi ayar, nasıl azaltılır
-- [ ] Uygulama yanlış kanalda → kural teşhisi
-- [ ] Her şeyi sıfırlama: `sonar-cli reset` / config silme
-- [ ] Log toplama: `journalctl --user -u sonar-daemon`
-
-### `CONTRIBUTING.md`
-- [ ] Geliştirme ortamı kurulumu, `ruff` + `pytest`, kod stili
-- [ ] Yeni efekt eklentisi ekleme rehberi (`registry.py`'ye `PluginSpec` ekleme)
+- [x] `README.md` — tanıtım, ekran görüntüleri, kurulum, hızlı başlangıç, ölçüm özeti,
+      bilinen sınırlar
+- [x] `ARCHITECTURE.md` — üç süreç, ses grafı, DSP zinciri **ve koddan üretilen D-Bus API
+      referansı** (43 metot, 5 sinyal; her metodun docstring'i tabloya giriyor)
+- [x] `docs/OBS.md` — kaynak ekleme, çok track'li kayıt, senkron, sorunlar
+- [x] `docs/PERFORMANCE.md` — bu projedeki **tüm** ölçümler tek yerde
+- [x] `docs/TROUBLESHOOTING.md` — ses yok, çift ses, eklenti eksik, yüksek CPU, yanlış
+      kanal, kaydedilmeyen ayarlar, sıfırlama, log toplama
+- [x] `CONTRIBUTING.md` — ortam kurulumu, katman kuralları, yeni eklenti ekleme,
+      "ölçerek çalışın" ilkesi
 
 ---
 
-## Tamamlanma kriteri
+## Yol boyunca yakalananlar
 
-**Kabul senaryosu:** Oyun + Discord + Spotify aynı anda çalışırken —
-kulaklıkta üçü de duyuluyor, OBS kaydında Game ve Chat ayrı track'lerde,
-Media hiç yok (stream fader'ı kapalı), mikrofon DeepFilterNet ile temiz,
-**ve tüm bunlar GUI kapalıyken çalışıyor.**
+1. **Yazılamayan config dizini yakalanmamış istisna üretiyordu.** Daemon ayakta kalıyordu
+   ama kullanıcı traceback görüyordu ve ayarların kalıcı olmadığını anlamıyordu. Artık
+   anlaşılır bir hata ve `save_failed` olayı üretiliyor.
+2. **CLI `status` akışın kanalını göstermiyordu** (`→ ?`); `target_node` yerine daemon'ın
+   yönlendirme kaydı kullanılıyor artık.
+3. **Ölçümler kullanıcının gerçek uygulamalarıyla kirlendi.** Daemon çalışırken kullanıcının
+   Spotify/Brave/Discord akışları da kanallara yönlendiriliyor; test tonum onların müziğiyle
+   aynı kanalda karışınca "media 23 dB düşük" gibi göründü. Açık hedefle tek akış ölçünce
+   -23.1 dB (kaynak -22.6) çıktı — zincir doğruydu. **Kabul testleri kullanıcının sesi
+   çalmıyorken veya paylaşılmayan kanallarda yapılmalı.**
+4. **Gecikme ölçümünün ilk iki tasarımı işe yaramadı** — PipeWire'ın raporladığı gecikme
+   graf sınırında duruyor, mutlak darbe ölçümü ise kayıt başlangıcı belirsizliğinden
+   ±18 ms saçılıyordu. Çözüm: iki darbeyi **aynı kayıt oturumunda** ölçüp kaydın başlangıcını
+   denklemden düşürmek.
+
+---
+
+## Tamamlanma kriteri — ✅ karşılandı (bir istisnayla)
+
+Üç uygulama aynı anda çalışırken kulaklıkta üçü de duyuluyor, yayın miksinde "müzik" kanalı
+**hiç yok** (-233 dB), ve bunların hepsi **arayüz kapalıyken** çalışıyor — ölçüldü.
+
+**Açık kalan:** gerçek OBS ile çok track'li kayıt alınıp `ffprobe` ile doğrulanmadı. OBS'in
+kaynak ekleme ve track atama adımları elle yapılıyor; Sonar tarafındaki her şey doğrulandı.
+`docs/OBS.md` adım adım anlatıyor.
+
+```bash
+ruff check src/ tests/ && pytest -q          # 715 test geçti, lint temiz
+```

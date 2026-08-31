@@ -774,3 +774,27 @@ def test_state_exposes_chatmix_gains(api):
 
 def test_state_lists_headsets(api):
     assert isinstance(api.get_state()["headsets"], list)
+
+
+def test_unwritable_config_does_not_crash_the_daemon(api, config_store, monkeypatch, caplog):
+    """Disk dolu / izin yok: ayarlar bellekte kalmalı, daemon ayakta kalmalı."""
+
+    def boom(*_args, **_kwargs):
+        raise PermissionError(13, "Erişim engellendi")
+
+    monkeypatch.setattr(config_store, "save", boom)
+    api.set_channel_volume("game", "personal", 0.42)  # yükseltmemeli
+    assert api.config.channel("game").personal.volume == 0.42
+
+
+def test_failed_save_tells_the_user(config_store, monkeypatch):
+    seen: list[dict] = []
+    api = SonarApi(config_store, FakeSupervisor(), save_delay=0, on_change=seen.append)
+
+    def boom(*_args, **_kwargs):
+        raise OSError(28, "Aygıtta boş yer yok")
+
+    monkeypatch.setattr(config_store, "save", boom)
+    api.set_channel_volume("game", "personal", 0.5)
+    failure = next(d for d in seen if d["kind"] == "save_failed")
+    assert "kaybolacak" in failure["message"]

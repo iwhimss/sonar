@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 10 — Uçtan uca doğrulama ve dokümantasyon
+**Aktif faz:** Faz 11 — Paketleme
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 10 — OBS senaryosu, dayanıklılık testleri, README ve
-kurulum rehberi.
+**Sonraki adım:** Faz 11 — PKGBUILD, `.desktop` dosyası, systemd unit'inin gerçekten
+kurulup denenmesi, sürüm etiketi.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -24,13 +24,13 @@ kurulum rehberi.
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟢 Tamamlandı |
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟢 Tamamlandı |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟢 Tamamlandı |
-| 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟡 Sıradaki |
-| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor |
+| 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟢 Tamamlandı |
+| 11 | [Paketleme](11-packaging.md) | 🟡 Sıradaki |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 712 test geçiyor, `ruff` temiz.
+**Test durumu:** 715 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -244,6 +244,17 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
 * **Donanım ChatMix tekeri okunamıyor:** Arctis 7+ tek USB cihaz olarak görünüyor (planın
   öngördüğü iki cihaz değil) ve teker HID'de, `/dev/hidraw*` root'a kapalı. Tespit ve udev
   kuralı hazır; protokol çözümü backlog'da.
+
+### Faz 10'da ölçümle doğrulananlar
+
+* **Kabul senaryosu geçti.** Üç uygulama aynı anda; kulaklıkta üçü de (-22 dB), yayında
+  "müzik" kanalı **-233 dB** (dijital sessizlik). Arayüz kapalıyken.
+* **Eklenen gecikme 1.1 ms** (ortanca, n=8) — hedef <15 ms. Yöntem 20 ms ileri-bakışlı
+  limiter ile doğrulandı (ölçüm 16.1 ms'ye çıktı).
+* **DeepFilterNet pahalı:** mikrofon kullanımdayken +%43 CPU; kullanılmıyorken bedava.
+* Dayanıklılık: `kill -9` (graf ve izleyici), wireplumber restart, bozuk config, yazılamayan
+  dizin — hepsinde daemon ayakta kaldı.
+* Tüm ölçümler `docs/PERFORMANCE.md`'de.
 
 ### Canlı parametre yazımı
 

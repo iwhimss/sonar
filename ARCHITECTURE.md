@@ -196,20 +196,91 @@ Bozuk bir config yedeklenir (`config.toml.corrupt-<zaman>`) ve varsayılana dü�
 
 ---
 
-## D-Bus API
-
-Servis `io.github.iwhimss.Sonar`, yol `/io/github/iwhimss/Sonar`.
-
-Karmaşık yapılar D-Bus struct yerine **JSON string** olarak taşınır — sürüm uyumluluğu ve
-hata ayıklama kolaylığı için. Metot argümanları basit tiplerde kalır.
-
-Tam referans [`.plan/04-daemon-dbus.md`](.plan/04-daemon-dbus.md) içinde; Faz 4
-tamamlandığında buraya taşınacak.
+---
 
 ---
 
-## İleriye dönük not
+---
 
-`engine/` katmanı D-Bus API'sinin arkasında izole. İleride performans veya kesintisiz efekt
-ekleme kritik hâle gelirse, bu katman C++/lilv tabanlı native bir motorla (EasyEffects
-mimarisi) değiştirilebilir — GUI ve CLI etkilenmez.
+---
+
+---
+
+## D-Bus API
+
+Servis `io.github.iwhimss.Sonar`, yol `/io/github/iwhimss/Sonar`, arayüz aynı ad.
+
+**Her metot tek bir `s` döndürür — JSON zarfı:**
+
+```json
+{"ok": true}                 {"ok": true, "result": ...}
+{"ok": false, "code": "unknown_channel", "message": "..."}
+```
+
+Native D-Bus hatası kullanılmıyor: `QDBusContext.sendErrorReply()` PySide6 6.11.2'de
+segfault ediyor (ölçüldü, çıkış kodu 139), yani her geçersiz argüman daemon'ı düşürürdü.
+
+Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar JSON string
+olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
+(~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
+
+### Metotlar (43)
+
+| Metot | Argümanlar | Açıklama |
+|---|---|---|
+| `AddChannel` | `s name, s color` | Yeni kanal ekler ve id'sini döndürür. **Yapısal**. |
+| `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
+| `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
+| `ExportProfile` | `s target, s name, b autoeq` | Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde. |
+| `GetDevices` | `—` | Fiziksel ses cihazları (Sonar'ın kendi sanal node'ları hariç). |
+| `GetLevels` | `—` | Anlık seviyeler. Sürekli akış için `LevelsUpdated` sinyalini dinleyin. |
+| `GetState` | `—` | Tüm durum: yapılandırma, profiller, akışlar, cihazlar, çakışmalar. |
+| `ImportProfile` | `s target, s text, s name` | Dış EQ dosyasını içe aktarır. Biçim içerikten bulunur. |
+| `ListBuiltinProfiles` | `s target` | Hedefin gömülü (salt okunur) preset adları. |
+| `ListHeadsets` | `—` | Donanım ChatMix tekeri olduğu bilinen kulaklıklar. |
+| `ListProfiles` | `s target` | Hedefin profilleri; gömülü presetler önce. |
+| `ListRules` | `—` | Uygulama → kanal yönlendirme kuralları. |
+| `LoadProfile` | `s target, s name` | Profili veya gömülü preset'i yükler. Anında ve kesintisiz. |
+| `MoveStream` | `i stream_id, s channel, b remember` | `remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir. |
+| `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
+| `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
+| `RemoveChannel` | `s channel` | Kanalı siler; yerleşik kanallar silinemez. **Yapısal**. |
+| `RemoveRule` | `s match_key, s pattern` | Kuralı kaldırır. |
+| `RenameProfile` | `s target, s old, s new` | Kullanıcı profilini yeniden adlandırır. |
+| `ResetProfile` | `s target` | Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı). |
+| `SaveProfile` | `s target, s name` | Çalışılan profili yeni adla kaydeder ('farklı kaydet'). |
+| `SetBandCount` | `s target, i count` | EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur. |
+| `SetBusDevice` | `s bus, s device` | Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur. |
+| `SetChannelMute` | `s channel, s bus, b muted` | Kanalın bir miks yolunu susturur. |
+| `SetChannelVolume` | `s channel, s bus, d value` | Kanalın bir miks yolundaki seviyesi (lineer, 1.0 = birim kazanç). |
+| `SetChatMix` | `d value` | ChatMix konumu (0–100, 50 = nötr). Yalnızca kulaklık miksini etkiler. |
+| `SetChatMixConfig` | `b enabled, s left, s right` | ChatMix'in hangi kanalları sürdüğü; virgülle çoklu kanal. |
+| `SetDefaultChannel` | `s channel` | Kuralla eşleşmeyen uygulamaların düşeceği kanal. |
+| `SetEqBand` | `s target, i band, s field, s value` | `value` string taşınır: `band_type` metin, diğerleri sayı. |
+| `SetEqPreamp` | `s target, d value_db` | Ekolayzer öncesi kazanç. |
+| `SetFilterEnabled` | `s target, s stage, b enabled` | Bir DSP aşamasını açar/kapatır (canlı bypass). |
+| `SetFilterParam` | `s target, s stage, s name, d value` | Aşamanın bir parametresi; insan biriminde (dB, ms, oran). |
+| `SetMasterMute` | `s bus, b muted` | Personal/Stream bus'ını susturur. |
+| `SetMasterVolume` | `s bus, d value` | Personal/Stream bus'ının master seviyesi. |
+| `SetMicDevice` | `s chain, s device` | Mikrofon zincirinin giriş cihazı. **Yapısal**. |
+| `SetMicMonitor` | `s chain, b enabled` | Yan ton (kendi sesini kulaklıktan duyma). **Yapısal**. |
+| `SetMicMute` | `s chain, b muted` | Mikrofonu susturur. |
+| `SetMicStreamSend` | `s chain, b enabled` | Mikrofonu yayın miksine de gönderir. **Yapısal**. |
+| `SetMicVolume` | `s chain, d value` | Mikrofon zincirinin çıkış seviyesi. |
+| `SetProfileFavorite` | `s target, s name, i slot` | Profili bir favori slotuna atar (0 = kaldır). |
+| `SetRule` | `s match_key, s pattern, s channel, b is_regex` | Uygulama → kanal kuralı ekler veya günceller. |
+| `SetTakeOverDefaultSink` | `b enabled` | Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı). |
+| `SubscribeMeters` | `b enabled` | Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı. |
+
+### Sinyaller
+
+| Sinyal | Argümanlar | Ne zaman |
+|---|---|---|
+| `StateChanged` | `s json` | Durum değişti; 50 ms penceresinde `kind` başına teklenir |
+| `StreamsChanged` | `s json` | Çalan uygulamalar veya cihaz listesi değişti |
+| `LevelsUpdated` | `s json` | Seviye metreleri, 20 Hz (yalnızca abone varken) |
+| `GraphRebuilt` | — | Yapısal değişiklik oldu, arayüz tam yenilemeli |
+| `Error` | `s code, s message` | Eklenti eksik, graf kurulamadı, çakışan işleyici vb. |
+
+Sinyaller `QDBusMessage.createSignal()` ile **elle** gönderiliyor: PySide6 Python
+sinyallerini otobüse relay etmiyor (introspection'da görünseler bile).

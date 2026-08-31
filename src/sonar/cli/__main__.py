@@ -105,7 +105,9 @@ def _print_status(state: dict) -> None:
     if not playback:
         print("  (yok)")
     for stream in playback:
-        target = stream["target_node"] or "?"
+        # `channel` daemon'ın yönlendirme kaydından geliyor; `target_node` yalnızca
+        # uygulamanın kendi seçtiği hedefi gösterir ve genelde boştur.
+        target = stream.get("channel") or stream["target_node"] or "(yönlendirilmedi)"
         label = stream["app_name"] or stream["app_binary"] or stream["media_name"]
         print(f"  #{stream['id']:<6} {label:<24} → {target}")
     if capture:

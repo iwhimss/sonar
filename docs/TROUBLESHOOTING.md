@@ -96,3 +96,78 @@ Daemon grafı kendi yeniden kurar (`PartOf=pipewire.service`). Olmazsa:
 ```bash
 systemctl --user restart sonar-daemon
 ```
+
+## Uygulama yanlış kanalda
+
+```bash
+sonar-cli status          # hangi uygulama hangi kanalda
+sonar-cli rules           # etkin kurallar
+```
+
+Taşımak ve kalıcılaştırmak:
+
+```bash
+sonar-cli move <akış-id> game --remember
+```
+
+Kural eklemek/kaldırmak:
+
+```bash
+sonar-cli route cs2_linux64 game
+sonar-cli rules --remove binary=cs2_linux64
+```
+
+**Not:** her akış yalnızca **bir kez** yönlendirilir. Bir uygulamayı pavucontrol'den elle
+taşırsanız Sonar geri almaz; kural yalnızca yeni açılan akışlara uygulanır.
+
+## Ayarlarım kaydedilmiyor
+
+Daemon şu uyarıyı veriyorsa disk dolu veya dizin yazılamıyordur:
+
+```
+yapılandırma diske yazılamadı: [Errno 28] ...
+```
+
+Ayarlar bellekte çalışmaya devam eder ama yeniden başlatınca kaybolur. Kontrol:
+
+```bash
+df -h ~/.config
+ls -ld ~/.config/sonar
+```
+
+## Preset'i düzenleyemiyorum
+
+Gömülü presetler (`Flat`, `FPS Footsteps`, `Broadcast`…) salt okunurdur. Düzenlemeye
+başladığınızda otomatik olarak `"<ad> (özel)"` adıyla bir kopya oluşturulup ona geçilir —
+liste `sonar-cli presets <kanal>` çıktısında 🔒 ile işaretlidir.
+
+## Her şeyi sıfırlamak
+
+Tek bir kanalın profilini düzleştirmek:
+
+```bash
+sonar-cli reset game
+```
+
+Tüm yapılandırmayı silmek (daemon durdurulmuş hâldeyken):
+
+```bash
+systemctl --user stop sonar-daemon
+rm -rf ~/.config/sonar ~/.local/state/sonar
+systemctl --user start sonar-daemon
+```
+
+## Log toplamak
+
+```bash
+journalctl --user -u sonar-daemon -n 200 --no-pager
+SONAR_LOG=debug sonar-daemon          # elle, ayrıntılı
+```
+
+Sorun bildirirken şunları ekleyin:
+
+```bash
+pipewire --version
+sonar-cli --json status > durum.json
+python -c "from sonar.core.dsp.registry import available_plugins; print(available_plugins())"
+```

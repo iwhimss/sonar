@@ -112,14 +112,17 @@ class SonarDBusInterface(QObject):
 
     @Slot(result=str)
     def GetState(self) -> str:
+        """Tüm durum: yapılandırma, profiller, akışlar, cihazlar, çakışmalar."""
         return reply(self.api.get_state)
 
     @Slot(result=str)
     def GetDevices(self) -> str:
+        """Fiziksel ses cihazları (Sonar'ın kendi sanal node'ları hariç)."""
         return reply(self.api.get_devices)
 
     @Slot(str, result=str)
     def ListProfiles(self, target: str) -> str:
+        """Hedefin profilleri; gömülü presetler önce."""
         return reply(lambda: self.api.list_profiles(target))
 
     @Slot(result=str)
@@ -129,42 +132,51 @@ class SonarDBusInterface(QObject):
 
     @Slot(result=str)
     def ListRules(self) -> str:
+        """Uygulama → kanal yönlendirme kuralları."""
         return reply(self.api.list_rules)
 
     # ------------------------------------------------------------------ seviye
 
     @Slot(str, str, float, result=str)
     def SetChannelVolume(self, channel: str, bus: str, value: float) -> str:
+        """Kanalın bir miks yolundaki seviyesi (lineer, 1.0 = birim kazanç)."""
         return reply(lambda: self.api.set_channel_volume(channel, bus, value))
 
     @Slot(str, str, bool, result=str)
     def SetChannelMute(self, channel: str, bus: str, muted: bool) -> str:
+        """Kanalın bir miks yolunu susturur."""
         return reply(lambda: self.api.set_channel_mute(channel, bus, muted))
 
     @Slot(str, float, result=str)
     def SetMasterVolume(self, bus: str, value: float) -> str:
+        """Personal/Stream bus'ının master seviyesi."""
         return reply(lambda: self.api.set_master_volume(bus, value))
 
     @Slot(str, bool, result=str)
     def SetMasterMute(self, bus: str, muted: bool) -> str:
+        """Personal/Stream bus'ını susturur."""
         return reply(lambda: self.api.set_master_mute(bus, muted))
 
     @Slot(str, float, result=str)
     def SetMicVolume(self, chain: str, value: float) -> str:
+        """Mikrofon zincirinin çıkış seviyesi."""
         return reply(lambda: self.api.set_mic_volume(chain, value))
 
     @Slot(str, bool, result=str)
     def SetMicMute(self, chain: str, muted: bool) -> str:
+        """Mikrofonu susturur."""
         return reply(lambda: self.api.set_mic_mute(chain, muted))
 
     # ------------------------------------------------------------------ filtreler
 
     @Slot(str, str, bool, result=str)
     def SetFilterEnabled(self, target: str, stage: str, enabled: bool) -> str:
+        """Bir DSP aşamasını açar/kapatır (canlı bypass)."""
         return reply(lambda: self.api.set_filter_enabled(target, stage, enabled))
 
     @Slot(str, str, str, float, result=str)
     def SetFilterParam(self, target: str, stage: str, name: str, value: float) -> str:
+        """Aşamanın bir parametresi; insan biriminde (dB, ms, oran)."""
         return reply(lambda: self.api.set_filter_param(target, stage, name, value))
 
     @Slot(str, int, str, str, result=str)
@@ -174,28 +186,34 @@ class SonarDBusInterface(QObject):
 
     @Slot(str, float, result=str)
     def SetEqPreamp(self, target: str, value_db: float) -> str:
+        """Ekolayzer öncesi kazanç."""
         return reply(lambda: self.api.set_eq_preamp(target, value_db))
 
     @Slot(str, int, result=str)
     def SetBandCount(self, target: str, count: int) -> str:
+        """EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur."""
         return reply(lambda: self.api.set_band_count(target, count))
 
     # ------------------------------------------------------------------ profiller
 
     @Slot(str, str, result=str)
     def LoadProfile(self, target: str, name: str) -> str:
+        """Profili veya gömülü preset'i yükler. Anında ve kesintisiz."""
         return reply(lambda: self.api.load_profile(target, name))
 
     @Slot(str, str, result=str)
     def SaveProfile(self, target: str, name: str) -> str:
+        """Çalışılan profili yeni adla kaydeder ('farklı kaydet')."""
         return reply(lambda: self.api.save_profile(target, name))
 
     @Slot(str, str, result=str)
     def DeleteProfile(self, target: str, name: str) -> str:
+        """Kullanıcı profilini siler; gömülü presetler silinemez."""
         return reply(lambda: self.api.delete_profile(target, name))
 
     @Slot(str, str, str, result=str)
     def RenameProfile(self, target: str, old: str, new: str) -> str:
+        """Kullanıcı profilini yeniden adlandırır."""
         return reply(lambda: self.api.rename_profile(target, old, new))
 
     @Slot(str, str, str, result=str)
@@ -205,48 +223,59 @@ class SonarDBusInterface(QObject):
 
     @Slot(str, str, bool, result=str)
     def ExportProfile(self, target: str, name: str, autoeq: bool) -> str:
+        """Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde."""
         return reply(lambda: self.api.export_profile(target, name, autoeq))
 
     @Slot(str, str, result=str)
     def CopyProfile(self, target: str, name: str) -> str:
+        """Aktif profili yeni bir adla çoğaltır ve ona geçer."""
         return reply(lambda: self.api.copy_profile(target, name))
 
     @Slot(str, result=str)
     def ResetProfile(self, target: str) -> str:
+        """Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı)."""
         return reply(lambda: self.api.reset_profile(target))
 
     @Slot(str, result=str)
     def ListBuiltinProfiles(self, target: str) -> str:
+        """Hedefin gömülü (salt okunur) preset adları."""
         return reply(lambda: self.api.builtin_names(target))
 
     @Slot(str, str, int, result=str)
     def SetProfileFavorite(self, target: str, name: str, slot: int) -> str:
+        """Profili bir favori slotuna atar (0 = kaldır)."""
         return reply(lambda: self.api.set_profile_favorite(target, name, slot))
 
     # ------------------------------------------------------------------ yapısal
 
     @Slot(str, str, result=str)
     def SetBusDevice(self, bus: str, device: str) -> str:
+        """Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur."""
         return reply(lambda: self.api.set_bus_device(bus, device))
 
     @Slot(str, str, result=str)
     def SetMicDevice(self, chain: str, device: str) -> str:
+        """Mikrofon zincirinin giriş cihazı. **Yapısal**."""
         return reply(lambda: self.api.set_mic_device(chain, device))
 
     @Slot(str, bool, result=str)
     def SetMicMonitor(self, chain: str, enabled: bool) -> str:
+        """Yan ton (kendi sesini kulaklıktan duyma). **Yapısal**."""
         return reply(lambda: self.api.set_mic_monitor(chain, enabled))
 
     @Slot(str, bool, result=str)
     def SetMicStreamSend(self, chain: str, enabled: bool) -> str:
+        """Mikrofonu yayın miksine de gönderir. **Yapısal**."""
         return reply(lambda: self.api.set_mic_stream_send(chain, enabled))
 
     @Slot(str, str, result=str)
     def AddChannel(self, name: str, color: str) -> str:
+        """Yeni kanal ekler ve id'sini döndürür. **Yapısal**."""
         return reply(lambda: self.api.add_channel(name, color or "#8B95A5"))
 
     @Slot(str, result=str)
     def RemoveChannel(self, channel: str) -> str:
+        """Kanalı siler; yerleşik kanallar silinemez. **Yapısal**."""
         return reply(lambda: self.api.remove_channel(channel))
 
     # ------------------------------------------------------------------ yönlendirme
@@ -258,28 +287,34 @@ class SonarDBusInterface(QObject):
 
     @Slot(str, str, str, bool, result=str)
     def SetRule(self, match_key: str, pattern: str, channel: str, is_regex: bool) -> str:
+        """Uygulama → kanal kuralı ekler veya günceller."""
         return reply(lambda: self.api.set_rule(match_key, pattern, channel, is_regex))
 
     @Slot(str, str, result=str)
     def RemoveRule(self, match_key: str, pattern: str) -> str:
+        """Kuralı kaldırır."""
         return reply(lambda: self.api.remove_rule(match_key, pattern))
 
     # ------------------------------------------------------------------ ChatMix ve ayarlar
 
     @Slot(float, result=str)
     def SetChatMix(self, value: float) -> str:
+        """ChatMix konumu (0–100, 50 = nötr). Yalnızca kulaklık miksini etkiler."""
         return reply(lambda: self.api.set_chatmix(value))
 
     @Slot(bool, str, str, result=str)
     def SetChatMixConfig(self, enabled: bool, left: str, right: str) -> str:
+        """ChatMix'in hangi kanalları sürdüğü; virgülle çoklu kanal."""
         return reply(lambda: self.api.set_chatmix_config(enabled, left, right))
 
     @Slot(str, result=str)
     def SetDefaultChannel(self, channel: str) -> str:
+        """Kuralla eşleşmeyen uygulamaların düşeceği kanal."""
         return reply(lambda: self.api.set_default_channel(channel))
 
     @Slot(bool, result=str)
     def SetTakeOverDefaultSink(self, enabled: bool) -> str:
+        """Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı)."""
         return reply(lambda: self.api.set_take_over_default_sink(enabled))
 
     # ------------------------------------------------------------------ diğer
@@ -296,6 +331,7 @@ class SonarDBusInterface(QObject):
 
     @Slot(result=str)
     def Reload(self) -> str:
+        """`config.toml`'u diskten yeniden okur (elle düzenleme sonrası)."""
         return reply(self.api.reload)
 
     @Slot(result=str)

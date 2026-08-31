@@ -307,3 +307,32 @@ def test_meter_bar_maps_the_range():
     assert _meter_bar(-60.0).count("█") == 0
     assert _meter_bar(-30.0).count("█") == 15
     assert _meter_bar(-999.0).count("█") == 0
+
+
+def test_status_shows_the_routed_channel(config_store, capsys, monkeypatch):
+    """`target_node` genelde boş; kanal bilgisi daemon'ın yönlendirme kaydından geliyor."""
+    api = SonarApi(config_store, FakeSupervisor(), save_delay=0)
+    api.supervisor.state.apply(
+        [
+            {
+                "id": 1,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": "mpv",
+                        "media.class": "Stream/Output/Audio",
+                        "application.name": "mpv",
+                        "application.process.binary": "mpv",
+                        "object.serial": 500,
+                    }
+                },
+            }
+        ]
+    )
+    api.sync_routing()
+    client = LoopbackClient(SonarDBusInterface(api))
+    monkeypatch.setattr("sonar.cli.__main__.Client", lambda: client)
+    run(["status"])
+    out = capsys.readouterr().out
+    assert "mpv" in out
+    assert "→ media" in out

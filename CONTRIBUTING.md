@@ -1,75 +1,95 @@
-# Katkı rehberi
+# Katkı
 
 ## Geliştirme ortamı
 
 ```bash
-git clone https://github.com/iwhimss/sonar.git
-cd sonar
+git clone https://github.com/iwhimss/sonar && cd sonar
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Sistem gereksinimleri: PipeWire 1.0+, WirePlumber 0.5+, `lsp-plugins-lv2`.
-Opsiyonel: `deepfilter-ladspa`, `calf`, `qpwgraph`.
-
-## Çalıştırma
+Çalıştırmak için PipeWire araçları ve LSP eklentileri gerekir:
 
 ```bash
-python -m sonar.daemon      # daemon (systemd kurulumu olmadan)
-python -m sonar.gui         # arayüz
-python -m sonar.cli status  # CLI
+sudo pacman -S pipewire wireplumber lsp-plugins-lv2
+paru -S deepfilter-ladspa      # isteğe bağlı
 ```
 
-Graf'ı elle incelemek için:
+## Kontroller
+
+```bash
+ruff check src/ tests/     # lint
+ruff format src/ tests/    # biçimlendirme
+pytest                     # 715 test, ~12 sn
+```
+
+Üçü de temiz olmadan commit etmeyin.
+
+## Testleri sisteminizi kirletmeden çalıştırmak
+
+Testlerin hiçbiri gerçek PipeWire'a dokunmaz; süreçler sahtelenir. Elle uçtan uca denemek
+isterseniz ayrı bir XDG dizini kullanın, böylece kendi yapılandırmanız bozulmaz:
+
+```bash
+mkdir -p /tmp/sonar-test/{config,state}
+XDG_CONFIG_HOME=/tmp/sonar-test/config XDG_STATE_HOME=/tmp/sonar-test/state \
+  python -m sonar.daemon.service --log debug
+```
+
+Graf sürecini elle görmek için:
 
 ```bash
 python -m sonar.engine.confgen > /tmp/graph.conf
 pipewire -c /tmp/graph.conf &
-qpwgraph
+qpwgraph                       # bağlantıları gözle doğrula
 ```
 
-## Kalite kontrolleri
+## Kod düzeni
 
-Her commit öncesi:
+| Katman | Kural |
+|---|---|
+| `core/` | **Saf.** PipeWire, Qt, dosya sistemi yok (yalnızca `config.py` diske yazar). |
+| `engine/` | PipeWire ile konuşur. Qt yok — `subprocess` + iş parçacığı. |
+| `daemon/` | `api.py` saf iş mantığı; `dbus_iface.py` ince sarmalayıcı; `service.py` Qt döngüsü. |
+| `gui/` | Qt/QML. Mantık yok — her şey D-Bus üzerinden. |
 
-```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-pytest -q
-```
+Bu ayrım testlerin çoğunun gerçek ses altyapısı olmadan çalışmasını sağlıyor.
 
-## Kod stili
+## Tasarım kuralları
 
-- Satır uzunluğu 100
-- Tam tip anotasyonu — `core/` ve `engine/` katmanlarında zorunlu
-- `core/` **saf** kalmalı: yan etkisiz, PipeWire'dan bağımsız, birim testlerle kaplı
-- Yan etkiler (alt süreç, dosya G/Ç, D-Bus) `engine/` ve `daemon/` katmanlarında
-- Kullanıcıya görünen metinler Türkçe; kod, yorumlar ve commit mesajları da Türkçe
+* **Köşe yuvarlatma yok.** `radius`, `Gradient`, `DropShadow` QML dosyalarında yasak;
+  `tests/test_qml.py` bunu denetliyor.
+* **Filtre parametreleri insan biriminde** saklanır (dB, ms, oran), eklenti port biriminde
+  değil. Dönüşüm yalnızca `core/dsp/params.py` içinde.
+* **`graph.conf` profilden bağımsız.** Conf'a nötr değerler yazılır; gerçek değerler canlı
+  yazımla uygulanır. Aksi hâlde her EQ dokunuşu grafı yeniden kurar ve ses kesilir.
+  `tests/test_confgen.py` bu ayrımı test ediyor.
 
 ## Yeni bir efekt eklentisi eklemek
 
-1. `core/dsp/registry.py` içine bir `PluginSpec` ekle: URI/yol, port sembolleri,
-   her portun `min`/`max`/`default`/`scale` (lin|log|db)/`unit` bilgisi
-2. Port bilgilerini eklentinin TTL dosyasından doğrula:
-   `grep 'lv2:symbol' /usr/lib/lv2/<eklenti>.lv2/<dosya>.ttl`
-3. Zincire yeni bir aşama gerekiyorsa `core/dsp/chain.py`'de tanımla
-4. GUI paneli ekle (`gui/qml/`)
-5. Eklenti kurulu değilken uygulamanın çökmediğini doğrula
+1. `core/dsp/registry.py` içine bir `PluginSpec` ekleyin: URI, ses portları, kontrol
+   portlarının sembol/min/max/varsayılan bilgisi.
+2. `tests/test_registry.py`'deki çapraz doğrulama testine ekleyin — katalog kurulu
+   eklentinin TTL'iyle karşılaştırılır, böylece bir sürüm yükseltmesi port aralıklarını
+   kaydırırsa test kırılır.
+3. `core/dsp/params.py` içinde insan birimi → port eşlemesini yazın.
+4. `core/model.py`'deki `FilterStage` ve `CHAIN_ORDER`'a ekleyin.
 
-## Planlama
+**Uyarı:** eklentinin varsayılanlarına güvenmeyin. Ölçtük: LSP limiter'ın `boost` ve `alr`
+portları varsayılan açık geliyor ve `th`'yi tavan olmaktan çıkarıyor; LSP ekolayzerinin FFT
+analizörleri bypass'ta bile çalışıp CPU'yu üçe katlıyor. Yeni bir eklenti eklerken boştaki
+CPU'yu ölçün.
 
-Proje faz bazlı ilerliyor. Yol haritası ve her fazın görev listesi [`.plan/`](.plan/)
-klasöründe; genel durum [`.plan/00-overview.md`](.plan/00-overview.md) içinde.
+## Ölçerek çalışın
 
-Bir faza katkı yaparken o fazın kutucuklarını işaretle ve `00-overview.md`'deki durum
-tablosunu güncelle.
+Bu projede "çalışıyor gibi görünüyor" yeterli sayılmadı. Ses değişiklikleri kulakla değil,
+sinyal basıp kaydı numpy ile ölçerek doğrulandı — birkaç kez bu yaklaşım sessiz hataları
+yakaladı (bkz. `.plan/` dosyalarındaki "Yol boyunca yakalananlar" bölümleri).
 
-## Sorun bildirimi
+Ses davranışını değiştiren bir katkı gönderirken ölçümünüzü de ekleyin.
 
-Sorun bildirirken şunları ekleyin:
+## Commit ve PR
 
-```bash
-pipewire --version && wireplumber --version
-pactl list short sinks && pactl list short sources
-journalctl --user -u sonar-daemon -n 100
-```
+* Commit mesajları Türkçe, açıklayıcı ve **neden**i anlatan gövdeyle.
+* Faz planı `.plan/` altında; ilgili faz dosyasındaki kutucukları güncelleyin.
+* Ölçüm yaptıysanız sayıları `docs/PERFORMANCE.md`'ye işleyin.

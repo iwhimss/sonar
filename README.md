@@ -1,107 +1,165 @@
-# Sonar for Linux
+# Sonar
 
-**PipeWire tabanlı kanal mikseri — Linux için SteelSeries Sonar alternatifi.**
+**Linux için kanal tabanlı ses mikseri.** SteelSeries GG'nin Sonar modülünün yaptığı işi
+PipeWire üzerinde native olarak yapar: uygulamaları adlandırılmış kanallara ayırır, her
+kanala kendi EQ ve filtre zincirini verir ve **kulaklığına giden ses ile yayına giden sesi
+birbirinden ayırır.**
 
-> ⚠️ **Durum: geliştirme aşamasında (pre-alpha).** Henüz kullanılabilir bir sürüm yok.
-> Yol haritası ve ilerleme için [`.plan/00-overview.md`](.plan/00-overview.md) dosyasına bakın.
-
----
-
-## Ne işe yarar
-
-Windows'ta SteelSeries GG'nin Sonar modülü, uygulama seslerini ayrı kanallara bölüp her birini
-bağımsız olarak eşitlemene ve yayına giden sesle kulaklığına gelen sesi ayırmana izin verir.
-Linux'ta bunun dengi bir araç yok: EasyEffects sistem geneli **tek** bir efekt zinciri sunuyor,
-qpwgraph elle yamalama yaptırıyor.
-
-Sonar for Linux bu boşluğu dolduruyor:
-
-- 🎚 **Ayrı ses kanalları** — Game, Chat, Media, Aux ve istediğin kadar ek kanal.
-  Her biri sistemde gerçek bir sanal ses cihazı olarak görünür.
-- 🎧 **Personal Mix / Stream Mix ayrımı** — kulaklığına gelen sesle yayına giden ses
-  bağımsız fader'lara sahip. Telifli müziği kendin duyarsın, yayına gitmez.
-- 🎛 **Kanal başına EQ ve filtreler** — parametrik EQ, noise gate, compressor, limiter.
-  EasyEffects ile **birebir aynı** LV2 eklentileri (LSP Plugins), aynı ses kalitesi.
-- 💾 **Kanal başına çoklu profil** — oyun kanalı için CS2'ye ayrı, Arc Raiders'a ayrı
-  EQ kaydet, favori slotlarından anında geçiş yap.
-- 🎤 **Mikrofon zinciri** — DeepFilterNet ile AI gürültü engelleme, gate, EQ, compressor.
-  Uygulamalar için ve yayın için **ayrı** sanal mikrofonlar.
-- 📺 **OBS uyumlu** — birleşik Stream Mix'in yanı sıra her kanal ayrı bir yakalama kaynağı
-  olarak görünür; OBS'de ayrı track'lere basabilirsin.
-- 🖱 **Uygulama yönlendirme** — hangi uygulamanın hangi kanalda olduğunu gör,
-  sürükleyerek taşı, kalıcı kural yap.
-- ⚡ **Arka planda çalışır** — arayüzü kapatsan bile ses düzeni ayakta kalır.
+![Mikser](docs/reference/sonar-mixer.png)
 
 ---
 
-## Tasarım
+## Neden
 
-Sade, modern ve **köşesiz**. Yuvarlatılmış köşe, gradyan ve gölge yok; ayrım ince kenarlıklar
-ve yüzey tonlarıyla yapılıyor.
+Linux'ta EasyEffects sistem geneli **tek** bir efekt zinciri sunuyor, qpwgraph elle
+yamalama yaptırıyor. İkisinde de "kanal" kavramı ve kişisel/yayın miks ayrımı yok.
 
-Tasarım referansı olarak SteelSeries GG'nin arayüzü kullanıldı
-([`docs/reference/steelseries-gg/`](docs/reference/steelseries-gg/)).
+Sonar bunları veriyor:
 
----
-
-## Mimari
-
-Üç parça: arka planda çalışan bir **daemon**, onun yönettiği **PipeWire grafı**, ve D-Bus
-üzerinden bağlanan **GUI/CLI** istemcileri.
-
-```
-sonar-daemon ──D-Bus──▶ sonar (GUI) · sonar-cli
-     │
-     ▼
-pipewire -c graph.conf     ← tüm sanal cihazlar, DSP zincirleri ve loopback'ler
-```
-
-Ses işleme bizim sürecimizde değil, PipeWire'ın kendi `filter-chain` modülünde çalışır —
-yani gerçek zamanlı ses yolunda Python yok. Ayrıntılar için
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+* **Kanallar** — Game, Chat, Media, Aux (+ istediğin kadarını ekle). Uygulamalar açıldıkları
+  anda doğru kanala düşer.
+* **Çift miks** — her kanalın iki bağımsız fader'ı var: 🎧 kulaklık, 📡 yayın. Telifli
+  müziği kendin duyarsın, yayında duyulmaz.
+* **Kanal başına DSP** — EasyEffects'in kullandığı LSP eklentileriyle aynı kalitede
+  ekolayzer, noise gate, kompresör, limiter. Mikrofonda ayrıca DeepFilterNet AI gürültü
+  engelleme.
+* **Profiller** — bir kanal için istediğin kadar profil kaydet, aralarında **anında ve
+  kesintisiz** geçiş yap. (Ölçüldü: 3.4 saniyede 12 geçiş, 0 kesinti.)
+* **OBS uyumu** — birleşik yayın miksi ve kanal başına ayrı yakalama noktaları.
+* **ChatMix** — tek slider'la oyun ↔ sohbet dengesi. Yalnızca kulaklığını etkiler, yayını
+  bozmaz.
 
 ---
 
-## Gereksinimler
+## Ekranlar
 
-| Bileşen | Minimum |
+| Mikser | Kanal FX |
 |---|---|
-| PipeWire | 1.0+ (`filter-chain` ve `loopback` modülleriyle) |
-| WirePlumber | 0.5+ |
-| Python | 3.11+ |
-| PySide6 | 6.6+ |
-| numpy | 1.26+ |
-| LSP Plugins (LV2) | 1.2+ — EQ, gate, compressor, limiter |
+| ![](docs/reference/sonar-mixer.png) | ![](docs/reference/sonar-fx-game.png) |
 
-**Opsiyonel:**
-- `deepfilter-ladspa` — AI gürültü engelleme
-- `calf` — ek efekt eklentileri
-- `qpwgraph` — graf hata ayıklama
+Mikrofon sayfası, AI gürültü engelleme açıkken Noise Gate'i devre dışı bırakır:
+
+![Mikrofon](docs/reference/sonar-fx-mic.png)
 
 ---
 
 ## Kurulum
 
-Henüz yayınlanmış bir sürüm yok. Paketleme [Faz 11](.plan/11-packaging.md)'de yapılacak.
+### Arch / CachyOS
+
+```bash
+sudo pacman -S pipewire wireplumber lsp-plugins-lv2 pyside6 python-numpy
+paru -S deepfilter-ladspa          # isteğe bağlı: AI gürültü engelleme
+
+git clone https://github.com/iwhimss/sonar && cd sonar
+pip install --user .
+```
+
+### Servisi başlat
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp packaging/sonar-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now sonar-daemon
+```
+
+Arayüzü aç:
+
+```bash
+sonar
+```
+
+### Gereksinimler
+
+| Bileşen | En az |
+|---|---|
+| PipeWire | 1.0 (1.6 ile geliştirildi ve test edildi) |
+| WirePlumber | 0.5 |
+| Python | 3.11 |
+| PySide6 | 6.6 |
+| `lsp-plugins-lv2` | 1.2 — **zorunlu**, DSP zinciri buna dayanıyor |
+| `deepfilter-ladspa` | isteğe bağlı, yalnızca AI gürültü engelleme için |
+
+Kurulu olmayan bir eklenti zincirden **sessizce düşer** — graf yine kurulur, o efekt
+görünmez.
 
 ---
 
-## Geliştirme
+## Hızlı başlangıç
 
 ```bash
-git clone https://github.com/iwhimss/sonar.git
-cd sonar
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-ruff check src/ && pytest -q
+sonar-cli status                       # kanallar, fader'lar, çalan uygulamalar
+sonar-cli volume game personal 70      # oyun sesini kulaklıkta %70 yap
+sonar-cli volume media stream 0        # müziği yayından çıkar
+sonar-cli presets game                 # hazır preset'ler
+sonar-cli profile game "FPS Footsteps" # anında geçiş
+sonar-cli meters                       # terminalde canlı seviye metreleri
 ```
 
-Yol haritası ve her fazın ayrıntılı görev listesi [`.plan/`](.plan/) klasöründe.
-Nerede kalındığını görmek için [`.plan/00-overview.md`](.plan/00-overview.md).
+Kulaklığın için AutoEQ düzeltme eğrisi varsa doğrudan içe aktarabilirsin:
+
+```bash
+sonar-cli import game ~/İndirilenler/HD650\ ParametricEQ.txt --name HD650
+```
+
+AutoEQ, Equalizer APO (Windows) ve EasyEffects preset'leri destekleniyor; biçim dosyanın
+içeriğinden bulunuyor.
+
+---
+
+## Nasıl çalışıyor
+
+Üç süreç:
+
+```
+sonar (arayüz)  ──D-Bus──▶  sonar-daemon  ──▶  pipewire -c graph.conf
+                                                (tüm sanal cihazlar)
+```
+
+Arayüz kapalıyken ses düzeni bozulmaz — grafı daemon taşır. Ayrıntı için
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## Ölçümler
+
+Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](docs/PERFORMANCE.md):
+
+| | |
+|---|---|
+| Eklenen gecikme | **1.1 ms** (ölçüm gürültüsünün içinde) |
+| Ekolayzer doğruluğu | çizilen eğri ile gerçek yanıt arasında **0.01 dB** |
+| Profil geçişi | 12 geçişte **0 kesinti, 0 tık** |
+| Boştaki CPU | %5–7 (mikser açıkken %12–13) |
+| Bellek | ~180–200 MB |
+| DeepFilterNet açıkken | **+%43** — pahalı, bilerek kullan |
+
+---
+
+## Belgeler
+
+* [ARCHITECTURE.md](ARCHITECTURE.md) — ses grafı, D-Bus API, tasarım kararları
+* [docs/OBS.md](docs/OBS.md) — yayın kurulumu, çok track'li kayıt
+* [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — tüm ölçümler
+* [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — sorun giderme
+* [CONTRIBUTING.md](CONTRIBUTING.md) — geliştirme ortamı
+* [.plan/](.plan/) — faz faz geliştirme günlüğü ve alınan kararların gerekçeleri
+
+---
+
+## Bilinen sınırlar
+
+* **EasyEffects ile birlikte çalışmaz.** İkisi de sistem geneli ses işlemeye çalışıyor;
+  EasyEffects servis kipindeyken Sonar'ın çıkışını kendi zincirine çekiyor. Sonar zaten
+  aynı eklentilerle aynı işi kanal başına yapıyor.
+* **Donanım ChatMix tekeri okunmuyor.** Cihaz tespiti ve udev kuralı hazır ama HID rapor
+  biçimi çözülmedi; yazılım ChatMix'i çalışıyor.
+* Kanal ekleme/silme ve cihaz değiştirme grafı yeniden kurar (~200 ms sessizlik). Ses
+  seviyesi, EQ, filtre ve profil değişimi kesintisizdir.
 
 ---
 
 ## Lisans
 
-[GPL-3.0](LICENSE)
+GPL-3.0. Katkılar açık — [CONTRIBUTING.md](CONTRIBUTING.md).

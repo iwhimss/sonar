@@ -699,13 +699,25 @@ class SonarApi:
                 self._save_timer = None
             dirty_config, self._dirty_config = self._dirty_config, False
             dirty_profiles, self._dirty_profiles = self._dirty_profiles, set()
-        for target in dirty_profiles:
-            profile = self.profiles.get(target)
-            # Gömülü preset asla diske yazılmaz; `_editable()` zaten kopyaya geçirmiş olmalı.
-            if profile is not None and not self._is_builtin(target, profile.name):
-                self.store.save_profile(target, profile)
-        if dirty_config:
-            self.store.save(self.config)
+        try:
+            for target in dirty_profiles:
+                profile = self.profiles.get(target)
+                # Gömülü preset asla diske yazılmaz; `_editable()` kopyaya geçirmiş olmalı.
+                if profile is not None and not self._is_builtin(target, profile.name):
+                    self.store.save_profile(target, profile)
+            if dirty_config:
+                self.store.save(self.config)
+        except OSError as error:
+            # Disk dolu, izin yok, salt okunur bağlama… Ayarlar bellekte duruyor ve ses
+            # düzeni bozulmuyor; kullanıcıya söylenmesi gereken şey kalıcı olmadıkları.
+            log.error("yapılandırma diske yazılamadı: %s", error)
+            self._emit(
+                {
+                    "kind": "save_failed",
+                    "message": f"Ayarlar diske yazılamadı ({error.strerror or error}). "
+                    f"Değişiklikler çalışıyor ama yeniden başlatınca kaybolacak.",
+                }
+            )
 
     # ------------------------------------------------------------------ iç kısım
 
