@@ -13,6 +13,16 @@ katkıcıların) ihtiyaç duyacağı belgeleri yazmak.
 
 ---
 
+## Faz 5'ten devreden — ✅ yapıldı
+
+EasyEffects kullanıcının izniyle durdurulup yönlendirmenin duyulabilir doğrulaması
+tamamlandı: hedefsiz açılan bir akışta kayıp **21 ms** (tam bir PipeWire kuantumu), kanal
+izolasyonu (-240 dBFS) ve kişisel/yayın ayrımı ölçüldü. Ayrıntı `.plan/05-routing.md`.
+
+Bu faz için kalan: aynı senaryoların **gerçek OBS ve gerçek oyunla** tekrarı.
+
+---
+
 ## Test senaryoları
 
 ### 1. OBS yayın senaryosu

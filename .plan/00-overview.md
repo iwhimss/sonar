@@ -203,6 +203,10 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
   tutuluyor; id ile tutulurken beş akıştan ikisi yönlendirilmiyordu.
 * **`QTimer.singleShot(0, …)` yabancı iş parçacığından sessizce çalışmıyor.** İş parçacığı
   geçişi Qt sinyaliyle yapılıyor.
+* **Duyulabilir kayıp 21 ms** (EasyEffects kapalıyken ölçüldü) — tam bir PipeWire kuantumu.
+* **Kanal izolasyonu ve kişisel/yayın ayrımı doğrulandı.** Bir uygulama çalarken diğer
+  kanallar dijital sessizlikte (-240 dBFS); bir kanalın yayın faderini kapatmak kulaklık
+  miksini etkilemiyor.
 
 ### Canlı parametre yazımı
 
