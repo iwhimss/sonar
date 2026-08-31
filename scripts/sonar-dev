@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Sonar'ı depodan çalıştırmak için — sisteme hiçbir şey kurmadan.
+#
+#   ./scripts/sonar-dev start    daemon'ı başlat
+#   ./scripts/sonar-dev gui      arayüzü aç (daemon çalışıyor olmalı)
+#   ./scripts/sonar-dev status   durum
+#   ./scripts/sonar-dev stop     her şeyi durdur
+#   ./scripts/sonar-dev cli ...  sonar-cli'ye komut geçir
+#
+# Ayarlar ~/.config/sonar altında tutulur; kurulu sürümle aynı yeri kullanır.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+PY=".venv/bin/python"
+[ -x "$PY" ] || PY="python"
+export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/sonar/dev.log"
+
+daemon_pids() {
+    for p in $(pgrep -x python 2>/dev/null || true); do
+        tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "sonar.daemon" && echo "$p"
+    done
+}
+
+case "${1:-}" in
+start)
+    if [ -n "$(daemon_pids)" ]; then echo "zaten çalışıyor"; exit 0; fi
+    if pgrep -x easyeffects >/dev/null 2>&1; then
+        echo "⚠ EasyEffects çalışıyor — Sonar'ın çıkışını kendi zincirine çeker."
+        echo "  Durdurmak için:  pkill easyeffects"
+        echo "  (Ayrıntı: docs/TROUBLESHOOTING.md)"
+        echo
+    fi
+    mkdir -p "$(dirname "$LOG")"
+    nohup "$PY" -m sonar.daemon.service >"$LOG" 2>&1 &
+    sleep 4
+    if [ -n "$(daemon_pids)" ]; then
+        echo "daemon başladı  (log: $LOG)"
+        "$PY" -m sonar.cli status 2>/dev/null | head -8
+    else
+        echo "başlatılamadı — log:"; tail -20 "$LOG"; exit 1
+    fi
+    ;;
+gui)
+    [ -n "$(daemon_pids)" ] || { echo "önce: $0 start"; exit 1; }
+    exec "$PY" -m sonar.gui.app "${@:2}"
+    ;;
+status)
+    if [ -n "$(daemon_pids)" ]; then
+        echo "daemon: çalışıyor ($(daemon_pids | tr '\n' ' '))"
+        "$PY" -m sonar.cli status
+    else
+        echo "daemon: çalışmıyor"
+    fi
+    ;;
+cli)
+    exec "$PY" -m sonar.cli "${@:2}"
+    ;;
+stop)
+    pids="$(daemon_pids)"
+    if [ -z "$pids" ]; then echo "zaten durmuş"; else
+        # SIGTERM: graf düşer, varsayılan cihaz geri verilir, akışlar kulaklığa döner
+        echo "$pids" | xargs -r kill
+        sleep 3
+        echo "durduruldu"
+    fi
+    left=$(pw-dump 2>/dev/null | jq -r '[.[] | select(.info.props["node.name"] // "" | startswith("sonar"))] | length' 2>/dev/null || echo "?")
+    echo "kalan sonar node: $left"
+    ;;
+*)
+    grep '^#' "$0" | sed -n '2,11p' | cut -c3-
+    ;;
+esac

@@ -55,6 +55,26 @@ git clone https://github.com/iwhimss/sonar && cd sonar
 pip install --user .
 ```
 
+### Kurmadan denemek
+
+Sisteme hiçbir şey kurmadan, depodan çalıştırabilirsin:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+./scripts/sonar-dev start     # daemon
+./scripts/sonar-dev gui       # arayüz
+./scripts/sonar-dev status
+./scripts/sonar-dev stop      # her şeyi durdur
+```
+
+Daemon durduğunda çalan uygulamalar **kendiliğinden** varsayılan cihaza geri döner; ses
+kesilmez.
+
+> **EasyEffects çalışıyorsa önce durdur** (`pkill easyeffects`) — ikisi aynı anda
+> çalışamaz, bkz. [Bilinen sınırlar](#bilinen-sınırlar).
+
 ### Servisi başlat
 
 ```bash
