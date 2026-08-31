@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 8 — Kanal FX sayfası
+**Aktif faz:** Faz 9 — Profiller, presetler, ChatMix
 **Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 8 — EQ eğrisi (`core/dsp/response.py` + `QQuickPaintedItem`),
-dinamik filtre panelleri, profil şeridi.
+**Sonraki adım:** Faz 9 — gömülü preset'ler (salt okunur), içe/dışa aktarma,
+ChatMix'in donanım tekerine bağlanması.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -22,15 +22,15 @@ dinamik filtre panelleri, profil şeridi.
 | 5 | [Uygulama yönlendirme](05-routing.md) | 🟢 Tamamlandı |
 | 6 | [Seviye ölçümü](06-meters.md) | 🟢 Tamamlandı |
 | 7 | [GUI tasarım sistemi ve Mixer](07-gui-mixer.md) | 🟢 Tamamlandı |
-| 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟡 Sıradaki |
-| 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | ⚪ Bekliyor |
+| 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟢 Tamamlandı |
+| 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟡 Sıradaki |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | ⚪ Bekliyor |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 542 test geçiyor, `ruff` temiz.
+**Test durumu:** 600 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
@@ -228,6 +228,12 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
   köprüye `revision` sayacı eklendi.
 * **D-Bus sinyal yuvaları `"1"` öneki istiyor** (`"1onGraphRebuilt()"`); öneksiz form
   sessizce bağlanmıyor.
+
+### Faz 8'de ölçümle doğrulananlar
+
+* **Çizilen EQ eğrisi gerçek DSP yanıtıyla örtüşüyor.** 8 frekansta ortalama sapma
+  **0.00 dB**, en büyük **0.01 dB**. Faz 1'deki `fm_N = 6` (APO DR) seçimi tam bunun içindi.
+* Arayüzden verilen ±9 dB, ölçümde ±9.00 / -8.97 dB olarak çıktı.
 
 ### Canlı parametre yazımı
 

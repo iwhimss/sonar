@@ -18,6 +18,17 @@ Ayrıca ChatMix (oyun ↔ sohbet dengesi) ve hazır preset kütüphanesi.
 
 ---
 
+## Faz 8'den devreden
+
+- [ ] Gözat paneli (arama kutusu), profil kopyalama, dışa/içe aktarma (`.sonarprofile`)
+- [ ] Panel başına `⋮` menüsü: sıfırla / preset yükle / aşamayı kopyala-yapıştır
+- [ ] Noise Gate "eşiği otomatik hesapla" (5 sn taban gürültü ölçümü)
+- [ ] Mikrofon dalga formu görseli; eklenti kurulu değilse açıklayıcı mesaj
+- [ ] `mic` ↔ `stream_mic` sekmesi ve "zinciri paylaş" seçeneği
+- [ ] Ctrl+Z / Ctrl+Y, A/B karşılaştırma, global bypass düğmesi
+
+---
+
 ## Görevler
 
 ### Profil sistemi

@@ -489,6 +489,138 @@ class SonarBridge(QObject):
     def setMicMonitor(self, enabled: bool) -> None:
         self._call("SetMicMonitor", "mic", enabled)
 
+    # ------------------------------------------------------------------ FX sayfası
+
+    @Slot(str, result=str)
+    def eqJson(self, target: str) -> str:
+        """Seçili hedefin EQ durumu — `EqCurve.eq` bunu bekliyor."""
+        profile = (self._state.get("profiles") or {}).get(target) or {}
+        return json.dumps(profile.get("eq") or {})
+
+    @Slot(str, result="QVariant")
+    def profileOf(self, target: str) -> dict:
+        """Aktif profilin tamamı: EQ + filtreler + favori slotu."""
+        return (self._state.get("profiles") or {}).get(target) or {}
+
+    @Slot(str, str, result="QVariant")
+    def filterOf(self, target: str, stage: str) -> dict:
+        """Tek bir aşamanın durumu; tanımsızsa boş sözlük."""
+        filters = (self.profileOf(target).get("filters")) or {}
+        return filters.get(stage) or {}
+
+    @Slot(str, result="QVariant")
+    def profileNames(self, target: str) -> list:
+        return (self._state.get("profile_names") or {}).get(target) or []
+
+    @Slot(str, result="QVariant")
+    def channelOf(self, target: str) -> dict:
+        row = self._channels.index_of("id", target)
+        return self._channels.get(row) if row >= 0 else {}
+
+    @Slot(str, bool)
+    def setEqEnabled(self, target: str, enabled: bool) -> None:
+        self._patch_eq(target, {"enabled": enabled})
+        self._call("SetFilterEnabled", target, "eq", enabled)
+
+    @Slot(str, int, str, str)
+    def setEqBand(self, target: str, band: int, field: str, value: str) -> None:
+        self._patch_band(target, band, field, value)
+        self._call("SetEqBand", target, band, field, value)
+
+    @Slot(str, float)
+    def setEqPreamp(self, target: str, value_db: float) -> None:
+        self._patch_eq(target, {"preamp_db": value_db})
+        self._call("SetEqPreamp", target, value_db)
+
+    @Slot(str, int)
+    def setBandCount(self, target: str, count: int) -> None:
+        self._call("SetBandCount", target, count)
+
+    @Slot(str, str, bool)
+    def setFilterEnabled(self, target: str, stage: str, enabled: bool) -> None:
+        self._patch_filter(target, stage, {"enabled": enabled})
+        self._call("SetFilterEnabled", target, stage, enabled)
+
+    @Slot(str, str, str, float)
+    def setFilterParam(self, target: str, stage: str, name: str, value: float) -> None:
+        state = self._patch_filter(target, stage, None)
+        if state is not None:
+            state.setdefault("params", {})[name] = value
+            self._bump()
+        self._call("SetFilterParam", target, stage, name, value)
+
+    @Slot(str, str)
+    def saveProfile(self, target: str, name: str) -> None:
+        self._call("SaveProfile", target, name)
+        self.refresh()
+
+    @Slot(str, str)
+    def deleteProfile(self, target: str, name: str) -> None:
+        self._call("DeleteProfile", target, name)
+        self.refresh()
+
+    @Slot(str, str, str)
+    def renameProfile(self, target: str, old: str, new: str) -> None:
+        self._call("RenameProfile", target, old, new)
+        self.refresh()
+
+    @Slot(str, str, int)
+    def setProfileFavorite(self, target: str, name: str, slot: int) -> None:
+        self._call("SetProfileFavorite", target, name, slot)
+        self.refresh()
+
+    @Slot()
+    def refresh(self) -> None:
+        state = self._call("GetState")
+        if state is not None:
+            self.apply_state(state)
+
+    # --- iyimser yamalar: değişiklik anında eğriye yansısın ---------------
+
+    def _profile_dict(self, target: str) -> dict | None:
+        return (self._state.get("profiles") or {}).get(target)
+
+    def _patch_eq(self, target: str, values: dict) -> None:
+        profile = self._profile_dict(target)
+        if profile is None:
+            return
+        profile.setdefault("eq", {}).update(values)
+        self._bump()
+
+    def _patch_band(self, target: str, band: int, field: str, value: str) -> None:
+        profile = self._profile_dict(target)
+        if profile is None:
+            return
+        bands = (profile.get("eq") or {}).get("bands") or []
+        if not 0 <= band < len(bands):
+            return
+        if field == "band_type":
+            bands[band][field] = value
+        elif field == "enabled":
+            bands[band][field] = str(value).lower() in {"1", "true", "yes", "on"}
+        elif field == "slope":
+            bands[band][field] = int(float(value))
+        else:
+            try:
+                bands[band][field] = float(value)
+            except (TypeError, ValueError):
+                return
+        self._bump()
+
+    def _patch_filter(self, target: str, stage: str, values: dict | None) -> dict | None:
+        profile = self._profile_dict(target)
+        if profile is None:
+            return None
+        state = profile.setdefault("filters", {}).setdefault(
+            stage, {"enabled": False, "params": {}}
+        )
+        if values:
+            state.update(values)
+            self._bump()
+        return state
+
+    # ------------------------------------------------------------------ profiller
+
     @Slot(str, str)
     def loadProfile(self, target: str, name: str) -> None:
         self._call("LoadProfile", target, name)

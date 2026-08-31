@@ -62,6 +62,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # Türkçe metinlerde belirsiz Unicode 
 # QML sinyal/özellik/metot adları camelCase olmak zorunda; QML tarafında birebir
 # bu adlarla bağlanılıyor.
 "src/sonar/gui/bridge.py" = ["N802", "N815"]
+"src/sonar/gui/eqcurve.py" = ["N802", "N815"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

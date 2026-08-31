@@ -305,3 +305,114 @@ def test_masters_expose_buses_and_mic(bridge):
     assert masters["personal"]["name"] == "Personal Mix"
     assert masters["stream"]["name"] == "Stream Mix"
     assert masters["mic"]["id"] == "mic"
+
+
+# --------------------------------------------------------------------------- FX sayfası
+
+
+def profile_state() -> dict:
+    from sonar.core.model import default_profile
+
+    profile = to_jsonable(default_profile())
+    return make_state(profiles={"game": profile, "mic": to_jsonable(default_profile())})
+
+
+@pytest.fixture
+def fx(qt_app):
+    client = FakeClient(profile_state())
+    obj = SonarBridge(client)
+    obj.apply_state(client.state)
+    return obj
+
+
+def test_eq_json_is_parseable_by_the_curve(fx):
+    from sonar.gui.eqcurve import eq_from_json
+
+    eq = eq_from_json(fx.eqJson("game"))
+    assert len(eq.bands) == 10
+    assert eq.enabled is False
+
+
+def test_eq_json_for_unknown_target_is_empty(fx):
+    assert json.loads(fx.eqJson("yok")) == {}
+
+
+def test_filter_of_returns_the_stage(fx):
+    gate = fx.filterOf("game", "gate")
+    assert gate["enabled"] is False
+    assert gate["params"]["threshold_db"] == -40.0
+    assert fx.filterOf("game", "yok") == {}
+
+
+def test_eq_band_change_is_optimistic(fx):
+    """Eğri sürüklerken daemon'ın yanıtını beklemeden güncellenmeli."""
+    fx.setEqBand("game", 2, "gain_db", "7.5")
+    eq = json.loads(fx.eqJson("game"))
+    assert eq["bands"][2]["gain_db"] == 7.5
+    assert fx._client.calls[-1] == ("SetEqBand", ("game", 2, "gain_db", "7.5"))
+
+
+def test_eq_band_type_and_enabled_are_typed_correctly(fx):
+    fx.setEqBand("game", 0, "band_type", "low_shelf")
+    fx.setEqBand("game", 0, "enabled", "false")
+    band = json.loads(fx.eqJson("game"))["bands"][0]
+    assert band["band_type"] == "low_shelf"
+    assert band["enabled"] is False
+
+
+def test_eq_band_out_of_range_is_ignored(fx):
+    fx.setEqBand("game", 99, "gain_db", "5")  # yükseltmemeli
+
+
+def test_garbage_band_value_does_not_corrupt_the_state(fx):
+    before = fx.eqJson("game")
+    fx.setEqBand("game", 0, "gain_db", "çok yüksek")
+    assert fx.eqJson("game") == before
+
+
+def test_eq_enabled_is_optimistic(fx):
+    fx.setEqEnabled("game", True)
+    assert json.loads(fx.eqJson("game"))["enabled"] is True
+
+
+def test_preamp_is_optimistic(fx):
+    fx.setEqPreamp("game", -4.0)
+    assert json.loads(fx.eqJson("game"))["preamp_db"] == -4.0
+
+
+def test_filter_enabled_is_optimistic(fx):
+    fx.setFilterEnabled("game", "gate", True)
+    assert fx.filterOf("game", "gate")["enabled"] is True
+
+
+def test_filter_param_is_optimistic(fx):
+    fx.setFilterParam("game", "comp", "ratio", 8.0)
+    assert fx.filterOf("game", "comp")["params"]["ratio"] == 8.0
+    assert fx._client.calls[-1] == ("SetFilterParam", ("game", "comp", "ratio", 8.0))
+
+
+def test_every_optimistic_edit_bumps_the_revision(fx):
+    """Aksi hâlde eğri binding'i tazelenmez ve ekranda hiçbir şey değişmez."""
+    before = fx.revision
+    fx.setEqBand("game", 1, "gain_db", "2")
+    assert fx.revision > before
+
+
+def test_profile_actions_reach_the_daemon(fx):
+    fx.saveProfile("game", "CS2")
+    fx.renameProfile("game", "CS2", "Arc")
+    fx.deleteProfile("game", "Arc")
+    fx.setProfileFavorite("game", "Default", 3)
+    methods = [c[0] for c in fx._client.calls]
+    for name in ("SaveProfile", "RenameProfile", "DeleteProfile", "SetProfileFavorite"):
+        assert name in methods
+
+
+def test_channel_of_returns_the_strip_row(fx):
+    assert fx.channelOf("game")["name"] == "Game"
+    assert fx.channelOf("yok") == {}
+
+
+def test_profile_names(fx):
+    assert fx.profileNames("game") == ["Default", "CS2"]
+    assert fx.profileNames("yok") == []

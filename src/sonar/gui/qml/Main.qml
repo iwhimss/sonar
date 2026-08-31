@@ -124,31 +124,11 @@ Window {
             onOpenFx: (id) => window.currentTab = id
         }
 
-        // FX sayfaları Faz 8'de geliyor.
-        Item {
+        ChannelFx {
             anchors.fill: parent
             visible: bridge.connected && window.currentTab !== "mixer"
-            SonarPanel {
-                anchors.centerIn: parent
-                width: 420
-                height: 120
-                Column {
-                    anchors.centerIn: parent
-                    spacing: Theme.s2
-                    SonarSectionLabel {
-                        text: window.currentTab + " — FX"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                    }
-                    Text {
-                        text: "Ekolayzer ve filtre sayfası Faz 8'de geliyor."
-                        color: Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontBody
-                        renderType: Text.NativeRendering
-                        anchors.horizontalCenter: parent.horizontalCenter
-                    }
-                }
-            }
+            bridge: window.bridgeRef()
+            target: window.currentTab
         }
 
         // --- daemon yok ----------------------------------------------------

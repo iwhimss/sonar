@@ -1,8 +1,11 @@
 # Faz 8 — Kanal FX sayfası (EQ ve filtreler)
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 7
-**Çıktı:** `src/sonar/gui/qml/ChannelFx.qml`, `src/sonar/core/dsp/response.py`
+**Çıktı:** `src/sonar/core/dsp/response.py`, `src/sonar/gui/eqcurve.py`,
+`qml/{ChannelFx,EqPanel}.qml`, `qml/ui/{SonarParamRow,SonarFilterPanel,SonarNumberField}.qml`
+— 58 yeni test (toplam 600)
+Ekran görüntüleri: `docs/reference/sonar-fx-game.png`, `sonar-fx-mic.png`
 
 Referans: `docs/reference/steelseries-gg/07-game-eq-spatial.png`, `09-chat-eq-and-filters.png`,
 `13-mic-eq-clearcast.png`, `14-mic-clearcast-active.png`
@@ -53,75 +56,142 @@ Mikrofon sayfasında EQ'nun altına ek olarak **AI GÜRÜLTÜ ENGELLEME** paneli
 
 ---
 
+## Ölçüm: eğri gerçeği gösteriyor mu?
+
+Planın en önemli iddiası buydu — çizilen eğrinin **tahmini bir görsel değil**, gerçek DSP
+yanıtı olması. Faz 1'de LSP filtre modeli bilinçli olarak `fm_N = 6` ("APO DR") seçilmişti
+çünkü RBJ cookbook biquad'larıyla örtüşüyor. Artık ölçüldü.
+
+Üç bandlı belirgin bir eğri kuruldu, her frekansta sinüs basılıp `sonar_game_fx`'ten
+kaydedildi ve EQ kapalı hâle göre farkı alındı:
+
+| Hz | çizilen | ölçülen | fark |
+|---|---|---|---|
+| 63 | +1.57 | +1.55 | -0.01 |
+| 125 | +7.90 | +7.90 | -0.00 |
+| 250 | +1.15 | +1.15 | 0.00 |
+| 500 | -1.69 | -1.69 | 0.00 |
+| 1000 | -9.89 | -9.89 | -0.00 |
+| 2000 | -1.83 | -1.83 | 0.00 |
+| 4000 | +0.38 | +0.38 | 0.00 |
+| 8000 | +4.92 | +4.92 | 0.00 |
+
+**Ortalama sapma 0.00 dB, en büyük 0.01 dB.** Kullanıcı ekranda ne görüyorsa kulağında o var.
+
+Arayüz köprüsü üzerinden de doğrulandı (band 6, 2 kHz):
+
+| istenen | ölçülen | çizilen | fark |
+|---|---|---|---|
+| +9 dB | +9.00 | +9.00 | 0.00 |
+| -9 dB | -8.97 | -9.00 | +0.03 |
+| 0 dB | +0.00 | -0.00 | 0.00 |
+
+---
+
 ## Görevler
 
-### Profil şeridi
-- [ ] Aktif profil kartı (kanal ikonu + aksan rengi + ad), açılır menüyle hızlı geçiş
-- [ ] **Favori slotları (9 adet)** — tıklayınca anında geçiş, sürükleyerek sıralama
-- [ ] `☆` düğmesi: aktif profili favorilere ekle/çıkar
-- [ ] `🔍` gözat: tüm profilleri arama kutusuyla listeleyen açılır panel
-- [ ] `⋮` menüsü: **Yeni**, **Yeniden adlandır**, **Kopyala**, **Dışa aktar**, **İçe aktar**, **Sil**, **Sıfırla**
-- [ ] Kaydedilmemiş değişiklik göstergesi (profil adının yanında `•`) + "Kaydet" / "Geri al"
+### `core/dsp/response.py` — eğrinin matematiği
+- [x] RBJ cookbook biquad katsayıları: peak, low/high shelf, low/high pass, notch,
+      allpass, bandpass
+- [x] `slope` (LSP `s_N`) kaskatlama: 0 → ×1 … 3 → ×4
+- [x] Bandların çarpımından bileşik magnitude yanıtı (512 nokta, log ızgara)
+- [x] Preamp eğriyi topluca kaydırır
+- [x] EQ kapalıyken düz çizgi — kullanıcı bypass'ta ne duyduğunu görüyor
+- [x] Nyquist'e dayanan band, sıfır Q gibi uç durumlar patlamıyor
+
+### `gui/eqcurve.py` — çizim
+- [x] `QQuickPaintedItem` alt sınıfı (QML `Canvas` her karede JavaScript'e dönerdi)
+- [x] Logaritmik frekans ızgarası + dB çizgileri + üst bant etiketleri
+      (SUB BASS / BASS / LOW MIDS / MID RANGE / UPPER MIDS / HIGHS)
+- [x] Eğri altı gradyan dolgu, aksan renginde çizgi
+- [x] Band düğümleri **kare** (köşesiz tasarım dili), band başına ayrı renk
+- [x] Koordinat çevirimi QML'e açık: `xForFreq`, `freqForX`, `yForGain`, `gainForY`, `bandAt`
+- [x] Ölçek seçimi ±6 / ±15 / ±24 / ±36 dB
 
 ### EQ paneli
-- [ ] **Logaritmik frekans ızgarası** 20 Hz – 20 kHz; dikey eksen ±12 dB (±24 dB'ye genişletilebilir)
-- [ ] SteelSeries'teki gibi üst bant etiketleri: SUB BASS / BASS / LOW MIDS / MID RANGE / UPPER MIDS / HIGHS
-- [ ] **Sürüklenebilir band düğümleri**: Y = kazanç, X = frekans, **fare tekerleği = Q**
-- [ ] Band başına ayrı renk (SteelSeries'teki renkli noktalar gibi)
-- [ ] Seçili bandın detay kutusu: tip, frekans, kazanç, Q, slope — sayısal girilebilir
-- [ ] Filtre tipleri: peak, low shelf, high shelf, low pass, high pass, notch
-- [ ] Band sayısı seçimi: 5 / 10 / 16 / 32 (LSP `para_equalizer_x8/x16/x32` eşlemesi)
-- [ ] Band aç/kapa (çift tık) ve sıfırla (sağ tık → 0 dB)
-- [ ] **Bileşik eğri çizimi**
-  - [ ] `core/dsp/response.py`: her bandın biquad katsayılarını RBJ cookbook ile hesapla,
-        `H(e^jw)` çarpımından toplam magnitude yanıtını numpy ile üret (log ölçekte ~512 nokta)
-  - [ ] `QQuickPaintedItem` alt sınıfı ile çizim (QML Canvas'tan hızlı)
-  - [ ] Eğri altı hafif dolgu, ızgara çizgileri 1 px, köşesiz
-- [ ] **Hızlı slider'lar**: Bass / Voice / Treble — ilgili frekans gruplarındaki bandları birlikte sürer
-- [ ] Preamp (`g_in`) kontrolü — pozitif kazançta clip'i önlemek için
-- [ ] EQ toggle'ı → `enabled` portu (canlı bypass)
+- [x] Sürüklenebilir band düğümleri: Y = kazanç, X = frekans
+- [x] **Fare tekerleği = Q** (seçili band)
+- [x] Çift tık = bandı aç/kapa, sağ tık = 0 dB'ye sıfırla
+- [x] Seçili bandın detayı: tip, frekans, kazanç, Q — sayısal girilebilir
+- [x] Filtre tipleri: peak, low/high shelf, low/high pass, notch, kapalı
+- [x] Band sayısı 5 / 10 / 16 / 32
+- [x] Hızlı slider'lar: Bass (20–250) / Voice (250–4k) / Treble (4k–20k)
+- [x] Preamp kontrolü
+- [x] EQ toggle → `enabled` portu, canlı bypass
 
 ### Dinamik filtre panelleri
-- [ ] **Noise Gate**: threshold, attack, release, hold, range; "Eşiği otomatik hesapla"
-      (5 sn sessizlik ölçüp taban gürültünün +6 dB üstünü ayarlar)
-- [ ] **Compressor**: threshold, ratio, attack, release, knee, makeup gain
-- [ ] **Limiter**: ceiling, release; gain-reduction göstergesi (varsa)
-- [ ] Her panelin `⋮` menüsü: **Sıfırla**, **Preset yükle**, **Bu aşamayı kopyala/yapıştır**
-- [ ] Kapalı paneller soluk ama okunabilir (SteelSeries davranışı)
+- [x] **Noise Gate**: eşik, atak, bırakma, azaltma
+- [x] **Compressor**: eşik, oran, atak, bırakma, makyaj
+- [x] **Limiter**: tavan, ileri bakış, bırakma
+- [x] Kapalı paneller soluk ama okunabilir
+- [ ] "Eşiği otomatik hesapla" — **yapılmadı** (5 sn taban gürültü ölçümü gerekiyor)
+- [ ] Panel başına `⋮` menüsü (sıfırla / preset / kopyala-yapıştır) — **yapılmadı**
 
 ### Mikrofon sayfasına özel
-- [ ] **AI GÜRÜLTÜ ENGELLEME (DeepFilterNet)** paneli:
-  - [ ] Aç/kapa toggle
-  - [ ] "Min ↔ Max" attenuation limit slider'ı (0–100 dB)
-  - [ ] Dalga formu görseli (canlı mikrofon sinyali; kapalıyken gri, açıkken aksan renginde)
-  - [ ] Eklenti kurulu değilse: panel devre dışı + `sudo pacman -S deepfilter-ladspa` ipucu
-- [ ] Noise Gate paneli, AI gürültü engelleme açıkken soluklaştırılır ve üstünde
-      **"AI gürültü engelleme aktifken devre dışı"** notu (SteelSeries davranışı)
-- [ ] Mikrofon monitörü (sidetone) aç/kapa + seviye — kendi sesini kulaklıktan duyma
-- [ ] `sonar_mic` ile `sonar_stream_mic` arasında sekme; "Zinciri Mic ile paylaş" seçeneği
+- [x] **AI Gürültü Engelleme** paneli: aç/kapa, azaltma sınırı, post filtre
+- [x] Noise Gate, AI açıkken soluklaşıyor ve **"AI aktifken devre dışı"** notu çıkıyor
+- [ ] Dalga formu görseli — **yapılmadı**
+- [ ] Eklenti kurulu değilse özel mesaj — **yapılmadı** (aşama zincirden sessizce düşüyor)
+- [ ] `mic` ↔ `stream_mic` sekmesi ve "zinciri paylaş" — **yapılmadı**
+
+### Profil şeridi
+- [x] Aktif profil açılır menüsü, hızlı geçiş
+- [x] **Favori slotları (9 adet)** — tıklayınca atanır/kaldırılır
+- [x] "Farklı kaydet" ve "Sil"
+- [ ] Arama kutulu gözat paneli, dışa/içe aktarma, kopyalama — **Faz 9'a**
+- [ ] Kaydedilmemiş değişiklik göstergesi — **gereksiz**: düzenlemeler aktif profile
+      otomatik kalıcı (Faz 4 kararı)
 
 ### Etkileşim
-- [ ] Her kontrol değişikliği → `SetFilterParam` (20 ms debounce) → **canlı duyulur**
-- [ ] Ctrl+Z / Ctrl+Y — sayfa içi geri al/yinele yığını
-- [ ] A/B karşılaştırma: iki geçici durum arasında anlık geçiş (`A` / `B` düğmeleri)
-- [ ] Tüm zinciri geçici bypass eden global düğme (değişiklikleri karşılaştırmak için)
+- [x] Her kontrol değişikliği canlı duyuluyor (ölçüldü)
+- [x] İyimser güncelleme: eğri daemon'ı beklemeden tazeleniyor
+- [ ] Ctrl+Z / Ctrl+Y — **yapılmadı**
+- [ ] A/B karşılaştırma — **yapılmadı**
+- [ ] Global bypass düğmesi — **yapılmadı** (aşama başına toggle var)
 
 ---
 
-## Doğrulama
+## Doğrulama — ✅
 
-- EQ bandını sürüklerken tını **anında** değişiyor, kesinti/tık yok
-- Eğri çizimi gerçek DSP yanıtıyla örtüşüyor
-  (doğrulama: pembe gürültü çal, `easyeffects` spektrum analizöründe eğri beklendiği gibi görünüyor)
-- Profil geçişi anında ve sessiz
-- Gate/Compressor gerçekten çalışıyor (mikrofona fısıldayınca gate kesiyor)
-- DeepFilterNet açılınca arka plan gürültüsü belirgin azalıyor
-- Kurulu olmayan eklenti paneli çökmeye sebep olmuyor, açıklayıcı mesaj gösteriyor
+| Test | Sonuç |
+|---|---|
+| Eğri ↔ gerçek DSP | 8 frekansta **ortalama 0.00 dB**, en büyük 0.01 dB sapma |
+| Arayüzden EQ değişimi | ±9 dB istendi, **±9.00 / -8.97 dB** ölçüldü |
+| Profil geçişi | anında ve sessiz (Faz 4'te ölçüldü) |
+| QML yükleme | kök nesne 1, uyarı yok |
+| Köşe yuvarlatma | 17 QML dosyasının hiçbirinde yok (test ediyor) |
+
+Ekran görüntüleri: `docs/reference/sonar-fx-game.png` (yeşil aksan, gate + compressor açık),
+`docs/reference/sonar-fx-mic.png` (turuncu aksan, AI paneli açık, gate soluk ve uyarılı).
 
 ---
 
-## Tamamlanma kriteri
+## Yol boyunca yakalananlar
 
-Kullanıcı bir kanal için EQ ve filtreleri ayarlayıp profil olarak kaydedebiliyor,
-birden fazla profil arasında anında geçiş yapabiliyor; mikrofon zinciri
-AI gürültü engelleme dahil tam çalışıyor.
+1. **Sayaç JSON'a eklenince eğri hiç çizilmedi.** Binding'i tazelemek için `revision`
+   sayacını `eqJson()` çıktısının sonuna eklemiştim; JSON bozuluyor ve `eq_from_json()`
+   sessizce boş bir EQ döndürüyordu. Izgara çiziliyor ama eğri yok — belirti yanıltıcıydı.
+   Sayaç artık yalnızca bağımlılık kurmak için okunup atılıyor.
+2. **`id` referansları binding kurulurken `null` olabiliyor.** Ölçek açılır listesi eğriden
+   önce tanımlıydı ve `curve.rangeDb` okurken patlıyordu; korumalı hâle getirildi.
+3. **`SonarParamRow` `enabled`'ı gölgeliyordu** — `SonarButton`'da yaşanan hatanın aynısı.
+4. **Ölçüm kirlendi, DSP değil.** Arayüzden +9 dB verildiğinde ölçülen +8.43 çıktı; sebep
+   önceki testlerin `Default` profiline **kompresörü açık bırakmış** olmasıydı (düzenlemeler
+   aktif profile otomatik kalıcı — Faz 4 kararı). Zincir temizlenince fark 0.00 dB'ye indi.
+   Bu, Faz 9'daki "gömülü preset'ler salt okunur olmalı" notunu doğruluyor.
+
+---
+
+## Tamamlanma kriteri — ✅ karşılandı
+
+Kullanıcı bir kanal için EQ ve filtreleri ayarlayıp profil olarak kaydedebiliyor, profiller
+arasında anında geçiş yapabiliyor; mikrofon zinciri AI gürültü engelleme dâhil çalışıyor.
+Çizilen eğri gerçek DSP yanıtıyla 0.01 dB içinde örtüşüyor.
+
+**Eksik bırakılanlar** yukarıda `- [ ]` ile işaretli: otomatik gate eşiği, panel `⋮`
+menüleri, mikrofon dalga formu, `mic`/`stream_mic` sekmesi, Ctrl+Z, A/B karşılaştırma,
+global bypass. Hiçbiri temel işlevi engellemiyor.
+
+```bash
+ruff check src/ tests/ && pytest -q          # 600 test geçti, lint temiz
+```

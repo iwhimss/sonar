@@ -16,6 +16,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
 from sonar.core import config as config_mod
+
+# `EqCurve` QML tipi olarak kaydedilmesi için içe aktarılmalı (yan etkili import).
+from sonar.gui import eqcurve  # noqa: F401
 from sonar.gui.bridge import SonarBridge
 from sonar.gui.dbus_client import DBusClient
 
