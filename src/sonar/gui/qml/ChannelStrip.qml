@@ -24,6 +24,12 @@ Item {
     readonly property var apps:
         bridge ? (bridge.revision, bridge.streamsFor(channel.id)) : []
 
+    /* Anlık seviye. Ayrı bir sayaca (`levelsRevision`) bağlı: `revision` saniyede 20
+       kez artsaydı şeridin tamamı yeniden değerlendirilirdi. */
+    readonly property var level:
+        bridge ? (bridge.levelsRevision, bridge.levelOf(channel.id))
+               : ({ peak_db: -60, hold_db: -60, clipped: false })
+
     /* Şeridin tamamı bırakma hedefi: kullanıcı çipi şeridin herhangi bir yerine
        bırakabilsin, yalnızca küçük Apps kutusuna nişan almak zorunda kalmasın. */
     DropArea {
@@ -123,11 +129,9 @@ Item {
                 Repeater {
                     model: [
                         { bus: "personal", icon: "headset",
-                          vol: root.channel.personalVolume, mute: root.channel.personalMuted,
-                          peak: root.channel.personalPeak, hold: root.channel.personalHold },
+                          vol: root.channel.personalVolume, mute: root.channel.personalMuted },
                         { bus: "stream", icon: "cast",
-                          vol: root.channel.streamVolume, mute: root.channel.streamMuted,
-                          peak: root.channel.streamPeak, hold: root.channel.streamHold }
+                          vol: root.channel.streamVolume, mute: root.channel.streamMuted }
                     ]
 
                     Column {
@@ -173,11 +177,14 @@ Item {
                                 accent: root.accent
                                 onMoved: (v) => root.setVolume(modelData.bus, v)
                             }
+                            /* Metre kanal sink monitöründen besleniyor: DSP ve fader
+                               öncesi, yani uygulamanın çaldığı seviye. İki bus için de
+                               aynı — ayrım fader'ın kendisinde görünüyor. */
                             SonarLevelMeter {
                                 height: 150
-                                db: modelData.peak === undefined ? -60 : modelData.peak
-                                holdDb: modelData.hold === undefined ? -60 : modelData.hold
-                                clipped: root.channel.clipped === true
+                                db: root.level.peak_db
+                                holdDb: root.level.hold_db
+                                clipped: root.level.clipped === true
                             }
                         }
                         SonarIconButton {

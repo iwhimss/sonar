@@ -231,6 +231,7 @@ def test_hold_expires(qt_app):
 
 
 def test_meter_values_survive_a_state_refresh(bridge):
+    """Seviyeler kanal satırlarında değil ayrı tutuluyor; tam durum yenilemesi silmemeli."""
     bridge.onLevelsUpdated(
         json.dumps(
             {
@@ -243,9 +244,17 @@ def test_meter_values_survive_a_state_refresh(bridge):
             }
         )
     )
-    assert bridge.channels.get(0)["personalPeak"] == -12.0
+    assert bridge.levelOf("game")["peak_db"] == -12.0
     bridge.apply_state(make_state())
-    assert bridge.channels.get(0)["personalPeak"] == -12.0, "metre değeri kaybolmamalı"
+    assert bridge.levelOf("game")["peak_db"] == -12.0, "metre değeri kaybolmamalı"
+
+
+def test_levels_bump_only_the_levels_counter(bridge):
+    """`revision` saniyede 20 kez artsaydı her şeridin tamamı yeniden değerlendirilirdi."""
+    before_revision, before_levels = bridge.revision, bridge.levelsRevision
+    bridge.onLevelsUpdated(json.dumps({"sonar_game": {"peak_db": -3.0, "hold_db": -3.0}}))
+    assert bridge.revision == before_revision
+    assert bridge.levelsRevision == before_levels + 1
 
 
 def test_levels_for_the_mic_use_its_own_node(bridge):
@@ -254,9 +263,12 @@ def test_levels_for_the_mic_use_its_own_node(bridge):
             {"sonar_mic": {"peak_db": -20.0, "rms_db": -22.0, "hold_db": -18.0, "clipped": True}}
         )
     )
-    mic = bridge.channels.get(bridge.channels.index_of("id", "mic"))
-    assert mic["streamPeak"] == -20.0
-    assert mic["clipped"] is True
+    assert bridge.levelOf("mic")["peak_db"] == -20.0
+    assert bridge.levelOf("mic")["clipped"] is True
+
+
+def test_a_channel_without_a_measurement_reads_the_floor(bridge):
+    assert bridge.levelOf("game") == {"peak_db": -60.0, "hold_db": -60.0, "clipped": False}
 
 
 def test_malformed_levels_payload_is_ignored(bridge):

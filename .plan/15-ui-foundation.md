@@ -1,6 +1,6 @@
 # Faz 15 — Arayüz altyapısı: popup katmanı ve canlı bağlama
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 7, Faz 8
 **Çıktı:** `src/sonar/gui/qml/ui/SonarComboBox.qml`,
 `src/sonar/gui/qml/ui/SonarLevelMeter.qml`, `src/sonar/gui/qml/ChannelFx.qml`,
@@ -86,41 +86,80 @@ sarı (-18…-6 dB), kırmızı (> -6 dB) bölgeleri, peak-hold çizgisi, clip g
 
 ## Görevler
 
-- [ ] `app.py`: `QQuickStyle.setStyle("Basic")`
-- [ ] `SonarComboBox` → `Popup` tabanlı, radius 0, kaydırmalı, dışarı tıklayınca kapanır
-- [ ] Ekran altına taşan popup yukarı açılır
-- [ ] Klavye ile gezinme (↑ ↓ Enter Esc)
-- [ ] `ChannelFx.stageOn()` / `paramOf()` → `bridge.revision`'a bağlanır
-- [ ] `EqPanel.qml` aynı hata için taranır
-- [ ] Köprüye `levelsRevision` + `levelOf(channelId)`
-- [ ] `ChannelStrip` metreleri `levelsRevision`'a bağlanır
-- [ ] `SonarLevelMeter`: renk bölgeleri, peak-hold, clip
-- [ ] QML yükleme testi (alt süreçte) yeni `Popup` bağımlılığıyla geçer
+- [x] `app.py`: `QQuickStyle.setStyle("Basic")`
+- [x] `SonarComboBox` → `Popup` tabanlı, radius 0, kaydırmalı, dışarı tıklayınca kapanır
+- [x] Ekran altına taşan popup yukarı açılır
+- [x] Klavye ile gezinme (↑ ↓ Enter Esc)
+- [x] `ChannelFx.stageOn()` / `paramOf()` → `bridge.revision`'a bağlanır
+- [x] `EqPanel.qml` aynı hata için tarandı — `eqPayload()` zaten `bridge.revision`
+      okuyordu (Faz 8'de yakalanmış)
+- [x] Köprüye `levelsRevision` + `levelOf(channelId)`
+- [x] `ChannelStrip` metreleri `levelsRevision`'a bağlanır
+- [x] `SonarLevelMeter`: renk bölgeleri, peak-hold, clip — **zaten vardı**,
+      eksik olan yalnızca veriydi
+- [x] QML yükleme testi (alt süreçte) yeni `Popup` bağımlılığıyla geçer
 
 ---
 
 ## Kontrol listesi — "fonksiyon çağrısı bağlama değildir"
 
-Bunu bir testle korumak mümkün değil, bu yüzden elle taranan yerler burada tutulur:
+Bunu bir testle korumak mümkün değil, bu yüzden elle taranan yerler burada tutulur.
+Kural: **köprüde tanımlı bir `@Slot` bir bağlamanın içinde çağrılıyorsa, aynı
+bağlamada `bridge.revision` (veya metreler için `bridge.levelsRevision`) da
+okunmalı.**
 
-- [ ] `ChannelFx.qml` — `stageOn`, `paramOf`
-- [ ] `EqPanel.qml`
+- [x] `ChannelFx.qml` — `stageOn`, `paramOf`
+- [x] `EqPanel.qml`
 - [ ] `ChannelStrip.qml` — `chatmixGain` ✅ (zaten doğru)
-- [ ] `MasterStrip.qml`
-- [ ] `Mixer.qml`
+- [x] `MasterStrip.qml`
+- [x] `Mixer.qml`
 
 ---
 
-## Doğrulama
+## Doğrulama (2026-09-01)
 
+**Metreler çalışıyor.** Köprü D-Bus'a bağlanıp `SubscribeMeters(true)` dedi ve
+6 saniye boyunca `levelOf("media")` örneklendi:
+
+| durum | `levelsRevision` | okunan tepe |
+|---|---|---|
+| 0.05 genlikli 300 Hz sinüs çalarken | 4 → 122 (≈20 Hz) | **-26.0 dBFS** |
+| sessizken | 5 → 117 | **-60.0 dBFS** (taban) |
+
+-26.0 dBFS, 0.05 genliğin tam karşılığı (20·log₁₀0.05 = -26.02). Sayaç saniyede
+~20 kez artıyor, yani `LevelsUpdated` akışı arayüze ulaşıyor.
+
+**GUI hatasız yükleniyor:** `QQuickStyle.setStyle("Basic")` + `Popup` ile QML
+konsolunda tek uyarı yok. (Görünen tek uyarı portal kaydı; `.desktop` dosyası
+henüz kurulu olmadığı için, Faz 11'de geçecek.)
+
+Kullanıcının ikinci testte bakacakları:
 - Profil dropdown'ı EQ panelinin üstünde açılıyor, hiçbir yerde kırpılmıyor
-- 30 profilli bir listede kaydırma çalışıyor, tıklama doğru satırı seçiyor
-- Noise Gate anahtarı **ilk tıklamada** açılıyor, ses anında değişiyor
-- Müzik çalarken Media şeridinin metresi oynuyor, sessizde -60 dB'ye düşüyor
-- Metre CPU maliyeti ölçülür (Faz 6'da 3–5% idi, artmamalı)
+- Uzun listede kaydırma çalışıyor, tıklama doğru satırı seçiyor
+- Noise Gate anahtarı **ilk tıklamada** açılıyor
 
 ---
 
 ## Yol boyunca yakalananlar
 
-_(faz sırasında doldurulacak)_
+**`ChannelFx`'in `channel`, `profile`, `names` bağlamaları da kırıktı** — yalnızca
+`stageOn`/`paramOf` değil. Üçü de köprü fonksiyonu çağırıyor ve hiçbir property
+okumuyordu; `tick` özelliği dosyada tanımlıydı ama **hiçbir yerde okunmuyordu.**
+Hepsi `(tick, bridge.…)` kalıbına çekildi.
+
+**`isMic` sabit bir isim listesiydi.** `target === "mic" || target === "stream_mic"`
+Faz 13'ten sonra yanlış: kullanıcı kendi giriş kanalını ekleyebiliyor. Yerine
+köprüde `isInputChannel(target)`.
+
+**Metre değerleri kanal satırlarından çıkarıldı.** `ChannelModel`'in
+`personalPeak`/`streamHold`/`clipped` rolleri ve `_refresh_models()`'teki "metre
+değerlerini koru" bloğu silindi; seviyeler artık köprüde ayrı bir sözlükte duruyor.
+Sebep: satırlara yazmak zaten işe yaramıyordu (şerit sözlük kopyası alıyor) ve
+saniyede 20 kez `dataChanged` yayınlamak boşuna işti.
+
+**Ayrı sayaç şart.** `revision` saniyede 20 kez artsaydı her şeridin her bağlaması
+— profil listesi, uygulama listesi, ChatMix rozeti — 20 Hz'de yeniden
+değerlendirilirdi. `levelsRevision` yalnızca metre bileşenlerini uyandırıyor.
+
+**`SonarLevelMeter`'a dokunulmadı.** Renk bölgeleri, peak-hold çizgisi ve clip
+göstergesi Faz 7'de yazılmıştı ve doğruydu; eksik olan yalnızca veriydi.

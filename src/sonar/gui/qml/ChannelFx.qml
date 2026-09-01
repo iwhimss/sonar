@@ -7,16 +7,17 @@ Item {
     property var bridge
     property string target: ""
 
-    readonly property var channel: bridge ? bridge.channelOf(target) : ({})
+    // Köprüdeki sayaç. Aşağıdaki her bağlama bunu **okuyor** — köprü fonksiyonları
+    // property okumadığı için tek başlarına bağlama kurmuyorlar.
+    readonly property int tick: bridge ? bridge.revision : 0
+
+    readonly property var channel: bridge ? (tick, bridge.channelOf(target)) : ({})
     readonly property color accent: channel.color !== undefined ? channel.color : Theme.master
-    readonly property var profile: bridge ? bridge.profileOf(target) : ({})
-    readonly property bool isMic: target === "mic" || target === "stream_mic"
-    readonly property var names: bridge ? bridge.profileNames(target) : []
+    readonly property var profile: bridge ? (tick, bridge.profileOf(target)) : ({})
+    readonly property bool isMic: bridge ? (tick, bridge.isInputChannel(target)) : false
+    readonly property var names: bridge ? (tick, bridge.profileNames(target)) : []
     readonly property string activeName: channel.activeProfile !== undefined
                                          ? channel.activeProfile : "Default"
-
-    // Köprüdeki sayaç okunuyor ki profil değişince tüm binding'ler tazelensin.
-    readonly property int tick: bridge ? bridge.revision : 0
 
     Column {
         anchors.fill: parent
@@ -296,12 +297,22 @@ Item {
           fallback:0.02, digits:3 }
     ]
 
+    /* `tick` (yani `bridge.revision`) bilerek okunuyor.
+
+       QML bir bağlamayı yalnızca içinde okunan **property'ler** değişince yeniden
+       değerlendirir. Bu iki fonksiyon hiçbir property okumadığı için `active:
+       root.stageOn("gate")` bağlaması `bridge.revision` artınca tazelenmiyordu:
+       kullanıcı anahtara basıyor, hiçbir şey olmuyor, başka kanala geçip dönünce
+       anahtar açık görünüyordu (çünkü `target` değişince bağlama yeniden kuruluyor).
+       `void tick` çağıranın bağlamasına revision'ı bağımlılık olarak ekliyor. */
     function stageOn(stage) {
+        void root.tick
         const f = bridge ? bridge.filterOf(target, stage) : ({})
         return f.enabled === true
     }
 
     function paramOf(stage, key, fallback) {
+        void root.tick
         const f = bridge ? bridge.filterOf(target, stage) : ({})
         const params = f.params !== undefined ? f.params : ({})
         return params[key] !== undefined ? params[key] : fallback

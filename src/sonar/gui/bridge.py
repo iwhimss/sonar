@@ -230,7 +230,6 @@ class ChannelModel(_DictModel):
     keys = (
         "id", "name", "color", "icon", "builtin", "activeProfile", "profiles",
         "personalVolume", "personalMuted", "streamVolume", "streamMuted", "kind",
-        "personalPeak", "streamPeak", "personalHold", "streamHold", "clipped",
     )  # fmt: skip
 
 
@@ -253,6 +252,7 @@ class SonarBridge(QObject):
     chatmixChanged = Signal()
     mastersChanged = Signal()
     revisionChanged = Signal()
+    levelsChanged = Signal()
     errorRaised = Signal(str, str)
     graphRebuilt = Signal()
 
@@ -267,6 +267,7 @@ class SonarBridge(QObject):
         self._client = client
         self._connected = False
         self._revision = 0
+        self._levels_revision = 0
         self._state: dict = {}
         self._hold_ms = hold_ms
         self._held: dict[str, float] = {}
@@ -275,6 +276,7 @@ class SonarBridge(QObject):
         # bırakıldıklarında QML tarafından hiç görülmüyorlar (sessizce `undefined`).
         self._channels = ChannelModel(self)
         self._streams = StreamModel(self)
+        self._levels: dict[str, dict] = {}
         self._sinks = DeviceModel(self)
         self._sources = DeviceModel(self)
 
@@ -334,10 +336,6 @@ class SonarBridge(QObject):
             previous = held.get(row["id"])
             if previous is None:
                 continue
-            # Metre değerleri durumun parçası değil; korunmalı.
-            for key in ("personalPeak", "streamPeak", "personalHold", "streamHold", "clipped"):
-                if key in previous:
-                    row[key] = previous[key]
             for field in ("personalVolume", "streamVolume"):
                 if self._is_held(f"{row['id']}.{field}"):
                     row[field] = previous[field]
@@ -374,20 +372,22 @@ class SonarBridge(QObject):
             levels = json.loads(payload)
         except json.JSONDecodeError:
             return
-        for index, row in enumerate(self._channels.rows()):
-            level = levels.get(f"sonar_{row['id']}")
-            if level is None:
-                continue
-            self._channels.update_row(
-                index,
-                {
-                    "personalPeak": level["peak_db"],
-                    "streamPeak": level["peak_db"],
-                    "personalHold": level["hold_db"],
-                    "streamHold": level["hold_db"],
-                    "clipped": level["clipped"],
-                },
-            )
+        self._levels = levels
+        self._levels_revision += 1
+        self.levelsChanged.emit()
+
+    @Slot(str, result="QVariant")
+    def levelOf(self, channel: str) -> dict:
+        """Bir kanalın anlık seviyesi. Ölçüm yoksa taban değerler.
+
+        Eskiden seviyeler `ChannelModel` satırlarına yazılıyordu, ama mikser şeride
+        `channels.get(index)` ile **anlık bir sözlük kopyası** veriyor; kopya
+        tazelenmediği için metreler hiç oynamıyordu (kullanıcı: "boş görünüyordu").
+        """
+        level = (self._levels or {}).get(f"sonar_{channel}")
+        if level is None:
+            return {"peak_db": -60.0, "hold_db": -60.0, "clipped": False}
+        return level
 
     @Slot()
     def onGraphRebuilt(self) -> None:
@@ -410,6 +410,16 @@ class SonarBridge(QObject):
         return self._revision
 
     revision = Property(int, _get_revision, notify=revisionChanged)
+
+    def _get_levels_revision(self) -> int:
+        """Yalnızca seviye güncellemelerinde artar.
+
+        Ayrı bir sayaç: `revision` saniyede 20 kez artsaydı her şeridin **tamamı**
+        yeniden değerlendirilirdi. Metre bileşenleri yalnızca bunu okuyor.
+        """
+        return self._levels_revision
+
+    levelsRevision = Property(int, _get_levels_revision, notify=levelsChanged)
 
     def _get_connected(self) -> bool:
         return self._connected
@@ -521,6 +531,13 @@ class SonarBridge(QObject):
             {"name": name, "builtin": name in builtin}
             for name in (self._state.get("profile_names") or {}).get(target) or []
         ]
+
+    @Slot(str, result=bool)
+    def isInputChannel(self, target: str) -> bool:
+        """Hedef bir giriş kanalı mı? Sabit `"mic"`/`"stream_mic"` listesi yetmiyor —
+        kullanıcı kendi giriş kanalını ekleyebiliyor (Faz 13)."""
+        config = self._state.get("config") or {}
+        return any(mic["id"] == target for mic in config.get("mic_chains", []))
 
     @Slot(str, result="QVariant")
     def streamsFor(self, channel: str) -> list:

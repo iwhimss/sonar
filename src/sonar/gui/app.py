@@ -13,6 +13,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from sonar.core import config as config_mod
@@ -41,6 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=getattr(logging, args.log.upper(), logging.WARNING))
 
     # `QApplication` (QtWidgets) seçildi: sistem tepsisi ikonu QtGui ile gelmiyor.
+    # `SonarComboBox` popup katmanı için QtQuick.Controls kullanıyor. "Basic" stili
+    # hiçbir görsel karar getirmez — tüm `background`/`contentItem` bizim, radius 0
+    # kuralı geçerli kalır. Platform stili (ör. KDE'nin Fusion'ı) seçilirse köşe
+    # yuvarlatma ve gölge geri gelir.
+    QQuickStyle.setStyle("Basic")
+
     app = QApplication(sys.argv)
     app.setApplicationName("Sonar")
     app.setOrganizationName("iwhimss")
