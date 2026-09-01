@@ -76,12 +76,11 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     onClicked: root.openFx(root.channel.id)
                 }
-                // Yerleşik kanallar silinemez; yalnızca kullanıcının eklediklerinde çıkar.
+                // Her kanal silinebilir — Aux'u kullanmayan kullanıcı onu da atabilmeli.
+                // Neyin kaybolacağını onay penceresi anlatıyor.
                 SonarIconButton {
                     icon: "close"
                     accent: Theme.danger
-                    visible: !root.channel.builtin
-                    width: visible ? 26 : 0
                     anchors.verticalCenter: parent.verticalCenter
                     onClicked: root.removeRequested(root.channel.id, root.channel.name)
                 }

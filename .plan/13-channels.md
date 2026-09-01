@@ -1,6 +1,6 @@
 # Faz 13 — Kanal yönetimi: silme ve yön seçimi
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 12
 **Çıktı:** `src/sonar/core/model.py`, `src/sonar/daemon/api.py`,
 `src/sonar/daemon/dbus_iface.py`, `src/sonar/gui/qml/Mixer.qml`,
@@ -76,20 +76,28 @@ sanal cihazın üretildiğidir:
 
 ## Görevler
 
-- [ ] `remove_channel()` yerleşik koruması kalkar, yeni kısıtlar eklenir
-- [ ] Kanal silinince kurallar / profiller / favoriler / ChatMix temizlenir
-- [ ] `MicChain`'e `color`, kullanıcı tarafından eklenebilir/silinebilir olması
-- [ ] `add_channel(name, direction, color)` + D-Bus imzası
-- [ ] `RemoveChannel` giriş kanallarını kabul eder
-- [ ] Kanal ekleme penceresi: yön seçimi + renk + (giriş için) cihaz
-- [ ] Şerit menüsünde "Kanalı sil"
-- [ ] `sonar-cli channel add|remove`
-- [ ] Testler: son kanal koruması, varsayılan kanal devri, ChatMix temizliği
+- [x] `remove_channel()` yerleşik koruması kalkar, yeni kısıtlar eklenir
+- [x] Kanal silinince kurallar / profiller / ChatMix / yönlendirme kaydı temizlenir
+      (favoriler Faz 16'da eklenecek, orada bağlanacak)
+- [x] `MicChain`'e `color`, kullanıcı tarafından eklenebilir/silinebilir olması
+- [x] `add_channel(name, direction, color)` + D-Bus imzası
+- [x] `RemoveChannel` giriş kanallarını kabul eder
+- [x] Kanal ekleme penceresi: yön seçimi (renk ve cihaz seçici Faz 15'e ertelendi —
+      ikisi de yeni popup altyapısını bekliyor)
+- [x] Şerit menüsünde "Kanalı sil"
+- [x] `sonar-cli channel add|remove`
+- [x] Testler: son kanal koruması, varsayılan kanal devri, ChatMix temizliği
 
 ---
 
-## Doğrulama
+## Doğrulama (2026-09-01, gerçek grafta)
 
+- `sonar-cli channel add Podcast --direction input` → `sonar_podcast` sanal giriş
+  cihazı olarak listede belirdi ✅
+- `sonar-cli channel remove podcast` ve `remove aux` → ikisi de silindi, graf 4
+  sink'e düştü ✅
+- Aux geri eklendi, 440 Hz test sinyali yine **-13.98 dBFS** — kanal ekleyip silmek
+  sinyal yolunu bozmuyor ✅
 - Aux silinir → graf yeniden kurulur, kalan kanallar çalışmaya devam eder
 - Media (varsayılan kanal) silinir → varsayılan başka kanala geçer, yeni açılan
   uygulama oraya düşer
@@ -101,4 +109,23 @@ sanal cihazın üretildiğidir:
 
 ## Yol boyunca yakalananlar
 
-_(faz sırasında doldurulacak)_
+**Giriş kanalları artık mikserde şerit olarak görünüyor.** Eskiden `channel_rows()`
+`id != "mic"` diye eleyip yalnızca birincil mikrofonu gösteriyordu; kullanıcı kendi
+giriş kanalını ekleyebildiğine göre bu tutmuyordu. Yeni kural: kendi DSP zinciri olan
+her giriş kanalı bir şerittir, `share_chain_with_mic` olanlar (başka bir zincirin
+kopyası) değildir. Yan etkisi: `Stream Mic` de artık ayrı bir şerit.
+
+**"Kendi zincirine sahip son mikrofon" korunuyor.** `confgen._primary_mic()`,
+`share_chain_with_mic` olan zincirlerin besleneceği bir kaynak arıyor ve bulamazsa
+`ValueError` yükseltiyor — yani conf üretimi patlıyordu. `_remove_input_channel()`
+bu durumu önceden yakalayıp anlaşılır bir hata döndürüyor.
+
+**Aynı id iki listede olamaz.** `add_channel` çakışmayı `config.channel(id)` yerine
+`config.profile_targets()` üzerinden yokluyor: profiller kanal, mikrofon ve bus'lar
+için tek bir isim uzayında tutuluyor, "Podcast" adlı hem giriş hem çıkış kanalı
+profilleri birbirine karıştırırdı.
+
+**ChatMix silinen kanalı gösteriyorsa kapanıyor.** `chatmix.left_channel` virgüllü
+bir liste; silinen kanal listeden düşüyor, taraflardan biri boşalırsa ChatMix
+tamamen kapatılıyor. Aksi hâlde `chatmix_gains()` var olmayan bir kanala kazanç
+yazmaya çalışıyordu.

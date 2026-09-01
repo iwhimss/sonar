@@ -65,6 +65,7 @@ from sonar.core.model import (
     EqBandType,
     FilterStage,
     MatchKey,
+    MicChain,
     Profile,
     RoutingRule,
     SonarConfig,
@@ -536,33 +537,112 @@ class SonarApi:
         self._channel(channel).stream_source = bool(enabled)
         self._structural({"kind": "channel_stream_source", "channel": channel})
 
-    def add_channel(self, name: str, color: str = "#8B95A5") -> str:
+    def add_channel(
+        self, name: str, direction: str = "output", color: str = "#8B95A5"
+    ) -> str:
+        """Yeni bir kanal ekler ve id'sini döndürür. **Yapısal**.
+
+        `direction` kanalın hangi sanal cihazı üreteceğini belirler:
+
+        * `"output"` → uygulamaların çaldığı bir sink (`Sonar <Ad> — Virtual Output`)
+          artı DSP ve iki bus gönderisi. Model karşılığı `Channel`.
+        * `"input"` → fiziksel bir mikrofonu işleyip yayınlayan bir kaynak
+          (`Sonar <Ad> — Virtual Input`). Model karşılığı `MicChain`.
+
+        İkisi ayrı sınıflar olduğu için yön modelde ayrı bir alan olarak tutulmuyor;
+        hangi listede durduğu yönü zaten söylüyor.
+        """
         name = str(name).strip()
         if not name:
             raise ApiError("invalid_name", "kanal adı boş olamaz")
+        if direction not in ("output", "input"):
+            raise ApiError("invalid_direction", f"yön 'output' veya 'input' olmalı: {direction}")
+
         channel_id = slugify(name)
-        if self.config.channel(channel_id) is not None:
+        if channel_id in self.config.profile_targets():
             raise ApiError("duplicate_channel", f"bu kanal zaten var: {channel_id}")
-        self.config.channels.append(
-            Channel(
-                id=channel_id,
-                name=name,
-                color=str(color),
-                order=self.config.next_channel_order(),
-                builtin=False,
+
+        if direction == "output":
+            self.config.channels.append(
+                Channel(
+                    id=channel_id,
+                    name=name,
+                    color=str(color),
+                    order=self.config.next_channel_order(),
+                )
             )
-        )
+        else:
+            self.config.mic_chains.append(
+                MicChain(
+                    id=channel_id,
+                    name=name,
+                    color=str(color),
+                    order=self.config.next_mic_order(),
+                )
+            )
         self.store.ensure_default_profiles(self.config)
-        self._structural({"kind": "channel_added", "channel": channel_id})
+        self._structural(
+            {"kind": "channel_added", "channel": channel_id, "direction": direction}
+        )
         return channel_id
 
     def remove_channel(self, channel: str) -> None:
-        target = self._channel(channel)
-        if target.builtin:
-            raise ApiError("channel_protected", f"yerleşik kanal silinemez: {channel}")
-        self.config.channels = [c for c in self.config.channels if c.id != channel]
+        """Bir çıkış veya giriş kanalını siler. **Yapısal**.
+
+        Yerleşik koruması yok — kullanıcı Aux'u da Media'yı da silebilir. Yalnızca
+        grafı tutarsız bırakacak durumlar engellenir ve kanala bağlı her şey
+        (kurallar, profiller, favoriler, ChatMix tarafı, çalan akışlar) temizlenir.
+        """
+        if self.config.channel(channel) is not None:
+            self._remove_output_channel(channel)
+        elif self.config.mic(channel) is not None:
+            self._remove_input_channel(channel)
+        else:
+            raise ApiError("unknown_channel", f"böyle bir kanal yok: {channel}")
+
         self.profiles.pop(channel, None)
+        self._dirty_profiles.discard(channel)
+        self.store.delete_target(channel)
         self._structural({"kind": "channel_removed", "channel": channel})
+
+    def _remove_output_channel(self, channel: str) -> None:
+        if len(self.config.channels) <= 1:
+            raise ApiError("last_channel", "en az bir çıkış kanalı kalmalı")
+
+        self.config.channels = [c for c in self.config.channels if c.id != channel]
+        self.config.rules = [r for r in self.config.rules if r.channel_id != channel]
+
+        # Varsayılan kanal silindiyse başka birine devret, yoksa yeni açılan her
+        # uygulama var olmayan bir kanala yönlendirilmeye çalışılır.
+        if self.config.settings.default_channel == channel:
+            self.config.settings.default_channel = self.config.ordered_channels()[0].id
+
+        chatmix = self.config.chatmix
+        chatmix.left_channel = _without(chatmix.left_channel, channel)
+        chatmix.right_channel = _without(chatmix.right_channel, channel)
+        if not chatmix.left_channel or not chatmix.right_channel:
+            chatmix.enabled = False
+
+        # O kanalda çalan akışlar boşta kalmasın.
+        for stream_id, target in list(self.router.decided.items()):
+            if target == channel:
+                self.router.decided.pop(stream_id, None)
+
+    def _remove_input_channel(self, chain: str) -> None:
+        if len(self.config.mic_chains) <= 1:
+            raise ApiError("last_channel", "en az bir giriş kanalı kalmalı")
+        mic = self.config.mic(chain)
+        assert mic is not None
+        if not mic.share_chain_with_mic and not any(
+            m.id != chain and not m.share_chain_with_mic for m in self.config.mic_chains
+        ):
+            # Kendi DSP'si olan tek zinciri silmek, ondan beslenen zincirleri
+            # kaynaksız bırakır (`confgen._primary_mic` hata yükseltir).
+            raise ApiError(
+                "mic_chain_needed",
+                "kendi zincirine sahip son mikrofon silinemez; önce diğerlerini bağımsızlaştırın",
+            )
+        self.config.mic_chains = [m for m in self.config.mic_chains if m.id != chain]
 
     # ------------------------------------------------------------------ yönlendirme
 
@@ -862,6 +942,11 @@ class SonarApi:
                 holder.active_profile = name
                 break
         self._dirty_config = True
+
+
+def _without(value: str, channel: str) -> str:
+    """ChatMix'in virgüllü kanal listesinden bir kanalı çıkarır."""
+    return ",".join(part for part in value.split(",") if part.strip() and part.strip() != channel)
 
 
 def _stream_field(stream, key: MatchKey) -> str:

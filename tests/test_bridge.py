@@ -43,7 +43,7 @@ def make_state(**overrides) -> dict:
 
 def test_channel_rows_are_in_mixer_order():
     rows = channel_rows(make_state())
-    assert [r["id"] for r in rows] == ["game", "chat", "media", "aux", "mic"]
+    assert [r["id"] for r in rows] == ["game", "chat", "media", "aux", "mic", "stream_mic"]
 
 
 def test_mic_row_carries_monitor_as_the_personal_side():
@@ -53,9 +53,13 @@ def test_mic_row_carries_monitor_as_the_personal_side():
     assert row["streamMuted"] is False
 
 
-def test_stream_mic_is_not_a_strip():
-    """`stream_mic` mikserde ayrı bir şerit değil; FX sayfasından yönetiliyor."""
-    assert "stream_mic" not in [r["id"] for r in channel_rows(make_state())]
+def test_a_shared_mic_chain_is_not_a_strip():
+    """Kendi DSP'si olmayan bir giriş kanalı başka bir zincirin kopyası; ayrı şerit değil."""
+    state = make_state()
+    for mic in state["config"]["mic_chains"]:
+        if mic["id"] == "stream_mic":
+            mic["share_chain_with_mic"] = True
+    assert "stream_mic" not in [r["id"] for r in channel_rows(state)]
 
 
 def test_profiles_reach_the_row():
@@ -130,7 +134,7 @@ def test_model_exposes_keys_as_roles(qt_app):
     model.replace(channel_rows(make_state()))
     roles = {bytes(v).decode() for v in model.roleNames().values()}
     assert {"id", "name", "color", "personalVolume"} <= roles
-    assert model.rowCount() == 5
+    assert model.rowCount() == 6
     assert model.get(0)["id"] == "game"
 
 
@@ -192,7 +196,7 @@ def bridge(qt_app):
 
 
 def test_bridge_fills_its_models(bridge):
-    assert bridge.channels.rowCount() == 5
+    assert bridge.channels.rowCount() == 6
     assert bridge.sinks.rowCount() == 1  # yalnızca "sistem varsayılanı"
     assert bridge.chatmix == 50.0
 
@@ -282,7 +286,7 @@ def test_start_connects(qt_app):
     obj = SonarBridge(client)
     obj.start()
     assert obj.connected is True
-    assert obj.channels.rowCount() == 5
+    assert obj.channels.rowCount() == 6
 
 
 def test_start_without_a_daemon_stays_disconnected(qt_app):

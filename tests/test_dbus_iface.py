@@ -114,7 +114,7 @@ def test_eq_band_rejects_garbage_numbers(iface):
 
 
 def test_add_channel_returns_the_new_id(iface):
-    payload = _call(iface, "AddChannel", "Voice Chat", "")
+    payload = _call(iface, "AddChannel", "Voice Chat", "output", "")
     assert payload["result"] == "voice_chat"
 
 

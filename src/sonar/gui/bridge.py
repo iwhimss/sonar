@@ -90,16 +90,16 @@ def channel_rows(state: dict) -> list[dict]:
                 "kind": "channel",
             }
         )
-    for mic in config.get("mic_chains", []):
-        if mic["id"] != "mic":
-            continue  # yayın mikrofonu ayrı bir şerit değil; FX sayfasında yönetiliyor
+    for mic in sorted(config.get("mic_chains", []), key=lambda m: (m.get("order", 0), m["id"])):
+        if mic.get("share_chain_with_mic"):
+            continue  # kendi DSP'si yok; başka bir zincirin kopyası, ayrı şerit değil
         rows.append(
             {
                 "id": mic["id"],
                 "name": mic["name"],
-                "color": "#F2A73B",
-                "icon": "mic",
-                "builtin": True,
+                "color": mic.get("color", "#F2A73B"),
+                "icon": mic.get("icon", "mic"),
+                "builtin": bool(mic.get("builtin")),
                 "activeProfile": mic.get("active_profile", "Default"),
                 "profiles": profiles.get(mic["id"], []),
                 "personalVolume": mic["monitor_volume"],
@@ -691,9 +691,9 @@ class SonarBridge(QObject):
             self._streams.update_row(row, {"channel": channel})
         self._call("MoveStream", stream_id, channel, remember)
 
-    @Slot(str, str, result=str)
-    def addChannel(self, name: str, color: str) -> str:
-        return self._call("AddChannel", name, color) or ""
+    @Slot(str, str, str, result=str)
+    def addChannel(self, name: str, direction: str, color: str) -> str:
+        return self._call("AddChannel", name, direction, color) or ""
 
     @Slot(str)
     def removeChannel(self, channel: str) -> None:

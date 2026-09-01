@@ -249,6 +249,17 @@ def _cmd_device(client: Client, args) -> int:
     return 0
 
 
+def _cmd_channel(client: Client, args) -> int:
+    if args.action == "add":
+        new_id = client.call("AddChannel", args.name, args.direction, args.color)
+        kind = "giriş" if args.direction == "input" else "çıkış"
+        print(f"{kind} kanalı eklendi: {new_id}  (graf yeniden kuruluyor)")
+    else:
+        client.call("RemoveChannel", args.name)
+        print(f"kanal silindi: {args.name}  (graf yeniden kuruluyor)")
+    return 0
+
+
 def _cmd_obs(client: Client, args) -> int:
     """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlaması."""
     enabled = args.state == "on"
@@ -392,6 +403,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("device")
     p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
 
+    p = sub.add_parser("channel", help="kanal ekle veya sil")
+    p.add_argument("action", choices=("add", "remove"))
+    p.add_argument("name", help="ekleme: görünen ad · silme: kanal id'si")
+    p.add_argument(
+        "--direction", choices=("output", "input"), default="output", help="yalnızca ekleme"
+    )
+    p.add_argument("--color", default="#8B95A5")
+
     p = sub.add_parser("obs", help="kanal için OBS'e ayrı sanal giriş cihazı ver")
     p.add_argument("channel")
     p.add_argument("state", choices=("on", "off"))
@@ -434,6 +453,7 @@ _COMMANDS = {
     "devices": _cmd_devices,
     "device": _cmd_device,
     "obs": _cmd_obs,
+    "channel": _cmd_channel,
     "presets": _cmd_presets,
     "import": _cmd_import,
     "export": _cmd_export,

@@ -273,14 +273,22 @@ class SonarDBusInterface(QObject):
         """Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**."""
         return reply(lambda: self.api.set_channel_stream_source(channel, enabled))
 
-    @Slot(str, str, result=str)
-    def AddChannel(self, name: str, color: str) -> str:
-        """Yeni kanal ekler ve id'sini döndürür. **Yapısal**."""
-        return reply(lambda: self.api.add_channel(name, color or "#8B95A5"))
+    @Slot(str, str, str, result=str)
+    def AddChannel(self, name: str, direction: str, color: str) -> str:
+        """Yeni kanal ekler ve id'sini döndürür. **Yapısal**.
+
+        `direction`: `"output"` (uygulamaların çaldığı sanal çıkış) veya `"input"`
+        (işlenmiş bir mikrofon kaynağı).
+        """
+        return reply(
+            lambda: self.api.add_channel(
+                name, direction or "output", color or "#8B95A5"
+            )
+        )
 
     @Slot(str, result=str)
     def RemoveChannel(self, channel: str) -> str:
-        """Kanalı siler; yerleşik kanallar silinemez. **Yapısal**."""
+        """Çıkış veya giriş kanalını siler. **Yapısal**."""
         return reply(lambda: self.api.remove_channel(channel))
 
     # ------------------------------------------------------------------ yönlendirme

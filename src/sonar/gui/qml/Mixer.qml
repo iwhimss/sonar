@@ -42,7 +42,7 @@ Item {
             SonarButton {
                 anchors.centerIn: parent
                 text: "＋  Kanal ekle"
-                onClicked: addDialog.visible = true
+                onClicked: addDialog.open()
             }
         }
     }
@@ -171,9 +171,9 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "\"" + removeDialog.channelName + "\" silinecek. Bu kanala yönlenen "
-                    + "uygulamalar varsayılan kanala düşer ve ses grafı yeniden kurulur "
-                    + "(yaklaşık 200 ms sessizlik)."
+                text: "\"" + removeDialog.channelName + "\" ve tüm profilleri silinecek. "
+                    + "Bu kanala yönlenen kurallar kalkar, uygulamaları varsayılan kanala "
+                    + "düşer. Ses grafı yeniden kurulur (yaklaşık 200 ms sessizlik)."
                 color: Theme.textDim
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -200,11 +200,17 @@ Item {
         visible: false
         z: 300
         anchors.centerIn: parent
-        width: 320
-        height: 170
+        width: 380
+        height: 250
         color: Theme.raised
         border.width: 1
         border.color: Theme.borderStrong
+
+        // "output" = uygulamaların çaldığı sanal çıkış, "input" = işlenmiş mikrofon.
+        property string direction: "output"
+
+        function open() { direction = "output"; nameInput.text = ""; visible = true
+                          nameInput.forceActiveFocus() }
 
         Column {
             anchors.fill: parent
@@ -212,6 +218,7 @@ Item {
             spacing: Theme.s3
 
             SonarSectionLabel { text: "Yeni kanal" }
+
             Rectangle {
                 width: parent.width
                 height: 28
@@ -227,8 +234,63 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBody
                     selectByMouse: true
+                    Keys.onReturnPressed: addDialog.commit()
                 }
             }
+
+            SonarSectionLabel { text: "Kanal türü" }
+            Row {
+                spacing: Theme.s2
+                width: parent.width
+                Repeater {
+                    model: [
+                        { value: "output", label: "Çıkış",
+                          hint: "Uygulamaların ses çaldığı sanal çıkış cihazı" },
+                        { value: "input", label: "Giriş",
+                          hint: "İşlenmiş bir mikrofon — sanal giriş cihazı" }
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        width: (addDialog.width - Theme.s4 * 2 - Theme.s2) / 2
+                        height: 52
+                        readonly property bool picked: addDialog.direction === modelData.value
+                        color: picked ? Qt.rgba(0.49, 0.42, 0.94, 0.15)
+                             : (kindMouse.containsMouse ? Theme.surface : Theme.sunken)
+                        border.width: 1
+                        border.color: picked ? Theme.master : Theme.border
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: Theme.s2
+                            spacing: 2
+                            Text {
+                                text: parent.parent.modelData.label
+                                color: parent.parent.picked ? Theme.master : Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBody
+                                font.bold: true
+                                renderType: Text.NativeRendering
+                            }
+                            Text {
+                                width: parent.width
+                                text: parent.parent.modelData.hint
+                                wrapMode: Text.WordWrap
+                                color: Theme.textFaint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSmall
+                                renderType: Text.NativeRendering
+                            }
+                        }
+                        MouseArea {
+                            id: kindMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: addDialog.direction = parent.modelData.value
+                        }
+                    }
+                }
+            }
+
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
@@ -238,23 +300,27 @@ Item {
                 font.pixelSize: Theme.fontSmall
                 renderType: Text.NativeRendering
             }
+
             Row {
                 spacing: Theme.s2
                 SonarButton {
                     text: "Ekle"
                     variant: "accent"
-                    onClicked: {
-                        if (nameInput.text.trim().length > 0)
-                            root.bridge.addChannel(nameInput.text.trim(), "#8B95A5")
-                        nameInput.text = ""
-                        addDialog.visible = false
-                    }
+                    onClicked: addDialog.commit()
                 }
                 SonarButton {
                     text: "Vazgeç"
                     onClicked: { nameInput.text = ""; addDialog.visible = false }
                 }
             }
+        }
+
+        function commit() {
+            const name = nameInput.text.trim()
+            if (name.length > 0)
+                root.bridge.addChannel(name, direction, "#8B95A5")
+            nameInput.text = ""
+            visible = false
         }
     }
 }

@@ -256,8 +256,12 @@ class MasterBus:
 class MicChain:
     """Bir mikrofon işleme zinciri ve ondan doğan sanal kaynak."""
 
-    id: str  # "mic" veya "stream_mic"
+    id: str  # ilk kurulumda "mic" ve "stream_mic"; kullanıcı yenisini ekleyebilir
     name: str
+    color: str = "#F2A73B"
+    icon: str = "mic"
+    order: int = 0
+    builtin: bool = False
     source_device: str = ""  # boş = sistem varsayılanı
     active_profile: str = "Default"
     volume: float = 1.0
@@ -382,6 +386,12 @@ class SonarConfig:
 
     def ordered_channels(self) -> list[Channel]:
         return sorted(self.channels, key=lambda c: (c.order, c.id))
+
+    def ordered_mics(self) -> list[MicChain]:
+        return sorted(self.mic_chains, key=lambda m: (m.order, m.id))
+
+    def next_mic_order(self) -> int:
+        return max((m.order for m in self.mic_chains), default=-1) + 1
 
     def profile_targets(self) -> list[str]:
         """Profil tutabilen her şeyin kimliği — kanallar, mikrofonlar ve bus'lar."""
@@ -513,8 +523,8 @@ def default_config() -> SonarConfig:
         MasterBus(id=BusId.STREAM, name="Stream Mix"),
     ]
     mics = [
-        MicChain(id="mic", name="Mic"),
-        MicChain(id="stream_mic", name="Stream Mic", share_chain_with_mic=False),
+        MicChain(id="mic", name="Mic", order=0, builtin=True),
+        MicChain(id="stream_mic", name="Stream Mic", color="#C77DFF", order=1, builtin=True),
     ]
     rules = [
         RoutingRule(match_key=key, pattern=pattern, channel_id=channel, is_regex=is_regex)

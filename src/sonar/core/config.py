@@ -243,6 +243,19 @@ class ConfigStore:
         source.unlink()
         return True
 
+    def delete_target(self, target: str) -> None:
+        """Bir hedefin tüm profillerini siler. Kanal silinince çağrılır."""
+        directory = self.paths.profile_dir(target)
+        if not directory.is_dir():
+            return
+        for path in directory.glob("*.json"):
+            path.unlink(missing_ok=True)
+        try:
+            directory.rmdir()
+        except OSError:
+            # İçinde tanımadığımız bir dosya kalmış: dizini bırak, profilleri sildik.
+            log.warning("profil dizini boşaltılamadı: %s", directory)
+
     def ensure_default_profiles(self, config: SonarConfig) -> None:
         """Profili olmayan her hedef için bir `Default` üretir."""
         band_count = config.settings.default_band_count

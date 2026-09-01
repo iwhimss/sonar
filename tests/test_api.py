@@ -196,7 +196,6 @@ def test_mic_monitor_is_structural_because_it_adds_a_loopback(api):
         ("list_profiles", ("yok",), "unknown_target"),
         ("add_channel", ("",), "invalid_name"),
         ("add_channel", ("Game",), "duplicate_channel"),
-        ("remove_channel", ("game",), "channel_protected"),
         ("remove_channel", ("yok",), "unknown_channel"),
         ("set_rule", ("hayali", "x", "game"), "unknown_match_key"),
         ("set_rule", ("binary", "  ", "game"), "invalid_pattern"),
@@ -289,7 +288,7 @@ def test_favorite_slot_persists(api, config_store):
 
 
 def test_added_channel_gets_an_id_and_default_profile(api, config_store):
-    channel_id = api.add_channel("Voice Chat", "#ff0000")
+    channel_id = api.add_channel("Voice Chat", "output", "#ff0000")
     assert channel_id == "voice_chat"
     assert api.config.channel("voice_chat").builtin is False
     assert config_store.paths.profile_file("voice_chat", "Default").exists()
@@ -798,3 +797,62 @@ def test_failed_save_tells_the_user(config_store, monkeypatch):
     api.set_channel_volume("game", "personal", 0.5)
     failure = next(d for d in seen if d["kind"] == "save_failed")
     assert "kaybolacak" in failure["message"]
+
+
+# --------------------------------------------------------------------------- kanal silme
+
+
+def test_builtin_channels_can_be_removed(api, config_store):
+    """Kullanıcı Aux'u kullanmıyorsa silebilmeli — yerleşik koruması kaldırıldı."""
+    api.remove_channel("aux")
+    assert api.config.channel("aux") is None
+    assert not config_store.paths.profile_file("aux", "Default").exists()
+
+
+def test_removing_a_channel_drops_its_rules(api):
+    api.set_rule("binary", "oyun.exe", "aux")
+    api.remove_channel("aux")
+    assert all(r.channel_id != "aux" for r in api.config.rules)
+
+
+def test_removing_the_default_channel_hands_it_over(api):
+    api.set_default_channel("media")
+    api.remove_channel("media")
+    assert api.config.settings.default_channel in {c.id for c in api.config.channels}
+
+
+def test_removing_a_chatmix_side_disables_chatmix(api):
+    assert api.config.chatmix.enabled is True
+    api.remove_channel("game")
+    assert api.config.chatmix.enabled is False
+
+
+def test_the_last_output_channel_cannot_be_removed(api):
+    for channel in ("aux", "media", "chat"):
+        api.remove_channel(channel)
+    with pytest.raises(ApiError) as error:
+        api.remove_channel("game")
+    assert error.value.code == "last_channel"
+
+
+def test_an_input_channel_can_be_added_and_removed(api, config_store):
+    chain_id = api.add_channel("Podcast", "input", "#00ff00")
+    assert chain_id == "podcast"
+    assert api.config.mic("podcast") is not None
+    assert config_store.paths.profile_file("podcast", "Default").exists()
+    api.remove_channel("podcast")
+    assert api.config.mic("podcast") is None
+
+
+def test_input_and_output_channels_share_one_namespace(api):
+    """Aynı id iki listede birden olamaz: profil hedefleri tek bir isim uzayı."""
+    api.add_channel("Podcast", "input")
+    with pytest.raises(ApiError) as error:
+        api.add_channel("Podcast", "output")
+    assert error.value.code == "duplicate_channel"
+
+
+def test_direction_must_be_known(api):
+    with pytest.raises(ApiError) as error:
+        api.add_channel("Bir Şey", "sideways")
+    assert error.value.code == "invalid_direction"

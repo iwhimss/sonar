@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 13 — Kanal yönetimi
+**Aktif faz:** Faz 14 — Envanter doğruluğu
 **Son güncelleme:** 2026-09-01
-**Sonraki adım:** Faz 13 — her kanalın silinebilmesi, giriş/çıkış seçerek kanal
-eklenebilmesi.
+**Sonraki adım:** Faz 14 — kapanan uygulamanın listede kalması (pw-dump silme
+olaylarının hiç işlenmemesi) ve Apps kutusunun taşması.
 
 > **Test turu 1 (2026-09-01).** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk kez
 > gerçek kullanımda denedi. Çıkan eksikler ve hatalar Faz 12–17 olarak planlandı.
@@ -31,8 +31,8 @@ eklenebilmesi.
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟢 Tamamlandı |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟢 Tamamlandı |
 | 12 | [Sanal cihaz düzeni](12-devices.md) | 🟢 Tamamlandı |
-| 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | 🟡 Sıradaki |
-| 14 | [Envanter doğruluğu](14-inventory.md) | ⚪ Bekliyor |
+| 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | 🟢 Tamamlandı |
+| 14 | [Envanter doğruluğu](14-inventory.md) | 🟡 Sıradaki |
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | ⚪ Bekliyor |
 | 16 | [Profil deneyimi](16-profiles.md) | ⚪ Bekliyor |
 | 17 | [Doğrulama ve dokümantasyon](17-verify.md) | ⚪ Bekliyor |
@@ -41,7 +41,7 @@ eklenebilmesi.
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 727 test geçiyor, `ruff` temiz.
+**Test durumu:** 734 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
