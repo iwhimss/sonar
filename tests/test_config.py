@@ -46,7 +46,7 @@ def test_config_file_is_valid_toml_and_hand_editable(config_store: ConfigStore):
     text = config_store.paths.config_file.read_text(encoding="utf-8")
     assert text.startswith("# Sonar yapılandırması")
     raw = tomllib.loads(text)
-    assert raw["schema_version"] == 1
+    assert raw["schema_version"] == 2
     assert raw["channels"][0]["id"] == "game"
 
 
@@ -136,7 +136,6 @@ def test_profile_roundtrip(config_store: ConfigStore):
     profile.eq.bands[3].gain_db = 5.5
     profile.filter(FilterStage.GATE).enabled = True
     profile.filter(FilterStage.GATE).params["threshold_db"] = -35.0
-    profile.favorite_slot = 2
 
     config_store.save_profile("game", profile)
     assert config_store.load_profile("game", "CS2") == profile
@@ -238,3 +237,40 @@ def test_migrate_rejects_garbage_version():
 
     with pytest.raises(SerdeError):
         migrate({"schema_version": "abc"})
+
+
+# --------------------------------------------------------------------------- şema 2 göçü
+
+
+def test_favorites_move_from_profile_files_to_the_config(config_store: ConfigStore, tmp_path):
+    """Şema 1'de favorilik profil dosyasında `favorite_slot` (1–9) olarak duruyordu."""
+    import json
+
+    config_store.save(default_config())
+    for name, slot in (("CS2", 3), ("Arc", 1)):
+        config_store.save_profile("game", default_profile(name))
+        path = config_store.paths.profile_file("game", name)
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw["favorite_slot"] = slot
+        path.write_text(json.dumps(raw), encoding="utf-8")
+
+    # Yapılandırmayı şema 1'e geri düşür ki göç tetiklensin.
+    config_path = config_store.paths.config_file
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace("schema_version = 2", "schema_version = 1"),
+        encoding="utf-8",
+    )
+
+    config = config_store.load()
+    assert config.favorites["game"] == ["Arc", "CS2"], "eski slot numarası sırayı belirler"
+    assert config.schema_version == 2
+
+
+def test_a_config_without_old_favorites_migrates_to_an_empty_list(config_store: ConfigStore):
+    config_store.save(default_config())
+    config_path = config_store.paths.config_file
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace("schema_version = 2", "schema_version = 1"),
+        encoding="utf-8",
+    )
+    assert config_store.load().favorites == {}

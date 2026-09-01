@@ -165,9 +165,32 @@ class ConfigStore:
         except (SerdeError, TypeError, ValueError) as exc:
             return self._recover(path, f"şemaya uymuyor: {exc}")
 
+        if config.schema_version < 2:
+            self._migrate_favorites(config)
         if config.schema_version != SCHEMA_VERSION:
             config.schema_version = SCHEMA_VERSION
         return config
+
+    def _migrate_favorites(self, config: SonarConfig) -> None:
+        """Şema 1 → 2: favoriler profil dosyalarından yapılandırmaya taşınır.
+
+        Şema 1'de favorilik profil dosyasında `favorite_slot` (1–9) olarak duruyordu;
+        şema 2'de `config.favorites[hedef]` sıralı bir ad listesi ve sayı sınırı yok.
+        Eski slot numaraları sıralamayı belirler.
+        """
+        for target in config.profile_targets():
+            slots: list[tuple[int, str]] = []
+            for name in self.list_profiles(target):
+                path = self.paths.profile_file(target, name)
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                slot = raw.get("favorite_slot")
+                if isinstance(slot, int) and slot > 0:
+                    slots.append((slot, name))
+            if slots:
+                config.favorites[target] = [name for _, name in sorted(slots)]
 
     def save(self, config: SonarConfig) -> None:
         """Yapılandırmayı atomik olarak yazar."""

@@ -110,7 +110,7 @@ okunmalı.**
 
 - [x] `ChannelFx.qml` — `stageOn`, `paramOf`
 - [x] `EqPanel.qml`
-- [ ] `ChannelStrip.qml` — `chatmixGain` ✅ (zaten doğru)
+- [x] `ChannelStrip.qml` — `chatmixGain` (zaten doğruydu), `apps`, `level`
 - [x] `MasterStrip.qml`
 - [x] `Mixer.qml`
 

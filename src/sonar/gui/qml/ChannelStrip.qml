@@ -24,6 +24,31 @@ Item {
     readonly property var apps:
         bridge ? (bridge.revision, bridge.streamsFor(channel.id)) : []
 
+    readonly property var favorites:
+        bridge ? (bridge.revision, bridge.favoritesOf(channel.id)) : []
+
+    /* Profil menüsü: önce favoriler, sonra ayraç, sonra tümü. Gömülü presetler
+       kilit işaretiyle ayrılıyor (salt okunurlar). */
+    readonly property var profileOptions: {
+        const all = (channel.profiles || []).map(function (p) {
+            return typeof p === "string"
+                ? { value: p, label: p, builtin: false }
+                : { value: p.name, label: p.name, builtin: p.builtin === true }
+        })
+        const out = []
+        if (favorites.length > 0) {
+            out.push({ value: "", label: "Favoriler", header: true })
+            for (const name of favorites) {
+                const hit = all.find(function (o) { return o.value === name })
+                if (hit) out.push({ value: hit.value, label: "★ " + hit.label })
+            }
+            out.push({ value: "", label: "Tüm profiller", header: true })
+        }
+        for (const option of all)
+            out.push({ value: option.value, label: (option.builtin ? "🔒 " : "") + option.label })
+        return out
+    }
+
     /* Anlık seviye. Ayrı bir sayaca (`levelsRevision`) bağlı: `revision` saniyede 20
        kez artsaydı şeridin tamamı yeniden değerlendirilirdi. */
     readonly property var level:
@@ -106,12 +131,9 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 2
                 accent: root.accent
-                model: (root.channel.profiles || []).map(function (p) {
-                    // Gömülü presetler kilit işaretiyle ayrılıyor (salt okunurlar).
-                    return typeof p === "string"
-                        ? { value: p, label: p }
-                        : { value: p.name, label: (p.builtin ? "🔒 " : "") + p.name }
-                })
+                // Şerit dar; liste bu yüzden kontrolden geniş açılıyor.
+                popupWidth: 240
+                model: root.profileOptions
                 currentValue: root.channel.activeProfile
                 onActivated: (value) => root.bridge.loadProfile(root.channel.id, value)
             }

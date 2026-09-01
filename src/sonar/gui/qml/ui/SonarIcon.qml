@@ -18,7 +18,9 @@ Text {
         "mute":     "✕",
         "plus":     "＋",
         "close":    "✕",
-        "warn":     "⚠"
+        "warn":     "⚠",
+        "star":     "☆",
+        "star-on":  "★"
     })
     text: glyphs[name] !== undefined ? glyphs[name] : "■"
     color: Theme.textDim

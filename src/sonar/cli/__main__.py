@@ -249,6 +249,24 @@ def _cmd_device(client: Client, args) -> int:
     return 0
 
 
+def _cmd_new(client: Client, args) -> int:
+    client.call("NewProfile", args.target, args.name)
+    print(f"{args.target}: yeni düz profil '{args.name}' oluşturuldu ve etkin")
+    return 0
+
+
+def _cmd_favorite(client: Client, args) -> int:
+    if args.action == "list":
+        for name in client.call("ListFavorites", args.target) or []:
+            print(name)
+        return 0
+    adding = args.action == "add"
+    client.call("SetProfileFavorite", args.target, args.name, adding)
+    what = "favorilere eklendi" if adding else "favorilerden çıkarıldı"
+    print(f"{args.target}: '{args.name}' {what}")
+    return 0
+
+
 def _cmd_channel(client: Client, args) -> int:
     if args.action == "add":
         new_id = client.call("AddChannel", args.name, args.direction, args.color)
@@ -403,6 +421,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("device")
     p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
 
+    p = sub.add_parser("new", help="sıfırdan düz bir profil oluştur")
+    p.add_argument("target")
+    p.add_argument("name")
+
+    p = sub.add_parser("favorite", help="profilleri favorilere ekle/çıkar veya listele")
+    p.add_argument("action", choices=("add", "remove", "list"))
+    p.add_argument("target")
+    p.add_argument("name", nargs="?", default="")
+
     p = sub.add_parser("channel", help="kanal ekle veya sil")
     p.add_argument("action", choices=("add", "remove"))
     p.add_argument("name", help="ekleme: görünen ad · silme: kanal id'si")
@@ -454,6 +481,8 @@ _COMMANDS = {
     "device": _cmd_device,
     "obs": _cmd_obs,
     "channel": _cmd_channel,
+    "new": _cmd_new,
+    "favorite": _cmd_favorite,
     "presets": _cmd_presets,
     "import": _cmd_import,
     "export": _cmd_export,

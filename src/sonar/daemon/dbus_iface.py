@@ -241,12 +241,25 @@ class SonarDBusInterface(QObject):
         """Hedefin gömülü (salt okunur) preset adları."""
         return reply(lambda: self.api.builtin_names(target))
 
-    @Slot(str, str, int, result=str)
-    def SetProfileFavorite(self, target: str, name: str, slot: int) -> str:
-        """Profili bir favori slotuna atar (0 = kaldır)."""
-        return reply(lambda: self.api.set_profile_favorite(target, name, slot))
+    @Slot(str, str, bool, result=str)
+    def SetProfileFavorite(self, target: str, name: str, favorite: bool) -> str:
+        """Profili favorilere ekler veya çıkarır. Sayı sınırı yok."""
+        return reply(lambda: self.api.set_profile_favorite(target, name, favorite))
 
-    # ------------------------------------------------------------------ yapısal
+    @Slot(str, result=str)
+    def ListFavorites(self, target: str) -> str:
+        """Hedefin sıralı favori profilleri."""
+        return reply(lambda: self.api.list_favorites(target))
+
+    @Slot(str, "QStringList", result=str)
+    def ReorderFavorites(self, target: str, names: list) -> str:
+        """Favori sırasını yeniden yazar."""
+        return reply(lambda: self.api.reorder_favorites(target, [str(n) for n in names]))
+
+    @Slot(str, str, result=str)
+    def NewProfile(self, target: str, name: str) -> str:
+        """Sıfırdan düz bir profil oluşturur ve ona geçer."""
+        return reply(lambda: self.api.new_profile(target, name))
 
     @Slot(str, str, result=str)
     def SetBusDevice(self, bus: str, device: str) -> str:

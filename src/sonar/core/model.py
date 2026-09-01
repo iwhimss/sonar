@@ -40,7 +40,7 @@ __all__ = [
     "default_profile",
 ]
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: Varsayılan EQ bandlarının yayıldığı aralık. 31.25 Hz – 16 kHz tam 9 oktav olduğu için
 #: 10 bandda tam oktav aralıklı klasik grafik ekolayzer frekansları çıkar.
@@ -177,7 +177,6 @@ class Profile:
     name: str = "Default"
     eq: EqState = field(default_factory=EqState)
     filters: dict[FilterStage, FilterState] = field(default_factory=dict)
-    favorite_slot: int | None = None
 
     def filter(self, stage: FilterStage) -> FilterState:
         """Aşamanın durumunu döndürür; tanımlı değilse varsayılanı üretir."""
@@ -359,6 +358,9 @@ class SonarConfig:
     rules: list[RoutingRule] = field(default_factory=list)
     chatmix: ChatMixConfig = field(default_factory=ChatMixConfig)
     settings: Settings = field(default_factory=Settings)
+    #: Hedef → sıralı favori profil adları. Sıra listenin kendisi; sayı sınırı yok.
+    #: Şema 1'de bu bilgi profil dosyalarındaki `favorite_slot` alanında (9 slot) duruyordu.
+    favorites: dict[str, list[str]] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ arama yardımcıları
 
@@ -392,6 +394,9 @@ class SonarConfig:
 
     def next_mic_order(self) -> int:
         return max((m.order for m in self.mic_chains), default=-1) + 1
+
+    def favorites_of(self, target: str) -> list[str]:
+        return list(self.favorites.get(target, []))
 
     def profile_targets(self) -> list[str]:
         """Profil tutabilen her şeyin kimliği — kanallar, mikrofonlar ve bus'lar."""

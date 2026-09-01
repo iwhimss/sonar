@@ -278,10 +278,89 @@ def test_rename_follows_the_active_profile(api):
     assert api.profile("game").name == "Yeni"
 
 
-def test_favorite_slot_persists(api, config_store):
-    api.save_profile("game", "CS2")
-    api.set_profile_favorite("game", "CS2", 3)
-    assert config_store.load_profile("game", "CS2").favorite_slot == 3
+def test_favorites_are_unlimited_and_ordered(api):
+    """Eski 9 slotluk sınır kalktı; sıra listenin kendisi."""
+    for index in range(12):
+        api.new_profile("game", f"P{index}")
+        api.set_profile_favorite("game", f"P{index}", True)
+    assert api.list_favorites("game") == [f"P{i}" for i in range(12)]
+
+
+def test_favorites_can_be_reordered(api):
+    for name in ("A", "B", "C"):
+        api.new_profile("game", name)
+        api.set_profile_favorite("game", name, True)
+    api.reorder_favorites("game", ["C", "A", "B"])
+    assert api.list_favorites("game") == ["C", "A", "B"]
+
+
+def test_reordering_keeps_names_the_caller_forgot(api):
+    """Arayüz eski bir sırayla çağırsa bile favori kaybolmamalı."""
+    for name in ("A", "B", "C"):
+        api.new_profile("game", name)
+        api.set_profile_favorite("game", name, True)
+    api.reorder_favorites("game", ["C"])
+    assert set(api.list_favorites("game")) == {"A", "B", "C"}
+    assert api.list_favorites("game")[0] == "C"
+
+
+def test_removing_a_favorite(api):
+    api.new_profile("game", "CS2")
+    api.set_profile_favorite("game", "CS2", True)
+    api.set_profile_favorite("game", "CS2", False)
+    assert api.list_favorites("game") == []
+
+
+def test_deleting_a_profile_drops_it_from_favorites(api):
+    api.new_profile("game", "CS2")
+    api.set_profile_favorite("game", "CS2", True)
+    api.load_profile("game", "Default")
+    api.delete_profile("game", "CS2")
+    assert api.list_favorites("game") == []
+
+
+def test_renaming_a_profile_follows_it_into_favorites(api):
+    api.new_profile("game", "CS2")
+    api.set_profile_favorite("game", "CS2", True)
+    api.rename_profile("game", "CS2", "CS2 Rework")
+    assert api.list_favorites("game") == ["CS2 Rework"]
+
+
+# --------------------------------------------------------------------------- yeni profil
+
+
+def test_new_profile_starts_flat_and_becomes_active(api, config_store):
+    """Kullanıcı isteği: 'Yeni' isim sorsun ve sıfırdan düz bir profil açsın."""
+    api.set_eq_enabled("game", True)
+    api.set_eq_band("game", 2, "gain_db", 8.0)
+
+    api.new_profile("game", "CS2")
+
+    assert api.config.channel("game").active_profile == "CS2"
+    created = api.profile("game")
+    assert created.eq.enabled is False
+    assert all(band.gain_db == 0.0 for band in created.eq.bands)
+    assert config_store.paths.profile_file("game", "CS2").exists()
+
+
+def test_new_profile_does_not_disturb_the_previous_one(api, config_store):
+    api.save_profile("game", "Eski")
+    api.set_eq_enabled("game", True)
+    api.flush_save()
+
+    api.new_profile("game", "Yeni")
+
+    assert config_store.load_profile("game", "Eski").eq.enabled is True
+
+
+def test_new_profile_rejects_duplicates_and_presets(api):
+    api.new_profile("game", "CS2")
+    with pytest.raises(ApiError) as error:
+        api.new_profile("game", "CS2")
+    assert error.value.code == "duplicate_profile"
+    with pytest.raises(ApiError) as error:
+        api.new_profile("game", "Flat")
+    assert error.value.code == "profile_readonly"
 
 
 # --------------------------------------------------------------------------- kanallar

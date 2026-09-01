@@ -69,6 +69,7 @@ from sonar.core.model import (
     Profile,
     RoutingRule,
     SonarConfig,
+    default_profile,
     slugify,
 )
 from sonar.engine import confgen
@@ -189,6 +190,9 @@ class SonarApi:
             "conflicts": self.conflicts(),
             # Arayüz fader'ın altında "ChatMix yönetiyor" rozetini buna bakarak gösteriyor:
             # gösterilen değer taban seviye, duyulan ise taban × bu çarpan.
+            "favorites": {
+                target: self.list_favorites(target) for target in self.config.profile_targets()
+            },
             "chatmix_gains": chatmix_gains(self.config),
             "headsets": self.headsets(),
         }
@@ -422,6 +426,11 @@ class SonarApi:
             raise ApiError("profile_readonly", f"gömülü preset silinemez: {name}")
         if not self.store.delete_profile(target, name):
             raise ApiError("profile_protected", f"bu profil silinemez: {name}")
+        favorites = self.config.favorites_of(target)
+        if name in favorites:
+            favorites.remove(name)
+            self.config.favorites[target] = favorites
+            self._dirty_config = True
         if self._active_name(target) == name:
             self.load_profile(target, "Default")
         self._emit({"kind": "profile_deleted", "target": target, "name": name})
@@ -434,6 +443,9 @@ class SonarApi:
             raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {new}")
         if not self.store.rename_profile(target, old, new):
             raise ApiError("profile_not_renamed", f"profil yeniden adlandırılamadı: {old}")
+        favorites = self.config.favorites_of(target)
+        if old in favorites:
+            self.config.favorites[target] = [new if n == old else n for n in favorites]
         if self._active_name(target) == old:
             self._set_active_name(target, new)
             self.profile(target).name = new
@@ -497,18 +509,74 @@ class SonarApi:
         if flat is None:  # pragma: no cover - Flat her katalogda var
             return
         flat.name = working.name
-        flat.favorite_slot = working.favorite_slot
         self.profiles[target] = flat
         self._live_target(target, {"kind": "profile_reset", "target": target})
 
-    def set_profile_favorite(self, target: str, name: str, slot: int) -> None:
+    def new_profile(self, target: str, name: str) -> str:
+        """Sıfırdan **düz** bir profil oluşturur ve ona geçer.
+
+        "Farklı kaydet" yerine geçiyor. Eskiden yeni bir varyant için önce aktif
+        profili bozmak, sonra farklı adla kaydetmek gerekiyordu — kullanıcının
+        şikâyeti tam buydu: "mevcut kanalın ayarlarının bozulmasına sebep oluyor".
+        """
         self._check_target(target)
-        profile = self.store.load_profile(target, name)
-        profile.favorite_slot = int(slot)
+        name = str(name).strip()
+        if not name:
+            raise ApiError("invalid_name", "profil adı boş olamaz")
+        if self._is_builtin(target, name):
+            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {name}")
+        if name in self.store.list_profiles(target):
+            raise ApiError("duplicate_profile", f"bu profil zaten var: {name}")
+
+        profile = default_profile(name, self.config.settings.default_band_count)
         self.store.save_profile(target, profile)
-        if self._active_name(target) == name:
-            self.profile(target).favorite_slot = int(slot)
-        self._emit({"kind": "profile_favorite", "target": target, "name": name, "slot": slot})
+        self.profiles[target] = profile
+        self._dirty_profiles.discard(target)
+        self._set_active_name(target, name)
+        self.supervisor.apply_target(self.config, target)
+        self._dirty_config = True
+        self._emit({"kind": "profile_created", "target": target, "name": name})
+        self._save_soon()
+        return name
+
+    def list_favorites(self, target: str) -> list[str]:
+        """Hedefin sıralı favori profilleri; silinmiş profiller elenir."""
+        self._check_target(target)
+        known = set(self.list_profiles(target))
+        return [name for name in self.config.favorites_of(target) if name in known]
+
+    def set_profile_favorite(self, target: str, name: str, favorite: bool) -> None:
+        """Bir profili favorilere ekler veya çıkarır. Sayı sınırı yok."""
+        self._check_target(target)
+        if name not in self.list_profiles(target):
+            raise ApiError("unknown_profile", f"böyle bir profil yok: {name}")
+        current = self.config.favorites_of(target)
+        if favorite and name not in current:
+            current.append(name)
+        elif not favorite and name in current:
+            current.remove(name)
+        else:
+            return
+        self.config.favorites[target] = current
+        self._dirty_config = True
+        self._emit(
+            {"kind": "profile_favorite", "target": target, "name": name, "favorite": favorite}
+        )
+        self._save_soon()
+
+    def reorder_favorites(self, target: str, names: list[str]) -> None:
+        """Favori sırasını verilen listeye göre yeniden yazar.
+
+        Listede olmayan ama hâlâ favori olan adlar sona eklenir; tanınmayan adlar
+        yok sayılır. Böylece arayüz eski bir sırayla çağırsa bile favori kaybolmaz.
+        """
+        self._check_target(target)
+        current = self.config.favorites_of(target)
+        wanted = [name for name in names if name in current]
+        self.config.favorites[target] = wanted + [n for n in current if n not in wanted]
+        self._dirty_config = True
+        self._emit({"kind": "favorites_reordered", "target": target})
+        self._save_soon()
 
     # ------------------------------------------------------------------ yapısal
 
@@ -602,6 +670,7 @@ class SonarApi:
 
         self.profiles.pop(channel, None)
         self._dirty_profiles.discard(channel)
+        self.config.favorites.pop(channel, None)
         self.store.delete_target(channel)
         self._structural({"kind": "channel_removed", "channel": channel})
 

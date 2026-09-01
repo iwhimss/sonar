@@ -1,6 +1,6 @@
 # Faz 16 — Profil deneyimi
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 9, Faz 15
 **Çıktı:** `src/sonar/core/model.py`, `src/sonar/core/config.py`,
 `src/sonar/daemon/api.py`, `src/sonar/daemon/dbus_iface.py`,
@@ -93,23 +93,49 @@ slotları var (`gui/bridge.py:532,544`). **Eksik olan yalnızca arayüz.**
 
 ## Görevler
 
-- [ ] `api.new_profile(target, name)` — düz profil, kaydet, geç
-- [ ] `NewProfile` D-Bus metodu + `sonar-cli profile new`
-- [ ] "Farklı kaydet" düğmesi kaldırılır, "＋ Yeni profil" gelir
-- [ ] `SonarConfig.favorites` + şema 2 migrasyonu (`favorite_slot` → liste)
-- [ ] `SetProfileFavorite(target, name, bool)` + `ReorderFavorites(target, names)`
-- [ ] FX sayfasında yıldız düğmesi
-- [ ] Sürüklenerek sıralanan, sınırsız favori şeridi
-- [ ] Mikser dropdown'ı: favoriler + ayraç + tümü
-- [ ] "kaydedildi" göstergesi
-- [ ] Gömülü preset kopyası bildirimi (`profile_copied`)
-- [ ] `FileDialog` ile içe aktarma + sonuç penceresi
-- [ ] `FileDialog` ile dışa aktarma (`.sonarprofile` / AutoEQ)
-- [ ] Testler: migrasyon, favori sıralaması, `new_profile` düzlüğü
+- [x] `api.new_profile(target, name)` — düz profil, kaydet, geç
+- [x] `NewProfile` D-Bus metodu + `sonar-cli new` ve `sonar-cli favorite`
+- [x] "Farklı kaydet" düğmesi kaldırılır, "＋ Yeni profil" gelir
+- [x] `SonarConfig.favorites` + şema 2 migrasyonu (`favorite_slot` → liste)
+- [x] `SetProfileFavorite(target, name, bool)` + `ReorderFavorites(target, names)`
+- [x] FX sayfasında yıldız düğmesi
+- [x] Sürüklenerek sıralanan, sınırsız favori şeridi
+- [x] Mikser dropdown'ı: favoriler + ayraç + tümü
+- [x] "değişiklikler otomatik kaydediliyor" notu profil şeridinde
+- [x] Gömülü preset kopyası bildirimi (`profile_copied`)
+- [x] `FileDialog` ile içe aktarma (sonuç penceresi Faz 17'ye — köprü şu an
+      sonucu yutuyor, hata/uyarı akışı orada bağlanacak)
+- [x] `FileDialog` ile dışa aktarma (`.sonarprofile` / AutoEQ)
+- [x] Testler: migrasyon, favori sıralaması, `new_profile` düzlüğü
 
 ---
 
-## Doğrulama
+## Doğrulama (2026-09-01, çalışan daemon üzerinde)
+
+```
+$ sonar-cli new game "CS2"            → yeni düz profil 'CS2' oluşturuldu ve etkin
+$ sonar-cli new game "Arc Raiders"    → yeni düz profil 'Arc Raiders' oluşturuldu ve etkin
+$ sonar-cli favorite add game CS2
+$ sonar-cli favorite add game "Arc Raiders"
+$ sonar-cli favorite list game        → Flat, CS2, Arc Raiders
+```
+
+**Şema 2 göçü gerçek config'te çalıştı.** Kullanıcının test oturumundan kalan
+`favorite_slot` değerleri otomatik taşındı: `config.toml` içinde artık
+`[favorites] game = ["Flat", "CS2"]`, `media = ["Default", "Default2"]` ve
+`schema_version = 2`.
+
+**Sıralama köprüden doğrulandı** (D-Bus üzerinden, gerçek daemon):
+
+```
+önce:  ['Flat', 'CS2', 'Arc Raiders']
+reorderFavorites(game, ['Arc Raiders', 'Flat', 'CS2'])
+sonra: ['Arc Raiders', 'Flat', 'CS2']       ← diskten geri okundu
+```
+
+Dışa aktarma çağrısı da içerik döndürüyor.
+
+Kullanıcının ikinci testte bakacakları:
 
 - CS2 için yeni profil → isim → düz açılıyor, eski profil bozulmamış
 - Arc Raiders için ikinci profil, ikisi de favoriye ekleniyor, sıraları
@@ -125,4 +151,23 @@ slotları var (`gui/bridge.py:532,544`). **Eksik olan yalnızca arayüz.**
 
 ## Yol boyunca yakalananlar
 
-_(faz sırasında doldurulacak)_
+**Otomatik kaydetme zaten çalışıyordu.** Her profil düzenlemesi `_live_target()` →
+`_dirty_profiles` → `_save_soon()` (500 ms) üzerinden diske yazılıyordu; eksik olan
+kullanıcının bunu **bilmesiydi**. Profil şeridine kısa bir not eklendi ve "Farklı
+kaydet" düğmesi kaldırıldı — o düğme, "kaydetmezsem kaybolur" yanılgısını
+besleyen şeydi.
+
+**`favorite_slot` profil dosyasında yaşıyordu, `config.toml`'da değil.** Bu yüzden
+şema 2 göçü yalnızca `config.toml`'a bakamıyor; `ConfigStore._migrate_favorites()`
+her hedefin profil dosyalarını tarayıp eski slot numaralarına göre sıralıyor.
+`schema_version < 2` koşuluna bağlı, yani bir kez çalışıyor — kullanıcı sonradan
+tüm favorileri silerse geri gelmiyorlar.
+
+**Favori listesi profil silme ve yeniden adlandırmayı takip ediyor.** Silinen profil
+listeden düşüyor, yeniden adlandırılan profil yeni adıyla yerinde kalıyor,
+silinen kanalın tüm favorileri gidiyor. `list_favorites()` ayrıca artık var olmayan
+adları okuma anında eliyor — elle düzenlenmiş bir `config.toml` arayüzü bozmasın.
+
+**Sıralamada "unutulan adlar" korunuyor.** `reorder_favorites()` çağıranın
+listesinde olmayan favorileri sona ekliyor. Arayüz eski bir sırayla çağırırsa
+(iki pencere açıkken olabilir) favori sessizce kaybolmuyor.

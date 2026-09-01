@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 16 — Profil deneyimi
+**Aktif faz:** Faz 17 — Doğrulama ve dokümantasyon
 **Son güncelleme:** 2026-09-01
-**Sonraki adım:** Faz 16 — yeni profil akışı, otomatik kaydetme, sınırsız
-favoriler, içe/dışa aktarma arayüzü.
+**Sonraki adım:** Faz 17 — uçtan uca doğrulama ve dokümanların yeni
+davranışa göre güncellenmesi.
 
 > **Test turu 1 (2026-09-01).** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk kez
 > gerçek kullanımda denedi. Çıkan eksikler ve hatalar Faz 12–17 olarak planlandı.
@@ -34,14 +34,14 @@ favoriler, içe/dışa aktarma arayüzü.
 | 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | 🟢 Tamamlandı |
 | 14 | [Envanter doğruluğu](14-inventory.md) | 🟢 Tamamlandı |
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | 🟢 Tamamlandı |
-| 16 | [Profil deneyimi](16-profiles.md) | 🟡 Sıradaki |
-| 17 | [Doğrulama ve dokümantasyon](17-verify.md) | ⚪ Bekliyor |
+| 16 | [Profil deneyimi](16-profiles.md) | 🟢 Tamamlandı |
+| 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟡 Sıradaki |
 | 11 | [Paketleme](11-packaging.md) | ⏸ Ertelendi (test turu 1'den sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 740 test geçiyor, `ruff` temiz.
+**Test durumu:** 750 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 

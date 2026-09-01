@@ -634,9 +634,26 @@ class SonarBridge(QObject):
         self._call("RenameProfile", target, old, new)
         self.refresh()
 
-    @Slot(str, str, int)
-    def setProfileFavorite(self, target: str, name: str, slot: int) -> None:
-        self._call("SetProfileFavorite", target, name, slot)
+    @Slot(str, str, bool)
+    def setProfileFavorite(self, target: str, name: str, favorite: bool) -> None:
+        self._call("SetProfileFavorite", target, name, favorite)
+        self.refresh()
+
+    @Slot(str, result="QVariant")
+    def favoritesOf(self, target: str) -> list:
+        """Hedefin sıralı favori profilleri."""
+        return list((self._state.get("favorites") or {}).get(target) or [])
+
+    @Slot(str, "QVariantList")
+    def reorderFavorites(self, target: str, names: list) -> None:
+        favorites = self._state.setdefault("favorites", {})
+        favorites[target] = [str(name) for name in names]
+        self._bump()
+        self._call("ReorderFavorites", target, [str(name) for name in names])
+
+    @Slot(str, str)
+    def newProfile(self, target: str, name: str) -> None:
+        self._call("NewProfile", target, name)
         self.refresh()
 
     @Slot()
