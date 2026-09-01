@@ -43,6 +43,10 @@ log = logging.getLogger(__name__)
 BACKOFF_SECONDS = (1.0, 2.0, 4.0, 8.0, 16.0)
 MAX_CRASHES = len(BACKOFF_SECONDS)
 
+#: Graf sağlık yoklaması aralığı. İki üst üste boş ölçüm yeniden inşayı tetikler, yani
+#: PipeWire yeniden başlatıldıktan ~4 sn sonra ses geri gelir.
+HEALTH_INTERVAL = 2.0
+
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
@@ -299,12 +303,51 @@ class Supervisor:
         self._start_watchdog()
 
         self._wait_for_graph(cfg, stale)
+        self._wire_sends(cfg)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()
 
     def _expected_nodes(self, cfg: SonarConfig) -> set[str]:
-        return set(confgen.dsp_nodes(cfg).values()) | set(live_volumes(cfg))
+        nodes = set(confgen.dsp_nodes(cfg).values()) | set(live_volumes(cfg))
+        for output, target in confgen.send_links(cfg):
+            nodes.add(output)
+            nodes.add(target)
+        return nodes
+
+    def _wire_sends(self, cfg: SonarConfig) -> bool:
+        """Kanal çıkışlarını bus gönderilerine bağlar.
+
+        Bu bağlantılar conf'ta `target.object` ile ifade edilemiyor: `_fx` node'u
+        `media.class` taşımadığında WirePlumber onu bir kaynak saymıyor ve politika
+        motoru bağlamıyor (bkz. `confgen._send_loopback`). Bağlantıyı burada `pw-link`
+        ile açıkça kuruyoruz.
+
+        `pw-link` var olan bir bağlantı için de sıfırdan farklı dönebildiği için sonuç
+        komutun çıkış koduna değil, `pw-link -l` çıktısına bakılarak doğrulanır.
+        """
+        wanted = confgen.send_links(cfg)
+        if not wanted:
+            return True
+        for attempt in (1, 2):
+            existing = self.control.node_links()
+            missing = [pair for pair in wanted if pair not in existing]
+            if not missing:
+                return True
+            for output, target in missing:
+                self.control.link_nodes(output, target)
+            if attempt == 1:
+                time.sleep(0.1)
+        remaining = [pair for pair in wanted if pair not in self.control.node_links()]
+        if remaining:
+            log.error(
+                "%d kanal gönderisi bağlanamadı (örnek: %s → %s); o kanalın sesi bus'a "
+                "ulaşmaz",
+                len(remaining),
+                *remaining[0],
+            )
+            return False
+        return True
 
     def _snapshot_ids(self, cfg: SonarConfig) -> dict[str, int]:
         """Yeniden başlatmadan **önceki** node id'leri."""
@@ -370,9 +413,21 @@ class Supervisor:
                 if self._stopping.wait(0.2):
                     return
                 continue
-            process.wait()
+            if not self._await_trouble(process):
+                return
             if self._stopping.is_set():
                 return
+            if process.poll() is None:
+                # Süreç yaşıyor ama node'ları graftan silinmiş: PipeWire yeniden
+                # başlatıldı ve istemcimiz bağlantısını geri kuramadı. Kendi başına
+                # toparlanmıyor, bu yüzden grafı biz yeniden kuruyoruz.
+                log.warning("graf süreci PipeWire bağlantısını kaybetti, yeniden kuruluyor")
+                with self._lock:
+                    text, cfg = self._conf_text, self._cfg
+                if text is None or cfg is None:  # pragma: no cover - reconcile'dan önce
+                    return
+                self._rebuild(text, cfg)
+                continue
             with self._lock:
                 if self._process is not process:
                     continue  # yeniden inşa yerine yenisini koydu; izlemeye devam
@@ -401,6 +456,40 @@ class Supervisor:
                 self._process = restarted
             self._after_restart(stale)
 
+    def _await_trouble(self, process: subprocess.Popen) -> bool:
+        """Süreç ölene **veya** node'ları graftan kaybolana kadar bekler.
+
+        `process.wait()` yetmiyor: `systemctl --user restart pipewire` bizim
+        `pipewire -c` istemcimizi öldürmüyor, yalnızca bağlantısını koparıyor. Süreç
+        canlı görünürken graf boş kalıyor ve hiçbir şey bunu fark etmiyordu (ölçüldü:
+        yeniden başlatmadan 15 sn sonra 0 sonar node'u).
+
+        `False` döner: durduruluyoruz.
+        """
+        vanished = 0
+        while not self._stopping.is_set():
+            if process.poll() is not None:
+                return True
+            if self._graph_is_empty():
+                vanished += 1
+                # İki üst üste ölçüm: kendi yeniden inşamızın ortasına denk gelmeyelim.
+                if vanished >= 2:
+                    return True
+            else:
+                vanished = 0
+            if self._stopping.wait(HEALTH_INTERVAL):
+                return False
+        return False
+
+    def _graph_is_empty(self) -> bool:
+        """Beklediğimiz node'ların **hiçbiri** grafta yok mu?"""
+        with self._lock:
+            cfg = self._cfg
+        if cfg is None:
+            return False
+        expected = self._expected_nodes(cfg)
+        return bool(expected) and not any(self.state.node_id(name) for name in expected)
+
     def _after_restart(self, stale: dict[str, int]) -> None:
         """Çökme sonrası kendini toparlama: son uygulanan durumu baştan yaz."""
         with self._lock:
@@ -408,6 +497,7 @@ class Supervisor:
         if cfg is None:  # pragma: no cover - reconcile'dan önce çökme
             return
         self._wait_for_graph(cfg, stale)
+        self._wire_sends(cfg)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()

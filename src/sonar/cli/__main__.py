@@ -249,6 +249,15 @@ def _cmd_device(client: Client, args) -> int:
     return 0
 
 
+def _cmd_obs(client: Client, args) -> int:
+    """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlaması."""
+    enabled = args.state == "on"
+    client.call("SetChannelStreamSource", args.channel, enabled)
+    state = "açık" if enabled else "kapalı"
+    print(f"{args.channel} OBS kaynağı: {state}  (graf yeniden kuruluyor)")
+    return 0
+
+
 def _cmd_presets(client: Client, args) -> int:
     builtin = set(client.call("ListBuiltinProfiles", args.target) or [])
     for name in client.call("ListProfiles", args.target) or []:
@@ -383,6 +392,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("device")
     p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
 
+    p = sub.add_parser("obs", help="kanal için OBS'e ayrı sanal giriş cihazı ver")
+    p.add_argument("channel")
+    p.add_argument("state", choices=("on", "off"))
+
     p = sub.add_parser("presets", help="gömülü presetleri ve profilleri listele")
     p.add_argument("target")
 
@@ -420,6 +433,7 @@ _COMMANDS = {
     "chatmix": _cmd_chatmix,
     "devices": _cmd_devices,
     "device": _cmd_device,
+    "obs": _cmd_obs,
     "presets": _cmd_presets,
     "import": _cmd_import,
     "export": _cmd_export,

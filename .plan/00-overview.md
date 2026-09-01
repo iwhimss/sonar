@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 12 — Sanal cihaz düzeni
+**Aktif faz:** Faz 13 — Kanal yönetimi
 **Son güncelleme:** 2026-09-01
-**Sonraki adım:** Faz 12 — kanal başına sahte mikrofonu kaldırmak, cihaz adlarını
-yön belirtir hâle getirmek.
+**Sonraki adım:** Faz 13 — her kanalın silinebilmesi, giriş/çıkış seçerek kanal
+eklenebilmesi.
 
 > **Test turu 1 (2026-09-01).** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk kez
 > gerçek kullanımda denedi. Çıkan eksikler ve hatalar Faz 12–17 olarak planlandı.
@@ -30,8 +30,8 @@ yön belirtir hâle getirmek.
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟢 Tamamlandı |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟢 Tamamlandı |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟢 Tamamlandı |
-| 12 | [Sanal cihaz düzeni](12-devices.md) | 🟡 Sıradaki |
-| 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | ⚪ Bekliyor |
+| 12 | [Sanal cihaz düzeni](12-devices.md) | 🟢 Tamamlandı |
+| 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | 🟡 Sıradaki |
 | 14 | [Envanter doğruluğu](14-inventory.md) | ⚪ Bekliyor |
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | ⚪ Bekliyor |
 | 16 | [Profil deneyimi](16-profiles.md) | ⚪ Bekliyor |
@@ -41,7 +41,7 @@ yön belirtir hâle getirmek.
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 715 test geçiyor, `ruff` temiz.
+**Test durumu:** 727 test geçiyor, `ruff` temiz.
 **Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 

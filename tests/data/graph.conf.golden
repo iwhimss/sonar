@@ -109,20 +109,22 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_game"
-                node.description = "Sonar Game"
+                node.description = "Sonar Game — Virtual Output"
+                node.nick = "Game"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_game_fx"
-                node.description = "Sonar Game (FX)"
-                media.class = "Audio/Source"
-                priority.session = 0
+                node.autoconnect = false
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
+                node.description = "Sonar Game FX"
             }
         }
     }
@@ -203,20 +205,22 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_chat"
-                node.description = "Sonar Chat"
+                node.description = "Sonar Chat — Virtual Output"
+                node.nick = "Chat"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_chat_fx"
-                node.description = "Sonar Chat (FX)"
-                media.class = "Audio/Source"
-                priority.session = 0
+                node.autoconnect = false
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
+                node.description = "Sonar Chat FX"
             }
         }
     }
@@ -297,20 +301,22 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_media"
-                node.description = "Sonar Media"
+                node.description = "Sonar Media — Virtual Output"
+                node.nick = "Media"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_media_fx"
-                node.description = "Sonar Media (FX)"
-                media.class = "Audio/Source"
-                priority.session = 0
+                node.autoconnect = false
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
+                node.description = "Sonar Media FX"
             }
         }
     }
@@ -391,20 +397,22 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_aux"
-                node.description = "Sonar Aux"
+                node.description = "Sonar Aux — Virtual Output"
+                node.nick = "Aux"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_aux_fx"
-                node.description = "Sonar Aux (FX)"
-                media.class = "Audio/Source"
-                priority.session = 0
+                node.autoconnect = false
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
+                node.description = "Sonar Aux FX"
             }
         }
     }
@@ -485,15 +493,18 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_personal"
-                node.description = "Sonar Personal Mix"
+                node.description = "Sonar Personal Mix — Virtual Output"
+                node.nick = "Personal Mix"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_personal_out"
-                node.description = "Sonar Personal Mix (çıkış)"
+                node.description = "Sonar Personal Mix Output"
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
@@ -577,16 +588,21 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_stream"
-                node.description = "Sonar Stream Mix"
+                node.description = "Sonar Stream Mix — Virtual Output"
+                node.nick = "Stream Mix"
                 media.class = "Audio/Sink"
+                device.icon-name = "audio-card"
+                priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]
             }
             playback.props = {
                 node.name = "sonar_stream_out"
-                node.description = "Sonar Stream Mix"
+                node.description = "Sonar Stream Mix — Virtual Input"
+                node.nick = "Stream Mix"
                 media.class = "Audio/Source"
+                device.icon-name = "audio-input-microphone"
                 priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
@@ -602,7 +618,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_game_to_personal_capture"
                 node.passive = true
-                target.object = "sonar_game_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -626,7 +642,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_game_to_stream_capture"
                 node.passive = true
-                target.object = "sonar_game_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -650,7 +666,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_chat_to_personal_capture"
                 node.passive = true
-                target.object = "sonar_chat_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -674,7 +690,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_chat_to_stream_capture"
                 node.passive = true
-                target.object = "sonar_chat_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -698,7 +714,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_media_to_personal_capture"
                 node.passive = true
-                target.object = "sonar_media_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -722,7 +738,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_media_to_stream_capture"
                 node.passive = true
-                target.object = "sonar_media_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -746,7 +762,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_aux_to_personal_capture"
                 node.passive = true
-                target.object = "sonar_aux_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -770,7 +786,7 @@ context.modules = [
             capture.props = {
                 node.name = "sonar_aux_to_stream_capture"
                 node.passive = true
-                target.object = "sonar_aux_fx"
+                node.autoconnect = false
                 stream.capture.sink = false
                 audio.rate = 48000
                 audio.channels = 2
@@ -880,7 +896,7 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_mic_capture"
-                node.description = "Sonar Mic (giriş)"
+                node.description = "Sonar Mic Input"
                 node.passive = true
                 stream.capture.sink = false
                 audio.rate = 48000
@@ -889,8 +905,10 @@ context.modules = [
             }
             playback.props = {
                 node.name = "sonar_mic"
-                node.description = "Sonar Mic"
+                node.description = "Sonar Mic — Virtual Input"
+                node.nick = "Mic"
                 media.class = "Audio/Source"
+                device.icon-name = "audio-input-microphone"
                 priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2
@@ -992,7 +1010,7 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_stream_mic_capture"
-                node.description = "Sonar Stream Mic (giriş)"
+                node.description = "Sonar Stream Mic Input"
                 node.passive = true
                 stream.capture.sink = false
                 audio.rate = 48000
@@ -1001,8 +1019,10 @@ context.modules = [
             }
             playback.props = {
                 node.name = "sonar_stream_mic"
-                node.description = "Sonar Stream Mic"
+                node.description = "Sonar Stream Mic — Virtual Input"
+                node.nick = "Stream Mic"
                 media.class = "Audio/Source"
+                device.icon-name = "audio-input-microphone"
                 priority.session = 0
                 audio.rate = 48000
                 audio.channels = 2

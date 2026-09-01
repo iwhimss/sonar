@@ -375,8 +375,7 @@ class SonarBridge(QObject):
         except json.JSONDecodeError:
             return
         for index, row in enumerate(self._channels.rows()):
-            node = f"sonar_{row['id']}" + ("_fx" if row["kind"] == "channel" else "")
-            level = levels.get(node) or levels.get(f"sonar_{row['id']}")
+            level = levels.get(f"sonar_{row['id']}")
             if level is None:
                 continue
             self._channels.update_row(

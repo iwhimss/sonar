@@ -230,7 +230,7 @@ def test_meter_values_survive_a_state_refresh(bridge):
     bridge.onLevelsUpdated(
         json.dumps(
             {
-                "sonar_game_fx": {
+                "sonar_game": {
                     "peak_db": -12.0,
                     "rms_db": -15.0,
                     "hold_db": -10.0,

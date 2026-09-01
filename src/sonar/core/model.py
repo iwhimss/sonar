@@ -212,6 +212,11 @@ class Channel:
     active_profile: str = "Default"
     personal: BusSend = field(default_factory=BusSend)
     stream: BusSend = field(default_factory=BusSend)
+    #: OBS'e kanal başına ayrı track vermek için `_fx` çıkışını sanal bir **giriş
+    #: cihazı** olarak yayınla. Varsayılan kapalı: açıkken her çıkış kanalı sistemin
+    #: mikrofon listesinde görünür ve "Media neden mikrofon?" sorusuna yol açar.
+    #: SteelSeries GG'de de yalnızca birleşik Stream Mix vardı.
+    stream_source: bool = False
 
     def send(self, bus: BusId) -> BusSend:
         return self.personal if bus is BusId.PERSONAL else self.stream
@@ -223,7 +228,7 @@ class Channel:
 
     @property
     def fx_node(self) -> str:
-        """DSP sonrası sanal kaynak — OBS bunu yakalar."""
+        """DSP sonrası çıkış. `stream_source` açıkken ayrıca sanal bir kaynaktır."""
         return f"sonar_{self.id}_fx"
 
     def loopback_node(self, bus: BusId) -> str:

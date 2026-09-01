@@ -280,3 +280,70 @@ def test_cli_prints_the_conf(config_store, capsys):
     config_store.load()
     assert confgen._main(["--config", str(config_store.paths.config_file)]) == 0
     assert "libpipewire-module-filter-chain" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- sanal cihazlar
+
+
+def _playback_props(cfg, node_name):
+    for module in confgen.generate_modules(cfg):
+        args = module.get("args") or {}
+        props = args.get("playback.props") or {}
+        if props.get("node.name") == node_name:
+            return props
+    raise AssertionError(f"node bulunamadı: {node_name}")
+
+
+def _capture_props(cfg, node_name):
+    for module in confgen.generate_modules(cfg):
+        args = module.get("args") or {}
+        props = args.get("capture.props") or {}
+        if props.get("node.name") == node_name:
+            return props
+    raise AssertionError(f"node bulunamadı: {node_name}")
+
+
+def test_channel_fx_is_not_a_device_by_default(portable):
+    """Varsayılanda kanal başına sahte mikrofon oluşmamalı — kullanıcının 1. şikâyeti."""
+    props = _playback_props(default_config(), "sonar_game_fx")
+    assert "media.class" not in props
+    assert props["node.autoconnect"] is False
+
+
+def test_channel_fx_becomes_a_source_when_asked(portable):
+    cfg = default_config()
+    cfg.channel("game").stream_source = True
+    props = _playback_props(cfg, "sonar_game_fx")
+    assert props["media.class"] == confgen.VIRTUAL_SOURCE_CLASS
+    assert props["node.description"] == "Sonar Game — Stream Source (Virtual Input)"
+
+
+def test_device_names_state_their_direction(portable):
+    cfg = default_config()
+    assert _capture_props(cfg, "sonar_game")["node.description"] == "Sonar Game — Virtual Output"
+    assert (
+        _playback_props(cfg, "sonar_stream_out")["node.description"]
+        == "Sonar Stream Mix — Virtual Input"
+    )
+    assert _playback_props(cfg, "sonar_mic")["node.description"] == "Sonar Mic — Virtual Input"
+
+
+def test_virtual_nodes_are_never_auto_selected(portable):
+    """`priority.session = 0`: `sonar_personal` varsayılan sink olursa kendini besler."""
+    cfg = default_config()
+    assert _capture_props(cfg, "sonar_personal")["priority.session"] == 0
+    assert _capture_props(cfg, "sonar_game")["priority.session"] == 0
+
+
+def test_sends_are_not_wired_in_the_conf(portable):
+    """Gönderiler `pw-link` ile kuruluyor; conf'ta `target.object` olmamalı."""
+    props = _capture_props(default_config(), "sonar_game_to_personal_capture")
+    assert "target.object" not in props
+    assert props["node.autoconnect"] is False
+
+
+def test_send_links_cover_every_channel_and_bus(portable):
+    links = confgen.send_links(default_config())
+    assert len(links) == 4 * 2
+    assert ("sonar_game_fx", "sonar_game_to_personal_capture") in links
+    assert ("sonar_media_fx", "sonar_media_to_stream_capture") in links

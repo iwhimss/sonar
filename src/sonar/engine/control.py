@@ -49,7 +49,7 @@ from collections.abc import Callable, Iterable
 
 from sonar.engine.pwstate import GraphState
 
-__all__ = ["Control", "PwCliSession", "format_params", "format_value"]
+__all__ = ["Control", "PwCliSession", "format_params", "format_value", "parse_links"]
 
 log = logging.getLogger(__name__)
 
@@ -174,11 +174,13 @@ class Control:
         *,
         window_ms: float = DEFAULT_WINDOW_MS,
         runner: Callable[[list[str]], bool] | None = None,
+        capturer: Callable[[list[str]], str | None] | None = None,
     ) -> None:
         self.state = state
         self.session = session if session is not None else PwCliSession()
         self.window = window_ms / 1000.0
         self._run = runner if runner is not None else _run_command
+        self._capture = capturer if capturer is not None else _capture_command
         self._pending: dict[str, dict[str, float]] = {}
         self._pending_props: dict[str, dict[str, object]] = {}
         self._lock = threading.Lock()
@@ -223,6 +225,25 @@ class Control:
 
     def set_default_sink(self, node: str) -> bool:
         return self._run(["wpctl", "set-default", str(self.state.node_id(node) or node)])
+
+    def link_nodes(self, output_node: str, input_node: str) -> bool:
+        """İki node'un portlarını sırayla bağlar.
+
+        `pw-link`'e port değil **node adı** verilir; portları o eşleştirir. Port adlarını
+        burada sabitleyemiyoruz: bir filter-chain çıkışının portları `media.class`
+        taşıdığında `capture_FL`, taşımadığında `output_FL` adını alıyor.
+
+        Bağlantı zaten varsa `pw-link` sıfırdan farklı döner; bu bir hata değil, o yüzden
+        çağıran taraf sonucu `node_links()` ile doğrular.
+        """
+        return self._run(["pw-link", output_node, input_node])
+
+    def node_links(self) -> set[tuple[str, str]]:
+        """Graftaki bağlantılar, **node düzeyinde** (çıkış node'u, giriş node'u)."""
+        text = self._capture(["pw-link", "-l"])
+        return {
+            (_node_of(source), _node_of(target)) for source, target in parse_links(text or "")
+        }
 
     # ------------------------------------------------------------------ boşaltma
 
@@ -287,6 +308,53 @@ def _format_props(values: dict[str, object]) -> str:
         else:
             parts.append(f"{key} = {format_value(value)}")  # type: ignore[arg-type]
     return "{ " + ", ".join(parts) + " }"
+
+
+def parse_links(text: str) -> set[tuple[str, str]]:
+    """`pw-link -l` çıktısını (çıkış portu, giriş portu) çiftlerine ayırır.
+
+    Biçim: sütun 0'da bir port adı, altında ona bağlı portlar `|->` (çıkıştan girişe)
+    veya `|<-` (girişten çıkışa) ile girintili. Her bağlantı iki kez görünür; yön
+    okları sayesinde tek yönde normalleştiriliyor.
+    """
+    links: set[tuple[str, str]] = set()
+    current = ""
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith((" ", "\t")):
+            current = line.strip()
+            continue
+        body = line.strip()
+        if body.startswith("|->"):
+            links.add((current, body[3:].strip()))
+        elif body.startswith("|<-"):
+            links.add((body[3:].strip(), current))
+    return links
+
+
+def _node_of(port: str) -> str:
+    """`node:port` → `node`. Node adında `:` olmadığı için sondan bölünür."""
+    return port.rsplit(":", 1)[0]
+
+
+def _capture_command(argv: Iterable[str]) -> str | None:
+    """Çıktısı okunacak alt süreç çağrıları."""
+    argv = list(argv)
+    try:
+        result = subprocess.run(
+            argv, capture_output=True, text=True, timeout=COMMAND_TIMEOUT, check=False
+        )
+    except FileNotFoundError:
+        log.error("komut bulunamadı: %s", argv[0])
+        return None
+    except subprocess.TimeoutExpired:
+        log.error("komut zaman aşımına uğradı: %s", " ".join(argv))
+        return None
+    if result.returncode != 0:
+        log.warning("komut başarısız (%d): %s", result.returncode, " ".join(argv))
+        return None
+    return result.stdout
 
 
 def _run_command(argv: Iterable[str]) -> bool:

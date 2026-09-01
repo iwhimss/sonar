@@ -161,12 +161,18 @@ class PeakHold:
 def meter_sources(config: SonarConfig) -> dict[str, bool]:
     """Ölçülecek node'lar → sink monitörü mü yakalanacak.
 
-    Kanalların `_fx` node'ları DSP sonrası sanal kaynaklar, doğrudan yakalanır.
-    Bus'lar birer sink olduğu için monitörleri yakalanır.
+    Kanallar ve bus'lar birer sink; monitörleri yakalanır. Mikrofonlar birer kaynak;
+    doğrudan yakalanır.
+
+    Kanallarda `_fx` (DSP **sonrası**) yerine sink monitörü (DSP **öncesi**) ölçülüyor:
+    `_fx` node'u `stream_source` kapalıyken bir cihaz değil, sıradan bir akış, ve
+    `pw-cat` akıştan yakalayamıyor. Sink monitörü her iki modda da çalışıyor. Pratik
+    farkı, metrenin uygulamanın çaldığı seviyeyi göstermesi — EQ ve fader metreyi
+    etkilemez.
     """
     sources: dict[str, bool] = {}
     for channel in config.ordered_channels():
-        sources[channel.fx_node] = False
+        sources[channel.sink_node] = True
     for bus in sorted(config.buses, key=lambda b: b.id.value):
         sources[bus.sink_node] = True
     for mic in config.mic_chains:

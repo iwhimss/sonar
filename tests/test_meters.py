@@ -102,10 +102,10 @@ def test_hold_never_goes_below_the_floor():
 def test_meter_sources_cover_every_channel_bus_and_mic():
     sources = meter_sources(default_config())
     assert set(sources) == {
-        "sonar_game_fx",
-        "sonar_chat_fx",
-        "sonar_media_fx",
-        "sonar_aux_fx",
+        "sonar_game",
+        "sonar_chat",
+        "sonar_media",
+        "sonar_aux",
         "sonar_personal",
         "sonar_stream",
         "sonar_mic",
@@ -113,12 +113,17 @@ def test_meter_sources_cover_every_channel_bus_and_mic():
     }
 
 
-def test_only_buses_capture_the_monitor():
-    """`_fx` ve mikrofonlar birer kaynak; bus'lar sink olduğu için monitörleri alınır."""
+def test_sinks_capture_the_monitor_and_mics_do_not():
+    """Kanallar ve bus'lar birer sink → monitör. Mikrofonlar kaynak → doğrudan.
+
+    Kanalda `_fx` yerine sink monitörü ölçülüyor: `_fx`, `stream_source` kapalıyken
+    bir cihaz değil sıradan bir akış ve `pw-cat` akıştan yakalayamıyor.
+    """
     sources = meter_sources(default_config())
     assert sources["sonar_personal"] is True
     assert sources["sonar_stream"] is True
-    assert sources["sonar_game_fx"] is False
+    assert sources["sonar_game"] is True
+    assert "sonar_game_fx" not in sources
     assert sources["sonar_mic"] is False
 
 
@@ -244,7 +249,7 @@ def test_levels_are_reported_per_node(manager):
     manager.subscribe()
     levels = manager.levels()
     assert set(levels) == set(manager.nodes)
-    assert levels["sonar_game_fx"].peak_db == -12.0
+    assert levels["sonar_game"].peak_db == -12.0
 
 
 def test_reconfigure_while_running_restarts_sources(manager):

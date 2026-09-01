@@ -4,7 +4,13 @@ import time
 
 import pytest
 
-from sonar.engine.control import Control, PwCliSession, format_params, format_value
+from sonar.engine.control import (
+    Control,
+    PwCliSession,
+    format_params,
+    format_value,
+    parse_links,
+)
 from sonar.engine.pwstate import GraphState
 
 
@@ -211,3 +217,49 @@ def test_session_reopens_after_the_process_dies():
 def test_missing_binary_is_reported_not_raised():
     session = PwCliSession(command=("bu-komut-yok-12345",))
     assert session.send("herhangi bir şey") is False
+
+
+# --------------------------------------------------------------------------- bağlantılar
+
+
+PW_LINK_SAMPLE = """\
+sonar_media_fx:capture_FL
+  |-> sonar_media_to_personal_capture:input_FL
+  |-> sonar_media_to_stream_capture:input_FL
+sonar_media_to_personal_capture:input_FR
+  |<- sonar_media_fx:capture_FR
+alsa_output.usb-Foo:playback_FL
+"""
+
+
+def test_parse_links_normalises_both_arrow_directions():
+    assert parse_links(PW_LINK_SAMPLE) == {
+        ("sonar_media_fx:capture_FL", "sonar_media_to_personal_capture:input_FL"),
+        ("sonar_media_fx:capture_FL", "sonar_media_to_stream_capture:input_FL"),
+        ("sonar_media_fx:capture_FR", "sonar_media_to_personal_capture:input_FR"),
+    }
+
+
+def test_parse_links_ignores_unconnected_ports():
+    assert parse_links("lone_node:output_FL\n") == set()
+
+
+def test_node_links_drops_the_port_suffix():
+    state = GraphState()
+    control = Control(
+        state, FakeSession(), window_ms=0, capturer=lambda _argv: PW_LINK_SAMPLE
+    )
+    assert control.node_links() == {
+        ("sonar_media_fx", "sonar_media_to_personal_capture"),
+        ("sonar_media_fx", "sonar_media_to_stream_capture"),
+    }
+
+
+def test_link_nodes_passes_node_names_not_ports():
+    state = GraphState()
+    seen = []
+    control = Control(
+        state, FakeSession(), window_ms=0, runner=lambda argv: seen.append(argv) or True
+    )
+    assert control.link_nodes("sonar_game_fx", "sonar_game_to_stream_capture") is True
+    assert seen == [["pw-link", "sonar_game_fx", "sonar_game_to_stream_capture"]]

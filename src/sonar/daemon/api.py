@@ -527,6 +527,15 @@ class SonarApi:
         self._mic(chain).send_to_stream_bus = bool(enabled)
         self._structural({"kind": "mic_stream_send", "chain": chain})
 
+    def set_channel_stream_source(self, channel: str, enabled: bool) -> None:
+        """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlayıp yayınlamayacağı.
+
+        Kapalıyken (varsayılan) kanal yalnızca birleşik Stream Mix üzerinden yayına
+        gider ve sistemin mikrofon listesini kirletmez. **Yapısal** — graf yeniden kurulur.
+        """
+        self._channel(channel).stream_source = bool(enabled)
+        self._structural({"kind": "channel_stream_source", "channel": channel})
+
     def add_channel(self, name: str, color: str = "#8B95A5") -> str:
         name = str(name).strip()
         if not name:

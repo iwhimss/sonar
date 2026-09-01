@@ -31,17 +31,28 @@ from typing import Any
 from sonar.core.dsp.chain import build_chain, plan_chain
 from sonar.core.model import BusId, Channel, MasterBus, MicChain, SonarConfig
 
-__all__ = ["dsp_node_for", "dsp_nodes", "generate", "generate_modules"]
+__all__ = [
+    "dsp_node_for",
+    "dsp_nodes",
+    "generate",
+    "generate_modules",
+    "send_links",
+]
 
-#: Sanal kaynakların oturum önceliği. 0 = "beni asla varsayılan mikrofon seçme".
-#: EasyEffects'in `easyeffects_source` için kullandığı değerin aynısı; sistemdeki gerçek
-#: mikrofonlar 2009–2100 aralığında olduğu için bu onları geride bırakmaz.
+#: Sanal düğümlerin oturum önceliği. 0 = "beni asla varsayılan cihaz seçme".
+#: Hem kaynaklar hem sink'ler için 0: `sonar_personal` varsayılan sink seçilirse kendi
+#: çıkışını kendine besler. Varsayılanı devralmak istendiğinde bunu `settings.
+#: take_over_default_sink` açıkça, `pw-metadata` ile yapar.
 VIRTUAL_SOURCE_PRIORITY = 0
 
 #: `media.class` seçimi. PipeWire 1.6.8'de filter-chain `playback.props` içinde
 #: `Audio/Source/Virtual` node'u kuramıyor (`can't add port: -28`), süreç ayakta kalır ama
 #: hiçbir node oluşmaz. `Audio/Source` sorunsuz çalışıyor. Ayrıntı: .plan/02-confgen.md
 VIRTUAL_SOURCE_CLASS = "Audio/Source"
+
+#: Masaüstü ses arayüzlerinin cihazın yanında gösterdiği simge adları.
+SINK_ICON = "audio-card"
+SOURCE_ICON = "audio-input-microphone"
 
 _HEADER = """# Sonar — PipeWire graf yapılandırması
 #
@@ -128,32 +139,58 @@ def dsp_node_for(cfg: SonarConfig, target: str) -> str | None:
 
 
 def _channel_chain(channel: Channel, rate: int, bands: int) -> dict:
-    """Bir kanal: `sonar_<id>` (Audio/Sink) → DSP → `sonar_<id>_fx` (Audio/Source).
+    """Bir kanal: `sonar_<id>` (Audio/Sink) → DSP → `sonar_<id>_fx`.
 
-    `_fx` ayrı bir sanal kaynak olduğu için OBS onu kanal başına ayrı bir track olarak
-    yakalayabilir; bize ek loopback maliyeti çıkarmaz çünkü zaten zincirin çıkışıdır.
+    `_fx` node'u iki modda kurulur:
+
+    * `channel.stream_source` **açık** → `Audio/Source`. OBS onu kanal başına ayrı bir
+      track olarak yakalayabilir; bedeli, kanalın sistemin mikrofon listesinde de
+      görünmesidir.
+    * **kapalı** (varsayılan) → `media.class` yok, `node.autoconnect = false`. Node
+      hâlâ zincirin çıkışıdır ama bir *cihaz* değildir, hiçbir listede görünmez.
+      Gönderi bağlantılarını daemon `pw-link` ile açıkça kurar (`send_links`).
     """
+    playback = {
+        "node.name": channel.fx_node,
+        "node.autoconnect": False,
+        **_stereo(rate),
+    }
+    if channel.stream_source:
+        playback |= {
+            "node.description": f"Sonar {channel.name} — Stream Source (Virtual Input)",
+            "node.nick": f"{channel.name} Stream",
+            "media.class": VIRTUAL_SOURCE_CLASS,
+            "device.icon-name": SOURCE_ICON,
+            "priority.session": VIRTUAL_SOURCE_PRIORITY,
+        }
+    else:
+        playback["node.description"] = f"Sonar {channel.name} FX"
+
     return _filter_chain(
         description=f"Sonar {channel.name}",
         graph=_graph(rate, bands, channels=2),
         capture={
             "node.name": channel.sink_node,
-            "node.description": f"Sonar {channel.name}",
+            "node.description": f"Sonar {channel.name} — Virtual Output",
+            "node.nick": channel.name,
             "media.class": "Audio/Sink",
-            **_stereo(rate),
-        },
-        playback={
-            "node.name": channel.fx_node,
-            "node.description": f"Sonar {channel.name} (FX)",
-            "media.class": VIRTUAL_SOURCE_CLASS,
+            "device.icon-name": SINK_ICON,
             "priority.session": VIRTUAL_SOURCE_PRIORITY,
             **_stereo(rate),
         },
+        playback=playback,
     )
 
 
 def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
-    """Kanalın `_fx` çıkışından bir bus'a giden gönderi. Fader bu node'a uygulanır."""
+    """Kanalın `_fx` çıkışından bir bus'a giden gönderi. Fader bu node'a uygulanır.
+
+    Yakalama tarafı bilinçli olarak **bağlantısız** doğar (`node.autoconnect = false`,
+    `target.object` yok): `_fx` node'u `media.class` taşımadığında WirePlumber'ın
+    yönlendirme politikası onu bir kaynak olarak görmez ve bağlamaz. Bağlantıyı
+    `supervisor` graf ayağa kalktıktan sonra `pw-link` ile kendisi kurar. Tek kod yolu
+    olsun diye bu, `stream_source` açıkken de böyle yapılır.
+    """
     name = channel.loopback_node(bus)
     return {
         "name": "libpipewire-module-loopback",
@@ -163,7 +200,7 @@ def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
             "capture.props": {
                 "node.name": f"{name}_capture",
                 "node.passive": True,
-                "target.object": channel.fx_node,
+                "node.autoconnect": False,
                 "stream.capture.sink": False,
                 **_stereo(rate),
             },
@@ -175,6 +212,20 @@ def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
             },
         },
     }
+
+
+def send_links(cfg: SonarConfig) -> list[tuple[str, str]]:
+    """Daemon'ın `pw-link` ile kurması gereken (çıkış node'u, giriş node'u) çiftleri.
+
+    Node adı verildiğinde `pw-link` iki node'un portlarını sırayla eşleştirir; port
+    adlarını burada sabitlemiyoruz çünkü `_fx`'in çıkış portları moda göre
+    `capture_FL` (Audio/Source) veya `output_FL` (sınıfsız) adını alıyor.
+    """
+    return [
+        (channel.fx_node, f"{channel.loopback_node(bus)}_capture")
+        for channel in cfg.ordered_channels()
+        for bus in BusId
+    ]
 
 
 # --------------------------------------------------------------------------- bus'lar
@@ -190,15 +241,17 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
     if bus.id is BusId.STREAM:
         playback = {
             "node.name": f"{bus.sink_node}_out",
-            "node.description": f"Sonar {bus.name}",
+            "node.description": f"Sonar {bus.name} — Virtual Input",
+            "node.nick": bus.name,
             "media.class": VIRTUAL_SOURCE_CLASS,
+            "device.icon-name": SOURCE_ICON,
             "priority.session": VIRTUAL_SOURCE_PRIORITY,
             **_stereo(rate),
         }
     else:
         playback = {
             "node.name": f"{bus.sink_node}_out",
-            "node.description": f"Sonar {bus.name} (çıkış)",
+            "node.description": f"Sonar {bus.name} Output",
             **_stereo(rate),
         }
         # Cihaz boşsa hedef verilmez; WirePlumber sistem varsayılanına bağlar.
@@ -210,8 +263,11 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
         graph=_graph(rate, bands, channels=2),
         capture={
             "node.name": bus.sink_node,
-            "node.description": f"Sonar {bus.name}",
+            "node.description": f"Sonar {bus.name} — Virtual Output",
+            "node.nick": bus.name,
             "media.class": "Audio/Sink",
+            "device.icon-name": SINK_ICON,
+            "priority.session": VIRTUAL_SOURCE_PRIORITY,
             **_stereo(rate),
         },
         playback=playback,
@@ -246,8 +302,10 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
                     },
                     "playback.props": {
                         "node.name": mic.source_node,
-                        "node.description": f"Sonar {mic.name}",
+                        "node.description": f"Sonar {mic.name} — Virtual Input",
+                        "node.nick": mic.name,
                         "media.class": VIRTUAL_SOURCE_CLASS,
+                        "device.icon-name": SOURCE_ICON,
                         "priority.session": VIRTUAL_SOURCE_PRIORITY,
                         **_stereo(rate),
                     },
@@ -257,7 +315,7 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
     else:
         capture = {
             "node.name": f"{mic.source_node}_capture",
-            "node.description": f"Sonar {mic.name} (giriş)",
+            "node.description": f"Sonar {mic.name} Input",
             "node.passive": True,
             "stream.capture.sink": False,
             **_stereo(rate),
@@ -271,8 +329,10 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
                 capture=capture,
                 playback={
                     "node.name": mic.source_node,
-                    "node.description": f"Sonar {mic.name}",
+                    "node.description": f"Sonar {mic.name} — Virtual Input",
+                    "node.nick": mic.name,
                     "media.class": VIRTUAL_SOURCE_CLASS,
+                    "device.icon-name": SOURCE_ICON,
                     "priority.session": VIRTUAL_SOURCE_PRIORITY,
                     **_stereo(rate),
                 },

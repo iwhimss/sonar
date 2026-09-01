@@ -168,6 +168,9 @@ def supervisor(config_store, monkeypatch):
     state = GraphState()
     config = config_store.load()
     expected = sorted(set(confgen.dsp_nodes(config).values()) | set(live_volumes(config)))
+    for output, target in confgen.send_links(config):
+        expected += [output, target]
+    expected = sorted(set(expected))
     for index, name in enumerate(expected, start=100):
         state.apply(
             [
@@ -184,6 +187,16 @@ def supervisor(config_store, monkeypatch):
 
     session = FakeSession()
     spawned: list[FakeProcess] = []
+    # `pw-link` gerçekten çalıştırılmasın: testler geliştiricinin ses grafına dokunmamalı.
+    linked: list[tuple[str, str]] = []
+
+    def run(argv: list[str]) -> bool:
+        if argv[:1] == ["pw-link"]:
+            linked.append((argv[1], argv[2]))
+        return True
+
+    def capture(_argv: list[str]) -> str:
+        return "".join(f"{a}:out_FL\n  |-> {b}:input_FL\n" for a, b in linked)
 
     def spawn(_conf):
         process = FakeProcess()
@@ -195,13 +208,14 @@ def supervisor(config_store, monkeypatch):
         store=config_store,
         state=state,
         monitor=monitor,
-        control=Control(state, session, window_ms=0),
+        control=Control(state, session, window_ms=0, runner=run, capturer=capture),
         spawn=spawn,
         node_timeout=0.5,
         autostart_monitor=False,
     )
     sup._spawned = spawned  # type: ignore[attr-defined]
     sup._session = session  # type: ignore[attr-defined]
+    sup._linked = linked  # type: ignore[attr-defined]
     return sup
 
 
@@ -369,4 +383,24 @@ def test_crash_recovery_uses_the_last_applied_config_not_the_disk(supervisor, co
         if __import__("time").monotonic() > deadline:
             raise AssertionError("kaydedilmemiş fader değeri geri gelmedi")
         __import__("time").sleep(0.05)
+    supervisor.stop(restore_default_sink=False)
+
+
+# --------------------------------------------------------------------------- gönderi bağlantıları
+
+
+def test_rebuild_wires_every_send(supervisor, config_store):
+    """Gönderiler conf'ta `target.object` ile ifade edilemiyor; `pw-link` ile kuruluyor."""
+    config = config_store.load()
+    supervisor.reconcile(config)
+    assert sorted(supervisor._linked) == sorted(confgen.send_links(config))
+    supervisor.stop(restore_default_sink=False)
+
+
+def test_existing_links_are_not_duplicated(supervisor, config_store):
+    config = config_store.load()
+    supervisor.reconcile(config)
+    before = len(supervisor._linked)
+    assert supervisor._wire_sends(config) is True
+    assert len(supervisor._linked) == before
     supervisor.stop(restore_default_sink=False)

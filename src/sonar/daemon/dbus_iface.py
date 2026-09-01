@@ -268,6 +268,11 @@ class SonarDBusInterface(QObject):
         """Mikrofonu yayın miksine de gönderir. **Yapısal**."""
         return reply(lambda: self.api.set_mic_stream_send(chain, enabled))
 
+    @Slot(str, bool, result=str)
+    def SetChannelStreamSource(self, channel: str, enabled: bool) -> str:
+        """Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**."""
+        return reply(lambda: self.api.set_channel_stream_source(channel, enabled))
+
     @Slot(str, str, result=str)
     def AddChannel(self, name: str, color: str) -> str:
         """Yeni kanal ekler ve id'sini döndürür. **Yapısal**."""

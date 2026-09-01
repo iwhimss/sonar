@@ -1,6 +1,6 @@
 # Faz 12 — Sanal cihaz düzeni
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 2, Faz 3, Faz 6
 **Çıktı:** `src/sonar/core/model.py`, `src/sonar/core/config.py`,
 `src/sonar/engine/confgen.py`, `src/sonar/engine/control.py`,
@@ -101,41 +101,100 @@ fader/EQ'dan etkilenmez. Bu davranış dokümana yazılır.
 
 ## Görevler
 
-- [ ] `Channel.direction` ve `Channel.stream_source` alanları
-- [ ] Şema 2 migrasyonu + `test_config.py` yuvarlak yolculuk testi
-- [ ] `confgen`: `_fx` node'u iki modlu (`media.class` var / yok)
-- [ ] `confgen`: loopback `capture.props` → `target.object` yerine `autoconnect=false`
-- [ ] `confgen`: İngilizce, yön belirten `node.description` tablosu
-- [ ] `confgen`: `node.nick`, `device.icon-name`, `priority.session`
-- [ ] `control.link_ports()` + `list_links()` (`pw-link`, `pw-link -l`)
-- [ ] `supervisor`: graf ayağa kalkınca gönderileri bağla, doğrula, bir kez yeniden dene
-- [ ] `meters.meter_sources()` → kanal sink monitörleri
-- [ ] Altın dosya (`tests/test_confgen.py`) yeniden üretilir
-- [ ] Ölçüm: `pw-link -l`, `pactl list short sources`, PipeWire restart dayanıklılığı
+- [x] `Channel.stream_source` alanı (`direction` gerekmedi — aşağıya bak)
+- [x] `confgen`: `_fx` node'u iki modlu (`media.class` var / yok)
+- [x] `confgen`: loopback `capture.props` → `target.object` yerine `autoconnect=false`
+- [x] `confgen`: İngilizce, yön belirten `node.description` tablosu
+- [x] `confgen`: `node.nick`, `device.icon-name`, `priority.session`
+- [x] `control.link_nodes()` + `node_links()` + saf `parse_links()`
+- [x] `supervisor`: graf ayağa kalkınca gönderileri bağla, doğrula, bir kez yeniden dene
+- [x] `meters.meter_sources()` → kanal sink monitörleri
+- [x] Altın dosya (`tests/test_confgen.py`) yeniden üretilir
+- [x] Ölçüm: `pw-link -l`, `pactl list short sources`, PipeWire restart dayanıklılığı
 
 ---
 
-## Ölçüm
+## Ölçüm (2026-09-01, gerçek grafta)
 
-Faz bitince buraya yazılacak:
+**Cihaz listesi temiz.** `pactl list short sources`'ta artık yalnızca gerçekten giriş
+olması gerekenler var:
 
-- `pw-link -l | grep sonar_.*_to_` → beklenen bağlantı sayısı
-- `pactl list short sources | grep _fx` → boş olmalı
-- `systemctl --user restart pipewire` sonrası bağlantıların kendini toparlaması
-- Görev çubuğu ses uygletinde sanal sink'lerin görünüp görünmediği
+```
+sonar_stream_out    Sonar Stream Mix — Virtual Input
+sonar_mic           Sonar Mic — Virtual Input
+sonar_stream_mic    Sonar Stream Mic — Virtual Input
+```
+
+Dört sahte mikrofon (`sonar_game_fx`, `sonar_chat_fx`, `sonar_media_fx`,
+`sonar_aux_fx`) kayboldu. (`*.monitor` girdileri kaldı; her sink'in monitörü olur,
+fiziksel cihazlarda da vardır, kaçınılmaz.)
+
+**`pw-link` tutuyor.** `media.class` taşımayan bir filter-chain çıkışına elle
+bağlantı kuruldu ve kaldı. Port adları moda göre değişiyor — bu yüzden `pw-link`'e
+port değil node adı veriliyor:
+
+| mod | `_fx` çıkış portları |
+|---|---|
+| `stream_source` kapalı | `sonar_game_fx:output_FL` / `output_FR` |
+| `stream_source` açık | `sonar_game_fx:capture_FL` / `capture_FR` |
+
+**Sinyal yolu birebir şeffaf.** 440 Hz, 0.2 genlik (-13.98 dBFS) sinüs
+`sonar_game`'e enjekte edildi, `sonar_personal` monitöründen okundu:
+
+| nokta | seviye |
+|---|---|
+| `sonar_game` (kanal girişi) | **-13.98 dBFS** |
+| `sonar_personal` (bus girişi) | **-13.98 dBFS** |
+| `stream_source` açıkken aynı ölçüm | **-13.98 dBFS** |
+
+Kazanç yok, kayıp yok. L/R ayrı frekans (440/660 Hz) testinde kanal sızıntısı
+-139 dB, yani yok.
+
+> Ölçüm sırasında yakalanan tuzak: `pw-cat --record --target <sink>` bir sink'in
+> monitörünü **yakalamıyor**, `-P stream.capture.sink=true` şart. Bu olmadan üç ölçüm
+> üst üste "-180 dBFS, sessiz" verdi ve graf bozuk sanıldı. `meters.py` bunu zaten
+> doğru yapıyordu.
+
+**PipeWire yeniden başlatma dayanıklılığı** (aşağıya bak): `systemctl --user restart
+pipewire pipewire-pulse wireplumber` sonrası **6 saniyede** 6 sink ve 16 gönderi
+bağlantısı geri geldi, sinyal yine -13.98 dBFS.
+
+**Görev çubuğu ses uygleti:** `node.nick`, `device.icon-name` ve `priority.session`
+eklendi; sonucu kullanıcı ikinci testte doğrulayacak.
 
 ---
 
 ## Risk / yedek yol
 
-Elle `pw-link` bağlantıları tutmazsa (WirePlumber `media.class`'sız node'a link
-kurmayı reddedebilir): `_fx` `Audio/Source` olarak kalır ve `stream_source` anahtarı
-yalnızca adı ve `priority.session` değerini etkiler. Bu durumda kullanıcıya
-"cihaz listesinde görünmeye devam ediyor, sebebi şu" diye açıkça söylenir ve
-README'ye yazılır.
+**Gerçekleşmedi.** Elle `pw-link` bağlantıları sorunsuz kuruldu ve kaldı; yedek yola
+(`_fx`'i `Audio/Source` olarak bırakmak) gerek olmadı.
 
 ---
 
 ## Yol boyunca yakalananlar
 
-_(faz sırasında doldurulacak)_
+**`direction` alanı gerekmedi.** Plan `Channel.direction` diyordu ama giriş kanalları
+`MicChain` ile temsil ediliyor; `Channel` her zaman bir çıkış olurdu. Her satırı
+`"output"` olan bir alan eklemek yerine yapısal ayrım korundu — arayüz zaten
+`channel_rows()`'un ürettiği `kind` alanını ("channel" / "mic" / "bus") kullanıyor.
+Şema sürümü de bu yüzden 1'de kaldı; `stream_source` varsayılanlı yeni bir alan,
+eski config'ler olduğu gibi okunuyor.
+
+**`priority.session` sink'lerde de 0.** Plan sink'ler için 500 diyordu. Fiziksel
+kulaklık çıkarıldığında WirePlumber `sonar_personal`'ı varsayılan sink seçebilir ve
+o zaman personal bus kendi çıkışını kendine besler. 0 bunu imkânsız kılıyor;
+varsayılanı devralmak isteyen `settings.take_over_default_sink` bunu zaten açıkça
+`pw-metadata` ile yapıyor.
+
+**PipeWire yeniden başlatınca graf geri gelmiyordu** — Faz 10'da "denenmemiş
+senaryo" olarak bırakılmıştı, burada denendi ve gerçekten kırıktı. `systemctl --user
+restart pipewire` bizim `pipewire -c graph.conf` istemcimizi **öldürmüyor**, yalnızca
+bağlantısını koparıyor. Süreç canlı göründüğü için gözcü (`_watch`) `process.wait()`
+üzerinde bekliyor ve hiçbir şey olmuyordu; ölçüldü: 15 saniye sonra hâlâ 0 sonar
+node'u. Gözcü artık süreç ölümünü **ve** "beklenen node'ların hiçbiri grafta yok"
+durumunu birlikte yokluyor (`_await_trouble`, 2 sn aralık, üst üste iki boş ölçüm).
+Toparlanma süresi ölçüldü: **6 saniye**.
+
+**Metre ölçüm noktası değişti.** `_fx` artık bir cihaz olmadığı için `pw-cat` ondan
+yakalayamıyor; kanal metreleri sink monitöründen okunuyor. Pratik farkı, metrenin
+DSP ve fader **öncesi** seviyeyi göstermesi.
