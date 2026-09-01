@@ -7,15 +7,16 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 17 — Doğrulama ve dokümantasyon
+**Aktif faz:** — (test turu 2 bekleniyor)
 **Son güncelleme:** 2026-09-01
-**Sonraki adım:** Faz 17 — uçtan uca doğrulama ve dokümanların yeni
-davranışa göre güncellenmesi.
+**Sonraki adım:** Kullanıcı ikinci test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/17-verify.md` içinde işaretsiz duruyor. Sonra Faz 11 — Paketleme.
 
-> **Test turu 1 (2026-09-01).** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk kez
-> gerçek kullanımda denedi. Çıkan eksikler ve hatalar Faz 12–17 olarak planlandı.
-> **Faz 11 (Paketleme) ertelendi**: bu tur bitip kullanıcı ikinci testi yapana kadar
-> başlamaz.
+> **Test turu 1 (2026-09-01) kapandı.** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk
+> kez gerçek kullanımda denedi; çıkan eksikler ve hatalar Faz 12–17'de giderildi.
+> Üç hatanın kök nedeni ölçülerek bulundu: `pw-dump -m` silme olayları `type` alanı
+> taşımıyordu, QML'de fonksiyon çağrısı bağlama kurmuyordu, mikser şeride sözlük
+> kopyası veriyordu. **Sırada test turu 2 var**; Faz 11 (Paketleme) ondan sonra.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -35,14 +36,14 @@ davranışa göre güncellenmesi.
 | 14 | [Envanter doğruluğu](14-inventory.md) | 🟢 Tamamlandı |
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | 🟢 Tamamlandı |
 | 16 | [Profil deneyimi](16-profiles.md) | 🟢 Tamamlandı |
-| 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟡 Sıradaki |
-| 11 | [Paketleme](11-packaging.md) | ⏸ Ertelendi (test turu 1'den sonra) |
+| 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟢 Tamamlandı |
+| 11 | [Paketleme](11-packaging.md) | 🟡 Sıradaki (test turu 2'den sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 750 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (36 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+**Test durumu:** 754 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (47 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
 
 ---
@@ -110,31 +111,34 @@ yeniden üretilip sürecin restart edilmesini gerektirir (~200 ms kesinti, nadir
 ```
      UYGULAMALAR                                       ÇIKIŞLAR
   ┌───────────────┐
-  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐  (Audio/Source/Virtual → OBS)
-  │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤
-  │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤
+  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐
+  │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤   pw-link ile
+  │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤   açıkça bağlanır
   │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤
   └───────────────┘                                          │
                           her kanaldan 2 loopback:           │
                      ┌────────────────────────────────────────┘
                      │
        personal fader ├──▶ [sonar_personal] ─master DSP─▶ ► Arctis 7 (fiziksel)
-       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► monitor → OBS
+       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
 
-     MİKROFON
-  Fifine ──┬──▶ [mic zinciri]        ─▶ sonar_mic         (Audio/Source/Virtual → Discord)
-           └──▶ [stream mic zinciri] ─▶ sonar_stream_mic  (Audio/Source/Virtual → OBS)
+     GİRİŞ KANALLARI
+  Fifine ──┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord)
+           └──▶ [stream mic zinciri] ─▶ sonar_stream_mic  (→ OBS)
                      └──(ops.) sidetone ─▶ sonar_personal
                      └──(ops.) ─────────▶ sonar_stream
 ```
 
-**Kanal başına 3 OBS erişim noktası:**
-1. `sonar_<kanal>_fx` — DSP sonrası, fader'lardan bağımsız → OBS'de kanal başına ayrı track
-2. `Sonar Stream Mix` monitörü — stream fader'larıyla mikslenmiş birleşik ses
-3. `Sonar Stream Mic` — mikrofonun yayına özel zinciri
+**OBS erişim noktaları** (Faz 12'de sadeleşti):
 
-`_fx` node'ları `Audio/Source/Virtual` olduğu için WirePlumber onları otomatik bağlamaz;
-sadece bizim loopback'lerimiz ve OBS onlardan okur. Ek loopback maliyeti yok.
+1. `Sonar Stream Mix — Virtual Input` — stream fader'larıyla mikslenmiş birleşik ses.
+   Varsayılan ve çoğu kurulum için tek gereken.
+2. `Sonar Stream Mic — Virtual Input` — mikrofonun yayına özel zinciri.
+3. `sonar_<kanal>_fx` — **yalnızca `stream_source` açıksa.** Kanal başına ayrı track.
+
+`_fx` node'u varsayılan olarak `media.class` taşımaz: zincirin çıkışıdır ama bir *cihaz*
+değildir, hiçbir listede görünmez. Açıkken `Audio/Source` olur. Sınıfsız bir node'u
+WirePlumber bağlamadığı için gönderiler `pw-link` ile daemon tarafından kuruluyor.
 
 ### DSP zinciri (sabit topoloji, bypass ile açma/kapama)
 
