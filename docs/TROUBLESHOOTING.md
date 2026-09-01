@@ -34,6 +34,12 @@ Sonar bu durumu açılışta tespit eder ve `sonar-cli status` çıktısının s
    bölümüne bakın; değilse `sonar-cli move <id> <kanal>`.
 3. Fader kapalı olabilir: `sonar-cli volume game personal 100`.
 4. Mute açık olabilir: `sonar-cli mute game personal off`.
+5. Kanal gönderileri bağlı mı? Kanal çıkışları bus'lara `pw-link` ile bağlanıyor:
+   ```bash
+   pw-link -l | grep to_personal_capture
+   ```
+   Her kanal için iki satır (FL, FR) görmelisiniz. Yoksa daemon logunda
+   "kanal gönderisi bağlanamadı" satırı vardır; `sonar-cli reload` yeniden dener.
 
 ## Çift ses / yankı
 
@@ -92,10 +98,41 @@ sonar-cli reload
 
 ## PipeWire yeniden başladıktan sonra ses gitti
 
-Daemon grafı kendi yeniden kurar (`PartOf=pipewire.service`). Olmazsa:
+Daemon bunu kendi fark edip grafı yeniden kurar; **ölçülen toparlanma süresi 6 saniye.**
+
+PipeWire yeniden başlatıldığında bizim `pipewire -c graph.conf` istemcimiz ölmez, yalnızca
+bağlantısını kaybeder — süreç canlı görünürken graf boş kalır. Gözcü bu yüzden süreç
+ölümüne değil, "beklenen node'ların hiçbiri grafta yok" durumuna da bakar (2 sn aralıkla,
+üst üste iki boş ölçüm).
+
+6 saniyeden uzun sürerse:
 ```bash
 systemctl --user restart sonar-daemon
 ```
+
+## Sanal cihazları göremiyorum
+
+Önce gerçekten var mı bakın:
+
+```bash
+pactl list short sinks   | grep sonar    # çıkış kanalları + bus'lar
+pactl list short sources | grep sonar    # giriş kanalları + Stream Mix
+```
+
+Adlar yönü söyler: `Sonar Game — Virtual Output` bir çıkış, `Sonar Mic — Virtual Input`
+bir giriştir.
+
+**Kanallarım mikrofon listesinde görünüyor.** Bu, o kanalın "OBS kaynağı" anahtarı
+açık demektir. Kapatın:
+
+```bash
+sonar-cli obs game off
+```
+
+Varsayılan kapalıdır; kapalıyken kanal yalnızca birleşik Stream Mix üzerinden yayına gider.
+
+**`*.monitor` girdileri.** Her sink'in bir monitörü olur — fiziksel kartlarda da vardır,
+Sonar'a özgü değildir ve kaldırılamaz.
 
 ## Uygulama yanlış kanalda
 
@@ -139,7 +176,21 @@ ls -ld ~/.config/sonar
 
 Gömülü presetler (`Flat`, `FPS Footsteps`, `Broadcast`…) salt okunurdur. Düzenlemeye
 başladığınızda otomatik olarak `"<ad> (özel)"` adıyla bir kopya oluşturulup ona geçilir —
-liste `sonar-cli presets <kanal>` çıktısında 🔒 ile işaretlidir.
+liste `sonar-cli presets <kanal>` çıktısında 🔒 ile işaretlidir. Arayüz bunu bir bildirim
+şeridiyle söyler.
+
+## Profillerde "kaydet" düğmesi yok
+
+Kasıtlı. Her değişiklik aktif profile yazılır ve yarım saniye içinde diske geçer. Yeni bir
+varyant için **＋ Yeni profil** (veya `sonar-cli new <kanal> <ad>`): isim sorar, sıfırdan
+düz bir profil açar, mevcut profile dokunmaz.
+
+Favoriler `config.toml` içinde hedef başına sıralı bir liste; sayı sınırı yok:
+
+```bash
+sonar-cli favorite add game "CS2"
+sonar-cli favorite list game
+```
 
 ## Her şeyi sıfırlamak
 

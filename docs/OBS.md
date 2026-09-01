@@ -12,15 +12,23 @@ Daemon çalışırken OBS'in ses kaynağı listesinde şunlar görünür:
 
 | Kaynak | Ne içerir |
 |---|---|
-| **Sonar Stream Mix** | Yayın fader'larıyla mikslenmiş birleşik ses |
-| **Sonar Stream Mic** | Mikrofonun yayına özel işlenmiş hâli |
-| **Sonar Game (FX)** | Yalnızca Game kanalı, DSP sonrası |
-| **Sonar Chat (FX)** | Yalnızca Chat kanalı |
-| **Sonar Media (FX)** | Yalnızca Media kanalı |
-| **Sonar Aux (FX)** | Yalnızca Aux kanalı |
+| **Sonar Stream Mix — Virtual Input** | Yayın fader'larıyla mikslenmiş birleşik ses |
+| **Sonar Stream Mic — Virtual Input** | Mikrofonun yayına özel işlenmiş hâli |
 
-`_fx` kaynakları **fader'lardan bağımsızdır** — Stream Mix'te kısılmış bir kanalı yine de
-ayrı track'e alabilirsin.
+Çoğu kurulum için gereken bu ikisi. **Kanal başına ayrı kaynak varsayılan olarak
+kapalıdır**; açılırsa o kanal sistemin **mikrofon listesinde** de görünür, bu yüzden
+istemeden açık kalmasın diye kapalı geliyor.
+
+İhtiyacın olursa kanal başına aç:
+
+```bash
+sonar-cli obs game on
+sonar-cli obs chat on
+```
+
+Bunlar OBS'te **Sonar Game — Stream Source (Virtual Input)** olarak belirir ve
+**fader'lardan bağımsızdır** — Stream Mix'te kısılmış bir kanalı yine de ayrı track'e
+alabilirsin. Kapatmak için `sonar-cli obs game off`.
 
 ---
 
@@ -42,7 +50,10 @@ Kulaklığında duymaya devam edersin, yayında duyulmaz.
 Her kanalı ayrı track'e almak, kayıttan sonra "oyun sesi çok yüksek olmuş" gibi sorunları
 düzeltmeni sağlar.
 
-1. Kaynakları ekle: **Sonar Game (FX)**, **Sonar Chat (FX)**, **Sonar Stream Mic**
+0. Önce kanal kaynaklarını aç: `sonar-cli obs game on && sonar-cli obs chat on`
+   (graf yeniden kurulur, ~200 ms sessizlik)
+1. Kaynakları ekle: **Sonar Game — Stream Source**, **Sonar Chat — Stream Source**,
+   **Sonar Stream Mic**
 2. **Ayarlar → Çıktı → Kayıt** → Kayıt biçimi `mkv`, **Ses Parçaları**: 1–4 işaretle
 3. Miksleyicide her kaynağın `⋮` menüsü → **Gelişmiş Ses Özellikleri**
 4. Her kaynağı yalnızca kendi track'ine ata:
@@ -50,8 +61,8 @@ düzeltmeni sağlar.
    | Kaynak | Track |
    |---|---|
    | Sonar Stream Mix | 1 |
-   | Sonar Game (FX) | 2 |
-   | Sonar Chat (FX) | 3 |
+   | Sonar Game — Stream Source | 2 |
+   | Sonar Chat — Stream Source | 3 |
    | Sonar Stream Mic | 4 |
 
 5. Kaydı başlat.

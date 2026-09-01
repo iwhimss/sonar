@@ -108,11 +108,76 @@ Window {
         }
     }
 
+    /* Bildirim şeridi: içe aktarma sonucu, "preset kopyalandı", kaydetme hatası.
+       Bunlar daha önce yalnızca loga düşüyordu; kullanıcı hiçbir geri bildirim
+       görmüyordu. */
+    Rectangle {
+        id: notice
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: warning.bottom
+        height: visible ? 30 : 0
+        visible: notice.text.length > 0
+        property string text: ""
+        property bool isError: false
+        color: notice.isError ? Qt.rgba(0.90, 0.28, 0.30, 0.14)
+                              : Qt.rgba(0.49, 0.42, 0.94, 0.14)
+        border.width: 1
+        border.color: notice.isError ? Theme.danger : Theme.master
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.s3
+            anchors.right: dismiss.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.s2
+            Text {
+                text: notice.text
+                color: notice.isError ? Theme.danger : Theme.text
+                elide: Text.ElideRight
+                width: window.width - 80
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        SonarIconButton {
+            id: dismiss
+            icon: "close"
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.s2
+            anchors.verticalCenter: parent.verticalCenter
+            onClicked: notice.text = ""
+        }
+
+        // Hatalar kullanıcı kapatana kadar durur; bilgiler kendiliğinden geçer.
+        Timer {
+            id: noticeTimer
+            interval: 8000
+            onTriggered: notice.text = ""
+        }
+    }
+
+    Connections {
+        target: bridge
+        function onNoticeRaised(text, isError) {
+            notice.text = text
+            notice.isError = isError
+            if (!isError) noticeTimer.restart(); else noticeTimer.stop()
+        }
+        function onErrorRaised(code, message) {
+            notice.text = message
+            notice.isError = true
+            noticeTimer.stop()
+        }
+    }
+
     // --- içerik ------------------------------------------------------------
     Item {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: warning.bottom
+        anchors.top: notice.bottom
         anchors.bottom: parent.bottom
         anchors.margins: Theme.s6
         anchors.topMargin: Theme.s3

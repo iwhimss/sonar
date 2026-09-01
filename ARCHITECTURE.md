@@ -66,9 +66,9 @@ uygulama yönlendirme.
 ```
      UYGULAMALAR                                       ÇIKIŞLAR
   ┌───────────────┐
-  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐  (Audio/Source → OBS)
-  │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤
-  │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤
+  │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐
+  │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤   pw-link ile
+  │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤   açıkça bağlanır
   │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤
   └───────────────┘                                          │
                           her kanaldan 2 loopback:           │
@@ -77,7 +77,7 @@ uygulama yönlendirme.
        personal fader ├──▶ [sonar_personal] ─master DSP─▶ ► fiziksel kulaklık
        stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
 
-     MİKROFON
+     GİRİŞ KANALLARI
   fiziksel ─┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord vb.)
             └──▶ [stream mic zinciri] ─▶ sonar_stream_mic  (→ OBS)
                       └──(ops.) sidetone ─▶ sonar_personal
@@ -86,33 +86,69 @@ uygulama yönlendirme.
 
 ### Node isimleri
 
-| Node | Sınıf | Amaç |
-|---|---|---|
-| `sonar_<kanal>` | `Audio/Sink` | Uygulamalar buraya çalar |
-| `sonar_<kanal>_fx` | `Audio/Source` | DSP sonrası çıkış — OBS bunu yakalar |
-| `sonar_<kanal>_to_personal` | loopback | Personal fader'ı bu node'a uygulanır |
-| `sonar_<kanal>_to_stream` | loopback | Stream fader'ı bu node'a uygulanır |
-| `sonar_personal` | `Audio/Sink` | Kişisel miks bus'ı → fiziksel çıkış |
-| `sonar_stream` | `Audio/Sink` | Yayın miksi (uygulamalar doğrudan da hedefleyebilir) |
-| `sonar_stream_out` | `Audio/Source` | Yayın miksinin çıkışı — OBS bunu seçer |
-| `sonar_mic` | `Audio/Source` | İşlenmiş mikrofon (uygulamalar için) |
-| `sonar_stream_mic` | `Audio/Source` | İşlenmiş mikrofon (yayın için) |
+| Node | Sınıf | `node.description` | Amaç |
+|---|---|---|---|
+| `sonar_<kanal>` | `Audio/Sink` | `Sonar <Ad> — Virtual Output` | Uygulamalar buraya çalar |
+| `sonar_<kanal>_fx` | *(yok)* | `Sonar <Ad> FX` | DSP çıkışı — **cihaz değil** |
+| `sonar_<kanal>_fx` | `Audio/Source` | `Sonar <Ad> — Stream Source (Virtual Input)` | `stream_source` açıkken: OBS kanal track'i |
+| `sonar_<kanal>_to_personal` | loopback | — | Personal fader'ı bu node'a uygulanır |
+| `sonar_<kanal>_to_stream` | loopback | — | Stream fader'ı bu node'a uygulanır |
+| `sonar_personal` | `Audio/Sink` | `Sonar Personal Mix — Virtual Output` | Kişisel miks → fiziksel çıkış |
+| `sonar_stream` | `Audio/Sink` | `Sonar Stream Mix — Virtual Output` | Yayın miksi (uygulamalar doğrudan da hedefleyebilir) |
+| `sonar_stream_out` | `Audio/Source` | `Sonar Stream Mix — Virtual Input` | **OBS bunu seçer** |
+| `sonar_<giriş>` | `Audio/Source` | `Sonar <Ad> — Virtual Input` | İşlenmiş mikrofon |
+
+Adlar İngilizce ve yönü söylüyor: bir cihaz listesinde "Sonar Media" görmek onun sink mi
+source mu olduğunu anlatmıyordu.
+
+### Kanal başına OBS kaynağı — varsayılan kapalı
+
+`sonar_<kanal>_fx` node'u varsayılan olarak **`media.class` taşımaz**: zincirin çıkışıdır
+ama bir *cihaz* değildir, hiçbir listede görünmez. Sebebi kullanıcı geri bildirimi: her
+çıkış kanalı `Audio/Source` olduğunda sistemin **mikrofon listesinde** dört sahte giriş
+beliriyordu ("Media kanalı neden mikrofon?").
+
+`sonar-cli obs <kanal> on` (veya kanal ayarı) bunu açar; o kanal OBS'te ayrı bir track
+olarak yakalanabilir hâle gelir. Faydası kayıt sonrası düzenlemede: oyun sesini kısıp
+Discord'u bırakmak. EQ ile ilgisi yok — EQ zaten kanal başına.
+
+### Gönderiler neden `pw-link` ile bağlanıyor
+
+`media.class` taşımayan bir node'u WirePlumber'ın yönlendirme politikası bir kaynak
+saymaz; gönderi loopback'lerinin `capture.props` bölümündeki `target.object` işe yaramaz.
+Bu yüzden loopback yakalama tarafı bilerek **bağlantısız** doğar
+(`node.autoconnect = false`) ve `Supervisor._wire_sends()` graf ayağa kalktıktan sonra
+`pw-link` ile bağlar, `pw-link -l` çıktısıyla doğrular.
+
+Port adları moda göre değiştiği için (`output_FL` / `capture_FL`) `pw-link`'e port değil
+**node adı** verilir; portları o eşleştirir.
 
 > **Neden `Audio/Source/Virtual` değil?** PipeWire 1.6.8'de `filter-chain`'in
 > `playback.props` bölümünde bu sınıf verildiğinde node kurulamıyor (`can't add port: -28`)
-> ve süreç sessizce boş bir grafla ayakta kalıyor. `Audio/Source` sorunsuz çalışıyor;
-> varsayılan mikrofon seçilmemeleri için hepsine `priority.session = 0` veriliyor
-> (EasyEffects'in kendi sanal kaynağında kullandığı yöntemin aynısı).
+> ve süreç sessizce boş bir grafla ayakta kalıyor. `Audio/Source` sorunsuz çalışıyor.
 
-`_fx` node'ları ayrı birer sanal kaynak olduğu için WirePlumber onları hiçbir yere
-otomatik bağlamaz. Sadece bizim loopback'lerimiz ve OBS onlardan okur — bu yüzden kanal
-başına ayrı OBS çıkışı **ek maliyet getirmez**.
+> **Neden hepsinde `priority.session = 0`?** Sanal düğümlerimiz asla varsayılan cihaz
+> seçilmemeli. Kulaklık çıkarıldığında WirePlumber `sonar_personal`'ı varsayılan sink
+> seçerse, personal bus kendi çıkışını kendine besler. Varsayılanı devralmak isteyen
+> `settings.take_over_default_sink` bunu `pw-metadata` ile açıkça yapar.
 
-### OBS'in üç erişim noktası
+### Kanal yönü
 
-1. **`sonar_<kanal>_fx`** — DSP sonrası, fader'lardan bağımsız. Kanal başına ayrı track için.
-2. **`Sonar Stream Mix` (`sonar_stream_out`)** — stream fader'larıyla mikslenmiş birleşik ses.
-3. **`Sonar Stream Mic`** — mikrofonun yayına özel zinciri.
+| Yön | Model | Üretilen |
+|---|---|---|
+| Çıkış | `Channel` | sink + DSP + iki bus gönderisi |
+| Giriş | `MicChain` | fiziksel kaynak → DSP → sanal kaynak |
+
+Yön modelde ayrı bir alan değil; hangi listede durduğu zaten söylüyor. Her ikisi de
+kullanıcı tarafından eklenip silinebilir. Kısıtlar: en az bir çıkış kanalı ve kendi DSP
+zincirine sahip en az bir giriş kanalı kalmalı.
+
+### OBS erişim noktaları
+
+1. **`Sonar Stream Mix` (`sonar_stream_out`)** — stream fader'larıyla mikslenmiş birleşik
+   ses. Varsayılan ve çoğu kurulum için tek gereken.
+2. **`Sonar Stream Mic`** — mikrofonun yayına özel zinciri.
+3. **`sonar_<kanal>_fx`** — yalnızca `stream_source` açıksa. Kanal başına ayrı track.
 
 ---
 
@@ -191,20 +227,23 @@ uygulanması garanti edilir.
 
 Profiller ayrı dosyalarda tutulur; profil eklemek/silmek `config.toml`'u yeniden yazmaz.
 
+Favoriler **profilde değil** `config.toml` içinde, hedef başına sıralı bir ad listesi
+olarak durur:
+
+```toml
+[favorites]
+game = ["CS2", "Arc Raiders"]
+```
+
+Sıra listenin kendisidir ve sayı sınırı yoktur. Şema 1'de bu bilgi profil dosyalarındaki
+`favorite_slot` alanındaydı (9 slot); şema 2'ye geçerken `ConfigStore._migrate_favorites()`
+profil dosyalarını tarayıp eski slot numaralarına göre sıralar. Bir kez çalışır.
+
 `config.toml` elle düzenlenebilir — `Reload()` D-Bus metodu diskten yeniden okur.
 Bozuk bir config yedeklenir (`config.toml.corrupt-<zaman>`) ve varsayılana düşülür.
 
 ---
 
----
-
----
-
----
-
----
-
----
 
 ## D-Bus API
 
@@ -224,11 +263,11 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (43)
+### Metotlar (47)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
-| `AddChannel` | `s name, s color` | Yeni kanal ekler ve id'sini döndürür. **Yapısal**. |
+| `AddChannel` | `s name, s direction, s color` | Yeni kanal ekler ve id'sini döndürür. **Yapısal**. |
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
 | `ExportProfile` | `s target, s name, b autoeq` | Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde. |
@@ -237,21 +276,25 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `GetState` | `—` | Tüm durum: yapılandırma, profiller, akışlar, cihazlar, çakışmalar. |
 | `ImportProfile` | `s target, s text, s name` | Dış EQ dosyasını içe aktarır. Biçim içerikten bulunur. |
 | `ListBuiltinProfiles` | `s target` | Hedefin gömülü (salt okunur) preset adları. |
+| `ListFavorites` | `s target` | Hedefin sıralı favori profilleri. |
 | `ListHeadsets` | `—` | Donanım ChatMix tekeri olduğu bilinen kulaklıklar. |
 | `ListProfiles` | `s target` | Hedefin profilleri; gömülü presetler önce. |
 | `ListRules` | `—` | Uygulama → kanal yönlendirme kuralları. |
 | `LoadProfile` | `s target, s name` | Profili veya gömülü preset'i yükler. Anında ve kesintisiz. |
 | `MoveStream` | `i stream_id, s channel, b remember` | `remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir. |
+| `NewProfile` | `s target, s name` | Sıfırdan düz bir profil oluşturur ve ona geçer. |
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
-| `RemoveChannel` | `s channel` | Kanalı siler; yerleşik kanallar silinemez. **Yapısal**. |
+| `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
 | `RemoveRule` | `s match_key, s pattern` | Kuralı kaldırır. |
 | `RenameProfile` | `s target, s old, s new` | Kullanıcı profilini yeniden adlandırır. |
+| `ReorderFavorites` | `s target, as names` | Favori sırasını yeniden yazar. |
 | `ResetProfile` | `s target` | Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı). |
 | `SaveProfile` | `s target, s name` | Çalışılan profili yeni adla kaydeder ('farklı kaydet'). |
 | `SetBandCount` | `s target, i count` | EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur. |
 | `SetBusDevice` | `s bus, s device` | Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur. |
 | `SetChannelMute` | `s channel, s bus, b muted` | Kanalın bir miks yolunu susturur. |
+| `SetChannelStreamSource` | `s channel, b enabled` | Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**. |
 | `SetChannelVolume` | `s channel, s bus, d value` | Kanalın bir miks yolundaki seviyesi (lineer, 1.0 = birim kazanç). |
 | `SetChatMix` | `d value` | ChatMix konumu (0–100, 50 = nötr). Yalnızca kulaklık miksini etkiler. |
 | `SetChatMixConfig` | `b enabled, s left, s right` | ChatMix'in hangi kanalları sürdüğü; virgülle çoklu kanal. |
@@ -267,7 +310,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `SetMicMute` | `s chain, b muted` | Mikrofonu susturur. |
 | `SetMicStreamSend` | `s chain, b enabled` | Mikrofonu yayın miksine de gönderir. **Yapısal**. |
 | `SetMicVolume` | `s chain, d value` | Mikrofon zincirinin çıkış seviyesi. |
-| `SetProfileFavorite` | `s target, s name, i slot` | Profili bir favori slotuna atar (0 = kaldır). |
+| `SetProfileFavorite` | `s target, s name, b favorite` | Profili favorilere ekler veya çıkarır. Sayı sınırı yok. |
 | `SetRule` | `s match_key, s pattern, s channel, b is_regex` | Uygulama → kanal kuralı ekler veya günceller. |
 | `SetTakeOverDefaultSink` | `b enabled` | Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı). |
 | `SubscribeMeters` | `b enabled` | Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı. |

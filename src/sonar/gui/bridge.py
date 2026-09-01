@@ -21,9 +21,10 @@ yoklamaya devam eder; daemon gelince kendiliğinden bağlanır.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from PySide6.QtCore import (
     Property,
@@ -254,6 +255,7 @@ class SonarBridge(QObject):
     revisionChanged = Signal()
     levelsChanged = Signal()
     errorRaised = Signal(str, str)
+    noticeRaised = Signal(str, bool)  # (metin, hata mı)
     graphRebuilt = Signal()
 
     def __init__(
@@ -348,10 +350,35 @@ class SonarBridge(QObject):
     def onStateChanged(self, payload: str) -> None:
         """Daemon delta yolladı. Delta yalnızca *neyin* değiştiğini söylüyor; tam durumu
         yeniden çekmek en basit ve en az hata yapan yol — `GetState` ucuz."""
-        del payload
+        self._announce(payload)
         state = self._call("GetState")
         if state is not None:
             self.apply_state(state)
+
+    #: Kullanıcıya söylenmesi gereken deltalar → (metin şablonu, hata mı).
+    _NOTICES: ClassVar[dict[str, tuple[str, bool]]] = {
+        "profile_copied": ("Gömülü preset düzenlenemez; '{to}' kopyasına geçildi.", False),
+        "save_failed": ("{message}", True),
+    }
+
+    def _announce(self, payload: str) -> None:
+        """Sessizce olup biten şeyleri kullanıcıya söyler.
+
+        `profile_copied` özellikle önemli: kullanıcı gömülü bir preseti kurcalayınca
+        daemon arkada '<ad> (özel)' kopyası açıyor ve aktif profili değiştiriyor.
+        Söylenmezse "seçtiğim preset neden değişti?" oluyor.
+        """
+        try:
+            changes = json.loads(payload).get("changes") or []
+        except (json.JSONDecodeError, AttributeError):
+            return
+        for change in changes:
+            notice = self._NOTICES.get(change.get("kind"))
+            if notice is None:
+                continue
+            template, is_error = notice
+            with contextlib.suppress(KeyError, IndexError):
+                self.noticeRaised.emit(template.format(**change), is_error)
 
     @Slot(str)
     def onStreamsChanged(self, payload: str) -> None:
@@ -555,15 +582,23 @@ class SonarBridge(QObject):
 
     @Slot(str, str)
     def importProfile(self, target: str, path: str) -> None:
+        """Bir EQ dosyasını profil olarak içe aktarır ve sonucu kullanıcıya söyler."""
         from pathlib import Path
 
         try:
             text = Path(path.removeprefix("file://")).read_text(encoding="utf-8", errors="replace")
         except OSError as error:
-            log.warning("dosya okunamadı: %s", error)
+            self.noticeRaised.emit(f"Dosya okunamadı: {error.strerror or error}", True)
             return
-        self._call("ImportProfile", target, text, "")
+        result = self._call("ImportProfile", target, text, "")
         self.refresh()
+        if result is None:
+            return  # hata zaten `errorRaised` ile bildirildi
+        parts = [f"'{result.get('name')}' içe aktarıldı ({result.get('source')})"]
+        if result.get("dropped"):
+            parts.append(f"{result['dropped']} band sığmadı")
+        parts.extend(result.get("warnings") or [])
+        self.noticeRaised.emit(" — ".join(parts), False)
 
     @Slot(str, str, bool)
     def exportProfile(self, target: str, path: str, autoeq: bool) -> None:
@@ -572,10 +607,13 @@ class SonarBridge(QObject):
         text = self._call("ExportProfile", target, "", autoeq)
         if text is None:
             return
+        target_path = Path(path.removeprefix("file://"))
         try:
-            Path(path.removeprefix("file://")).write_text(text, encoding="utf-8")
+            target_path.write_text(text, encoding="utf-8")
         except OSError as error:
-            log.warning("dosya yazılamadı: %s", error)
+            self.noticeRaised.emit(f"Dosya yazılamadı: {error.strerror or error}", True)
+            return
+        self.noticeRaised.emit(f"{target_path.name} kaydedildi", False)
 
     @Slot(str)
     def resetProfile(self, target: str) -> None:

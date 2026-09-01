@@ -478,3 +478,49 @@ def test_streams_for_filters_by_channel(qt_app):
     assert [row["label"] for row in bridge.streamsFor("media")] == ["Brave", "mpv"]
     assert [row["label"] for row in bridge.streamsFor("chat")] == ["Discord"]
     assert bridge.streamsFor("game") == []
+
+
+# --------------------------------------------------------------------------- bildirimler
+
+
+def test_a_preset_copy_is_announced(bridge):
+    """Daemon gömülü preset düzenlenince sessizce kopya açıyor; kullanıcı bunu görmeli."""
+    seen = []
+    bridge.noticeRaised.connect(lambda text, is_error: seen.append((text, is_error)))
+    bridge.onStateChanged(
+        json.dumps(
+            {
+                "changes": [
+                    {
+                        "kind": "profile_copied",
+                        "target": "game",
+                        "from": "Flat",
+                        "to": "Flat (özel)",
+                    }
+                ]
+            }
+        )
+    )
+    assert len(seen) == 1
+    assert "Flat (özel)" in seen[0][0]
+    assert seen[0][1] is False
+
+
+def test_a_failed_save_is_announced_as_an_error(bridge):
+    seen = []
+    bridge.noticeRaised.connect(lambda text, is_error: seen.append((text, is_error)))
+    bridge.onStateChanged(
+        json.dumps({"changes": [{"kind": "save_failed", "message": "Disk dolu."}]})
+    )
+    assert seen == [("Disk dolu.", True)]
+
+
+def test_uninteresting_deltas_are_not_announced(bridge):
+    seen = []
+    bridge.noticeRaised.connect(lambda text, is_error: seen.append(text))
+    bridge.onStateChanged(json.dumps({"changes": [{"kind": "channel_volume", "channel": "game"}]}))
+    assert seen == []
+
+
+def test_a_malformed_delta_payload_is_ignored(bridge):
+    bridge.onStateChanged("bu json değil")  # yükseltmemeli
