@@ -168,6 +168,14 @@ class GraphState:
         for obj in objects:
             if not isinstance(obj, dict) or "id" not in obj:
                 continue
+            # Silme olayı `{"id": N, "info": null}` biçiminde gelir ve **`type` alanı
+            # taşımaz**. Eskiden `type` süzgeci bu olayları eleyip `_remove()`
+            # çağrılmasını tümden engelliyordu: kapanan uygulamalar akış listesinde,
+            # çıkarılan cihazlar cihaz listesinde kalıyor, `nodes` haritası ölü
+            # id'lerle büyüyordu. Ölçüldü (2026-09-01, `pw-dump -m`).
+            if obj.get("info") is None:
+                changed |= self._remove(obj["id"])
+                continue
             if obj.get("type") != "PipeWire:Interface:Node":
                 continue
             changed |= self._apply_node(obj)

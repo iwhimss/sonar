@@ -522,6 +522,15 @@ class SonarBridge(QObject):
             for name in (self._state.get("profile_names") or {}).get(target) or []
         ]
 
+    @Slot(str, result="QVariant")
+    def streamsFor(self, channel: str) -> list:
+        """Bir kanalda çalan uygulamalar.
+
+        Süzme burada yapılıyor: şerit tüm akış modelini gezip görünmeyenleri
+        `height: 0` ile saklıyordu, bu yüzden liste kutudan taşıyordu.
+        """
+        return [row for row in self._streams.rows() if row.get("channel") == channel]
+
     @Slot(str, result=float)
     def chatmixGain(self, channel: str) -> float:
         """Kanalın ChatMix çarpanı. 1.0 = dokunulmamış."""

@@ -446,3 +446,23 @@ def test_chatmix_gain_is_reported(qt_app):
     obj = SonarBridge(client)
     obj.apply_state(client.state)
     assert obj.chatmixGain("game") == pytest.approx(0.01)
+
+
+# --------------------------------------------------------------------------- akış süzme
+
+
+def test_streams_for_filters_by_channel(qt_app):
+    """Şerit tüm listeyi gezip görünmeyenleri saklıyordu; süzme artık köprüde."""
+    bridge = SonarBridge()
+    bridge.apply_state(
+        make_state(
+            streams=[
+                {"id": 1, "app_name": "Brave", "channel": "media"},
+                {"id": 2, "app_name": "Discord", "channel": "chat"},
+                {"id": 3, "app_name": "mpv", "channel": "media"},
+            ]
+        )
+    )
+    assert [row["label"] for row in bridge.streamsFor("media")] == ["Brave", "mpv"]
+    assert [row["label"] for row in bridge.streamsFor("chat")] == ["Discord"]
+    assert bridge.streamsFor("game") == []

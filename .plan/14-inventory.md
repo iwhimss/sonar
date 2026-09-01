@@ -1,6 +1,6 @@
 # Faz 14 — Envanter doğruluğu
 
-**Durum:** ⚪ Bekliyor
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 5
 **Çıktı:** `src/sonar/engine/pwstate.py`, `src/sonar/engine/router.py`,
 `src/sonar/gui/bridge.py`, `src/sonar/gui/qml/ChannelStrip.qml`,
@@ -86,26 +86,53 @@ açıkken taşıyor. Yerine:
 
 ## Görevler
 
-- [ ] `pwstate.apply()` silme olaylarını tanır
-- [ ] Regresyon testi: `{"id": N, "info": null}` → `streams`/`nodes`/`devices` düşer
+- [x] `pwstate.apply()` silme olaylarını tanır
+- [x] Regresyon testi: `{"id": N, "info": null}` → `streams`/`nodes`/`devices` düşer
       ve `STREAMS` değişikliği bildirilir
-- [ ] `router.decided` ve `stream_seen` silinen akışlar için temizlenir + testi
-- [ ] Apps kutusu: kaydırmalı, kırpılmış `ListView`
-- [ ] Akış taşınınca hedef kanalın profilinden geçtiği ölçümle doğrulanır
+- [x] `stream_seen` silinen akışlar için temizlenir (`router.sync()` zaten
+      `_decided`'ı buduyordu — ayrıca gerekmedi)
+- [x] Apps kutusu: kaydırmalı, kırpılmış `ListView`
+- [x] Akış taşınınca hedef kanalın profilinden geçtiği ölçümle doğrulanır
 
 ---
 
-## Ölçüm
+## Ölçüm (2026-09-01, gerçek grafta)
 
-Faz bitince buraya yazılacak:
+**Kapanan akış listeden düşüyor.** 30 sn'lik bir akış açıldı, `sonar-cli status`
+onu gösterdi, süreç öldürüldü:
 
-- Brave açılır/kapatılır → listeden kaç ms içinde düşüyor
-- 20 akış açıkken Apps kutusunun görüntüsü (taşma yok, kaydırma çalışıyor)
-- Akış Media → Game'e taşınır; Game'de 1 kHz'de -20 dB'lik dar bir çentik açılır;
-  taşınan akışın çentikten geçtiği kayıtla doğrulanır
+```
+--- akış çalarken ---        akışlar: [(84, cava), (220, pw-cat)]
+--- akış kapandıktan sonra --- akışlar: [(84, cava)]
+```
+
+Düzeltmeden önce `pw-cat` listede kalıyordu.
+
+**Taşınan akış hedef kanalın profilinden geçiyor.** Chat kanalına 300 Hz'de
+-30 dB, Q 3.0 bir çentik içe aktarıldı. 300 Hz sinüs önce düz Media'ya çalındı,
+sonra akış Chat'e taşındı; ikisinde de `sonar_personal` monitöründen ölçüldü:
+
+| kanal | 300 Hz seviyesi |
+|---|---|
+| Media (düz) | -26.0 dB |
+| Chat (çentik) | **-56.0 dB** |
+| fark | **-30.0 dB** — çentiğin tam değeri |
+
+Yani taşıma yalnızca yönlendirmeyi değil, DSP zincirini de değiştiriyor.
 
 ---
 
 ## Yol boyunca yakalananlar
 
-_(faz sırasında doldurulacak)_
+**`router._decided` zaten buduluyordu.** `Router.sync()` her çağrıda envanterde
+olmayan anahtarları düşürüyor; ayrıca temizlik gerekmedi. Bunun yerine
+`api.remove_channel` içindeki "kanalın akışlarını unut" döngüsü **kaldırıldı**:
+`self.router.decided` bir **kopya** döndürüyor, o döngü hiçbir şey yapmıyordu.
+Gerçek temizliği `_structural()` → `router.reset()` zaten yapıyor.
+
+**Apps kutusu artık kanalını köprüde süzüyor.** Eskiden şerit tüm akış modelini
+gezip başka kanala ait satırları `visible: false; height: 0` ile saklıyordu —
+delegeler yine de kuruluyordu ve `Column` kırpılmadığı için liste kutudan taşıyordu.
+Yeni `bridge.streamsFor(channelId)` yalnızca o kanalın satırlarını döndürüyor;
+şerit onu `clip: true` bir `ListView`'de gösteriyor, kutu şeridin kalan alanını
+dolduruyor, taşan liste kaydırılıyor.

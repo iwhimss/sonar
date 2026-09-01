@@ -9,7 +9,6 @@ Item {
     id: root
     required property var channel      // ChannelModel satırı
     property var bridge
-    property var streamModel
     signal openFx(string channelId)
 
     implicitWidth: 132
@@ -18,6 +17,12 @@ Item {
     readonly property bool isMic: channel.kind === "mic"
     readonly property real chatmixGain:
         bridge ? (bridge.revision, bridge.chatmixGain(channel.id)) : 1.0
+
+    /* Bu kanalda çalan uygulamalar. `bridge.revision` okunuyor ki akış listesi
+       değişince bağlama yeniden değerlendirilsin — fonksiyon çağrısı tek başına
+       bağlama kurmaz. */
+    readonly property var apps:
+        bridge ? (bridge.revision, bridge.streamsFor(channel.id)) : []
 
     /* Şeridin tamamı bırakma hedefi: kullanıcı çipi şeridin herhangi bir yerine
        bırakabilsin, yalnızca küçük Apps kutusuna nişan almak zorunda kalmasın. */
@@ -190,7 +195,8 @@ Item {
         // --- uygulamalar ---------------------------------------------------
         SonarPanel {
             width: parent.width
-            height: 120
+            // Kalan alanı doldurur: sabit yükseklikte liste kutudan taşıyordu.
+            height: Math.max(0, root.height - 34 - 30 - 250)
             visible: !root.isMic
 
             Column {
@@ -198,36 +204,41 @@ Item {
                 anchors.margins: Theme.s2
                 spacing: Theme.s1
 
-                SonarSectionLabel { text: "Apps" }
+                SonarSectionLabel { text: "Apps  (" + root.apps.length + ")" }
 
-                Repeater {
-                    model: root.streamModel
-                    Rectangle {
+                ListView {
+                    id: appList
+                    width: parent.width
+                    height: parent.height - 16
+                    clip: true          // taşma yok; fazlası kaydırılır
+                    spacing: 2
+                    model: root.apps
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    delegate: Rectangle {
                         id: chip
-                        required property string label
-                        required property string channel
-                        required property int id
-                        visible: channel === root.channel.id
-                        height: visible ? 22 : 0
-                        width: parent.width
+                        required property var modelData
+                        width: appList.width - (appList.contentHeight > appList.height ? 4 : 0)
+                        height: 22
                         color: chipMouse.drag.active ? Qt.lighter(Theme.raised, 1.5) : Theme.raised
                         border.width: 1
                         border.color: chipMouse.drag.active ? root.accent : Theme.border
                         opacity: chipMouse.drag.active ? 0.85 : 1.0
 
-                        // Sürükleme için: taşınırken üstte kalsın.
+                        // Sürüklenirken üstte kalsın.
                         z: chipMouse.drag.active ? 50 : 0
                         Drag.active: chipMouse.drag.active
                         Drag.source: chip
                         Drag.hotSpot.x: width / 2
                         Drag.hotSpot.y: height / 2
-                        property int streamId: id
+                        property int streamId: modelData.id
 
                         Text {
                             anchors.fill: parent
                             anchors.leftMargin: Theme.s1
+                            anchors.rightMargin: Theme.s1
                             verticalAlignment: Text.AlignVCenter
-                            text: chip.label
+                            text: chip.modelData.label
                             color: Theme.text
                             elide: Text.ElideRight
                             font.family: Theme.fontFamily
@@ -243,13 +254,23 @@ Item {
                             drag.threshold: 6
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.RightButton)
-                                    root.streamMenuRequested(chip.id, chip.label)
+                                    root.streamMenuRequested(chip.streamId, chip.modelData.label)
                             }
                             onReleased: {
                                 if (chip.Drag.active) chip.Drag.drop()
                                 chip.x = 0; chip.y = 0
                             }
                         }
+                    }
+
+                    // İnce kaydırma göstergesi — köşesiz, Controls'a bağımlı değil.
+                    Rectangle {
+                        width: 3
+                        color: Theme.borderStrong
+                        anchors.right: parent.right
+                        visible: appList.contentHeight > appList.height
+                        height: appList.height * (appList.height / Math.max(appList.contentHeight, 1))
+                        y: appList.contentY * (appList.height / Math.max(appList.contentHeight, 1))
                     }
                 }
             }

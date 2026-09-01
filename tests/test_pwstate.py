@@ -210,3 +210,70 @@ def test_same_serial_keeps_the_original_timestamp():
         [_node(10, "mpv", "Stream/Output/Audio", **{"object.serial": 100, "media.name": "x"})]
     )
     assert state.stream_seen[10] == first
+
+
+# --------------------------------------------------------------------------- silme olayları
+
+
+REMOVAL_EVENT = {"id": 41, "info": None}
+"""`pw-dump -m` bir node silindiğinde tam olarak bunu yayar — **`type` alanı yok.**
+
+Bu, Faz 5'ten Faz 14'e kadar sessizce kırıktı: `apply()` `type` süzgeci silme
+olaylarını eleyince kapanan uygulamalar akış listesinde kalıyordu.
+"""
+
+
+def _stream_event(node_id: int = 41, serial: int = 900) -> dict:
+    return {
+        "id": node_id,
+        "type": "PipeWire:Interface:Node",
+        "info": {
+            "props": {
+                "node.name": f"brave-{node_id}",
+                "media.class": "Stream/Output/Audio",
+                "object.serial": serial,
+                "application.process.binary": "brave",
+            }
+        },
+    }
+
+
+def test_a_removal_event_without_a_type_field_still_removes():
+    state = GraphState()
+    state.apply([_stream_event()])
+    assert 41 in state.streams
+
+    changed = state.apply([REMOVAL_EVENT])
+
+    assert state.streams == {}
+    assert state.nodes == {}
+    assert state.stream_seen == {}
+    assert GraphState.STREAMS in changed
+
+
+def test_removing_a_device_updates_the_device_inventory():
+    state = GraphState()
+    state.apply(
+        [
+            {
+                "id": 7,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": "alsa_output.usb-Foo",
+                        "media.class": "Audio/Sink",
+                    }
+                },
+            }
+        ]
+    )
+    assert 7 in state.devices
+    changed = state.apply([{"id": 7, "info": None}])
+    assert state.devices == {}
+    assert GraphState.DEVICES in changed
+
+
+def test_removing_an_unknown_id_is_harmless():
+    """Silme olayı port ve link için de geliyor; tanımadığımız id sessizce yok sayılır."""
+    state = GraphState()
+    assert state.apply([{"id": 99999, "info": None}]) == frozenset()

@@ -623,10 +623,9 @@ class SonarApi:
         if not chatmix.left_channel or not chatmix.right_channel:
             chatmix.enabled = False
 
-        # O kanalda çalan akışlar boşta kalmasın.
-        for stream_id, target in list(self.router.decided.items()):
-            if target == channel:
-                self.router.decided.pop(stream_id, None)
+        # O kanalda çalan akışların yönlendirme kaydını temizlemeye gerek yok:
+        # `_structural()` zaten `router.reset()` çağırıyor ve graf yeniden kurulduktan
+        # sonra her akış kurallara göre baştan dağıtılıyor.
 
     def _remove_input_channel(self, chain: str) -> None:
         if len(self.config.mic_chains) <= 1:

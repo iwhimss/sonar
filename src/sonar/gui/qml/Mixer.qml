@@ -27,7 +27,6 @@ Item {
                 height: strips.height
                 channel: root.bridge.channels.get(index)
                 bridge: root.bridge
-                streamModel: root.bridge.streams
                 onOpenFx: (id) => root.openFx(id)
                 onStreamMenuRequested: (streamId, label) => menu.open(streamId, label)
                 onRemoveRequested: (id, name) => removeDialog.open(id, name)
