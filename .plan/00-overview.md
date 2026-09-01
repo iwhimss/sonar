@@ -7,10 +7,15 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 11 — Paketleme
-**Son güncelleme:** 2026-08-31
-**Sonraki adım:** Faz 11 — PKGBUILD, `.desktop` dosyası, systemd unit'inin gerçekten
-kurulup denenmesi, sürüm etiketi.
+**Aktif faz:** Faz 12 — Sanal cihaz düzeni
+**Son güncelleme:** 2026-09-01
+**Sonraki adım:** Faz 12 — kanal başına sahte mikrofonu kaldırmak, cihaz adlarını
+yön belirtir hâle getirmek.
+
+> **Test turu 1 (2026-09-01).** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk kez
+> gerçek kullanımda denedi. Çıkan eksikler ve hatalar Faz 12–17 olarak planlandı.
+> **Faz 11 (Paketleme) ertelendi**: bu tur bitip kullanıcı ikinci testi yapana kadar
+> başlamaz.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -25,7 +30,13 @@ kurulup denenmesi, sürüm etiketi.
 | 8 | [Kanal FX sayfası](08-gui-fx.md) | 🟢 Tamamlandı |
 | 9 | [Profiller, presetler, ChatMix](09-profiles-chatmix.md) | 🟢 Tamamlandı |
 | 10 | [Uçtan uca doğrulama ve dokümantasyon](10-verify-docs.md) | 🟢 Tamamlandı |
-| 11 | [Paketleme](11-packaging.md) | 🟡 Sıradaki |
+| 12 | [Sanal cihaz düzeni](12-devices.md) | 🟡 Sıradaki |
+| 13 | [Kanal yönetimi: silme ve yön](13-channels.md) | ⚪ Bekliyor |
+| 14 | [Envanter doğruluğu](14-inventory.md) | ⚪ Bekliyor |
+| 15 | [Arayüz altyapısı](15-ui-foundation.md) | ⚪ Bekliyor |
+| 16 | [Profil deneyimi](16-profiles.md) | ⚪ Bekliyor |
+| 17 | [Doğrulama ve dokümantasyon](17-verify.md) | ⚪ Bekliyor |
+| 11 | [Paketleme](11-packaging.md) | ⏸ Ertelendi (test turu 1'den sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
