@@ -13,3 +13,4 @@ SonarIcon 1.0 SonarIcon.qml
 SonarNumberField 1.0 SonarNumberField.qml
 SonarParamRow 1.0 SonarParamRow.qml
 SonarFilterPanel 1.0 SonarFilterPanel.qml
+SonarDragProxy 1.0 SonarDragProxy.qml

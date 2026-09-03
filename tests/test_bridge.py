@@ -214,6 +214,35 @@ def test_optimistic_update_is_immediate(bridge):
     assert bridge._client.calls[-1] == ("SetChannelVolume", ("game", "personal", 0.25))
 
 
+def test_mute_change_is_announced_on_the_row(bridge):
+    """Şerit artık satırı model rollerinden okuyor; `dataChanged` ona ulaşmalı.
+
+    Eskiden `Mixer.qml` şeride `channels.get(index)` ile donmuş bir sözlük kopyası
+    veriyordu ve model ne yayınlarsa yayınlasın arayüz güncellenmiyordu — mute
+    düğmesinin "çalışmaması" buydu (test turu 2).
+    """
+    seen: list[int] = []
+    bridge.channels.dataChanged.connect(lambda top, _bottom, _roles: seen.append(top.row()))
+
+    state = make_state()
+    state["config"]["channels"][0]["stream"]["muted"] = True
+    bridge.apply_state(state)
+
+    assert 0 in seen
+    assert bridge.channels.get(0)["streamMuted"] is True
+
+
+def test_row_roles_cover_everything_the_strip_reads(bridge):
+    """`ChannelStrip` bu rolleri `required property` olarak istiyor; biri eksikse
+    delege hiç kurulmaz ve mikser boş kalır."""
+    needed = {
+        "id", "name", "color", "icon", "activeProfile", "profiles",
+        "personalVolume", "personalMuted", "streamVolume", "streamMuted", "kind",
+    }
+    assert needed <= set(ChannelModel.keys)
+    assert needed <= set(bridge.channels.get(0))
+
+
 def test_daemon_echo_does_not_undo_a_fresh_drag(bridge):
     """Sürükleme sırasında gelen eski değer fader'ı geri zıplatmamalı."""
     bridge.setChannelVolume("game", "personal", 0.25)

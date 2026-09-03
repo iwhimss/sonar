@@ -1,36 +1,65 @@
 import QtQuick
+import QtQuick.Layouts
 import "ui"
 
 /*
  * Tek bir kanal şeridi: başlık, profil seçici, çift fader (kulaklık + yayın),
  * mute düğmeleri ve altındaki uygulama kutusu.
+ *
+ * ## Neden satır alanları tek tek `required property`
+ *
+ * Eskiden şerit `channel: bridge.channels.get(index)` ile bir **sözlük kopyası**
+ * alıyordu. `get()` bir fonksiyon çağrısı ve `bridge.channels` (model nesnesi) hiç
+ * değişmiyor; yani o bağlama bir kez değerlenip donuyordu. Model `dataChanged`
+ * yayınlasa bile şerit görmüyordu — mute düğmesi tepkisiz, fader donuk, profil adı
+ * eski. Test turu 2'deki "gui anlık güncellenmiyor" şikâyeti buydu.
+ *
+ * `Repeater` delegesi olarak model rollerini doğrudan almak bunu kökten çözüyor:
+ * `dataChanged` ilgili özelliği tazeliyor. Rol adları `bridge.ChannelModel.keys`
+ * ile birebir aynı olmalı.
  */
 Item {
     id: root
-    required property var channel      // ChannelModel satırı
+
+    // --- model rolleri (ChannelModel.keys ile birebir) ----------------------
+    required property string id
+    required property string name
+    required property color color
+    required property string icon
+    required property string activeProfile
+    required property var profiles
+    required property real personalVolume
+    required property bool personalMuted
+    required property real streamVolume
+    required property bool streamMuted
+    required property string kind
+
     property var bridge
+    property var dragProxy
     signal openFx(string channelId)
+    signal streamMenuRequested(int streamId, string label)
+    signal removeRequested(string channelId, string name)
 
-    implicitWidth: 132
+    implicitWidth: 148
 
-    readonly property color accent: channel.color
-    readonly property bool isMic: channel.kind === "mic"
+    readonly property color accent: root.color
+    readonly property bool isMic: root.kind === "mic"
     readonly property real chatmixGain:
-        bridge ? (bridge.revision, bridge.chatmixGain(channel.id)) : 1.0
+        bridge ? (bridge.revision, bridge.chatmixGain(root.id)) : 1.0
 
     /* Bu kanalda çalan uygulamalar. `bridge.revision` okunuyor ki akış listesi
        değişince bağlama yeniden değerlendirilsin — fonksiyon çağrısı tek başına
        bağlama kurmaz. */
     readonly property var apps:
-        bridge ? (bridge.revision, bridge.streamsFor(channel.id)) : []
+        bridge ? (bridge.revision, bridge.streamsFor(root.id)) : []
 
     readonly property var favorites:
-        bridge ? (bridge.revision, bridge.favoritesOf(channel.id)) : []
+        bridge ? (bridge.revision, bridge.favoritesOf(root.id)) : []
 
     /* Profil menüsü: önce favoriler, sonra ayraç, sonra tümü. Gömülü presetler
        kilit işaretiyle ayrılıyor (salt okunurlar). */
     readonly property var profileOptions: {
-        const all = (channel.profiles || []).map(function (p) {
+        const all = (root.profiles || []).map(function (p) {
             return typeof p === "string"
                 ? { value: p, label: p, builtin: false }
                 : { value: p.name, label: p.name, builtin: p.builtin === true }
@@ -52,7 +81,7 @@ Item {
     /* Anlık seviye. Ayrı bir sayaca (`levelsRevision`) bağlı: `revision` saniyede 20
        kez artsaydı şeridin tamamı yeniden değerlendirilirdi. */
     readonly property var level:
-        bridge ? (bridge.levelsRevision, bridge.levelOf(channel.id))
+        bridge ? (bridge.levelsRevision, bridge.levelOf(root.id))
                : ({ peak_db: -60, hold_db: -60, clipped: false })
 
     /* Şeridin tamamı bırakma hedefi: kullanıcı çipi şeridin herhangi bir yerine
@@ -64,7 +93,7 @@ Item {
         onDropped: (event) => {
             const source = event.source
             if (source && source.streamId !== undefined)
-                root.bridge.moveStream(source.streamId, root.channel.id, false)
+                root.bridge.moveStream(source.streamId, root.id, false)
             event.accept()
         }
     }
@@ -79,54 +108,64 @@ Item {
         z: 9
     }
 
-    Column {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
         // --- başlık --------------------------------------------------------
+        //
+        // Eskiden ortalanmış bir `Row`'du: ikon + ad + dişli + çarpı, 132 px şeride
+        // sığmıyor ve silme düğmesinin yarısı kırpılıyordu. Artık ad esniyor ve
+        // düğmeler sağa sabit.
         SonarPanel {
-            width: parent.width
-            height: 34
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
             color: Theme.raised
-            Row {
-                anchors.centerIn: parent
-                spacing: Theme.s2
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.s2
+                anchors.rightMargin: Theme.s1
+                spacing: Theme.s1
+
                 SonarIcon {
-                    name: root.channel.icon
+                    name: root.icon
                     color: root.accent
-                    anchors.verticalCenter: parent.verticalCenter
+                    Layout.alignment: Qt.AlignVCenter
                 }
                 Text {
-                    text: root.channel.name.toUpperCase()
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    text: root.name.toUpperCase()
                     color: root.accent
+                    elide: Text.ElideRight
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBody
                     font.bold: true
                     font.letterSpacing: 0.6
                     renderType: Text.NativeRendering
-                    anchors.verticalCenter: parent.verticalCenter
                 }
                 SonarIconButton {
                     icon: "gear"
                     accent: root.accent
-                    anchors.verticalCenter: parent.verticalCenter
-                    onClicked: root.openFx(root.channel.id)
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.openFx(root.id)
                 }
                 // Her kanal silinebilir — Aux'u kullanmayan kullanıcı onu da atabilmeli.
                 // Neyin kaybolacağını onay penceresi anlatıyor.
                 SonarIconButton {
                     icon: "close"
                     accent: Theme.danger
-                    anchors.verticalCenter: parent.verticalCenter
-                    onClicked: root.removeRequested(root.channel.id, root.channel.name)
+                    Layout.alignment: Qt.AlignVCenter
+                    onClicked: root.removeRequested(root.id, root.name)
                 }
             }
         }
 
         // --- profil --------------------------------------------------------
         SonarPanel {
-            width: parent.width
-            height: 30
+            Layout.fillWidth: true
+            Layout.preferredHeight: 30
             SonarComboBox {
                 anchors.fill: parent
                 anchors.margins: 2
@@ -134,15 +173,19 @@ Item {
                 // Şerit dar; liste bu yüzden kontrolden geniş açılıyor.
                 popupWidth: 240
                 model: root.profileOptions
-                currentValue: root.channel.activeProfile
-                onActivated: (value) => root.bridge.loadProfile(root.channel.id, value)
+                currentValue: root.activeProfile
+                onActivated: (value) => root.bridge.loadProfile(root.id, value)
             }
         }
 
         // --- fader'lar -----------------------------------------------------
         SonarPanel {
-            width: parent.width
-            height: 250
+            id: faderPanel
+            Layout.fillWidth: true
+            // Sabit 250 px'ti; küçük pencerede altındaki Apps kutusunu negatif
+            // yüksekliğe düşürüyordu. Artık kalan alanın çoğunu alıyor ama Apps
+            // kutusuna her zaman yer bırakıyor.
+            Layout.preferredHeight: Math.max(180, Math.min(250, root.height - 150))
 
             Row {
                 anchors.centerIn: parent
@@ -150,30 +193,36 @@ Item {
 
                 Repeater {
                     model: [
-                        { bus: "personal", icon: "headset",
-                          vol: root.channel.personalVolume, mute: root.channel.personalMuted },
-                        { bus: "stream", icon: "cast",
-                          vol: root.channel.streamVolume, mute: root.channel.streamMuted }
+                        { bus: "personal", icon: "headset" },
+                        { bus: "stream", icon: "cast" }
                     ]
 
                     Column {
+                        id: busColumn
                         required property var modelData
                         spacing: Theme.s1
 
+                        readonly property string bus: modelData.bus
+                        readonly property real vol: bus === "personal"
+                            ? root.personalVolume : root.streamVolume
+                        readonly property bool mute: bus === "personal"
+                            ? root.personalMuted : root.streamMuted
+                        readonly property int barHeight: Math.max(80, faderPanel.height - 100)
+
                         SonarIcon {
-                            name: modelData.icon
-                            color: modelData.mute ? Theme.textFaint : root.accent
+                            name: busColumn.modelData.icon
+                            color: busColumn.mute ? Theme.textFaint : root.accent
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
                         // aktiflik noktası
                         Rectangle {
                             width: 6; height: 6
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: modelData.mute ? Theme.textFaint : root.accent
+                            color: busColumn.mute ? Theme.textFaint : root.accent
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Theme.volumeText(modelData.vol)
+                            text: Theme.volumeText(busColumn.vol)
                             color: Theme.textDim
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall
@@ -183,7 +232,7 @@ Item {
                            duyulan ses taban × ChatMix çarpanı. */
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            visible: modelData.bus === "personal" && root.chatmixGain < 0.99
+                            visible: busColumn.bus === "personal" && root.chatmixGain < 0.99
                             text: "ChatMix " + Math.round(root.chatmixGain * 100) + "%"
                             color: Theme.warn
                             font.family: Theme.fontFamily
@@ -193,17 +242,17 @@ Item {
                         Row {
                             spacing: 3
                             SonarFader {
-                                height: 150
-                                value: modelData.vol
-                                muted: modelData.mute
+                                height: busColumn.barHeight
+                                value: busColumn.vol
+                                muted: busColumn.mute
                                 accent: root.accent
-                                onMoved: (v) => root.setVolume(modelData.bus, v)
+                                onMoved: (v) => root.setVolume(busColumn.bus, v)
                             }
                             /* Metre kanal sink monitöründen besleniyor: DSP ve fader
                                öncesi, yani uygulamanın çaldığı seviye. İki bus için de
                                aynı — ayrım fader'ın kendisinde görünüyor. */
                             SonarLevelMeter {
-                                height: 150
+                                height: busColumn.barHeight
                                 db: root.level.peak_db
                                 holdDb: root.level.hold_db
                                 clipped: root.level.clipped === true
@@ -211,10 +260,10 @@ Item {
                         }
                         SonarIconButton {
                             icon: "mute"
-                            active: modelData.mute
+                            active: busColumn.mute
                             accent: Theme.danger
                             anchors.horizontalCenter: parent.horizontalCenter
-                            onClicked: root.toggleMute(modelData.bus, !modelData.mute)
+                            onClicked: root.toggleMute(busColumn.bus, !busColumn.mute)
                         }
                     }
                 }
@@ -223,9 +272,9 @@ Item {
 
         // --- uygulamalar ---------------------------------------------------
         SonarPanel {
-            width: parent.width
-            // Kalan alanı doldurur: sabit yükseklikte liste kutudan taşıyordu.
-            height: Math.max(0, root.height - 34 - 30 - 250)
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
             visible: !root.isMic
 
             Column {
@@ -238,7 +287,7 @@ Item {
                 ListView {
                     id: appList
                     width: parent.width
-                    height: parent.height - 16
+                    height: Math.max(0, parent.height - 16)
                     clip: true          // taşma yok; fazlası kaydırılır
                     spacing: 2
                     model: root.apps
@@ -247,15 +296,17 @@ Item {
                     delegate: Rectangle {
                         id: chip
                         required property var modelData
+                        required property int index
                         width: appList.width - (appList.contentHeight > appList.height ? 4 : 0)
                         height: 22
-                        color: chipMouse.drag.active ? Qt.lighter(Theme.raised, 1.5) : Theme.raised
+                        color: Theme.raised
                         border.width: 1
-                        border.color: chipMouse.drag.active ? root.accent : Theme.border
-                        opacity: chipMouse.drag.active ? 0.85 : 1.0
+                        border.color: Theme.border
+                        // Sürüklenirken asıl kutucuk görünmez olur; imleci vekil izler.
+                        // Kutucuğun kendisi hareket etmeye devam etmeli, çünkü
+                        // `DropArea` hedefi onun konumundan buluyor.
+                        opacity: chipMouse.drag.active ? 0.0 : 1.0
 
-                        // Sürüklenirken üstte kalsın.
-                        z: chipMouse.drag.active ? 50 : 0
                         Drag.active: chipMouse.drag.active
                         Drag.source: chip
                         Drag.hotSpot.x: width / 2
@@ -279,16 +330,31 @@ Item {
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: true
                             drag.target: chip
                             drag.threshold: 6
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.RightButton)
                                     root.streamMenuRequested(chip.streamId, chip.modelData.label)
                             }
+                            onPositionChanged: (mouse) => {
+                                if (!chip.Drag.active || !root.dragProxy) return
+                                const point = mapToItem(root.dragProxy, mouse.x, mouse.y)
+                                root.dragProxy.moveTo(point.x, point.y)
+                            }
                             onReleased: {
                                 if (chip.Drag.active) chip.Drag.drop()
                                 chip.x = 0; chip.y = 0
                             }
+                        }
+
+                        /* `drag.active` bir grup özelliği; doğrudan sinyal handler'ı yok.
+                           Yerel bir özelliğe bağlayıp onun değişimini dinliyoruz. */
+                        property bool dragging: chipMouse.drag.active
+                        onDraggingChanged: {
+                            if (!root.dragProxy) return
+                            if (dragging) root.dragProxy.show(chip.modelData.label, root.accent)
+                            else root.dragProxy.hide()
                         }
                     }
 
@@ -306,15 +372,12 @@ Item {
         }
     }
 
-    signal streamMenuRequested(int streamId, string label)
-    signal removeRequested(string channelId, string name)
-
     function setVolume(bus, value) {
         if (root.isMic) {
             if (bus === "stream") root.bridge.setMicVolume(value)
             return
         }
-        root.bridge.setChannelVolume(root.channel.id, bus, value)
+        root.bridge.setChannelVolume(root.id, bus, value)
     }
 
     function toggleMute(bus, muted) {
@@ -323,6 +386,6 @@ Item {
             else root.bridge.setMicMonitor(!muted)
             return
         }
-        root.bridge.setChannelMute(root.channel.id, bus, muted)
+        root.bridge.setChannelMute(root.id, bus, muted)
     }
 }

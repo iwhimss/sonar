@@ -1,7 +1,13 @@
 import QtQuick
+import QtQuick.Layouts
 import "ui"
 
-/* Sol taraftaki master şeridi: cihaz seçicileri ve iki master fader. */
+/* Sol taraftaki master şeridi: cihaz seçicileri ve iki master fader.
+ *
+ * `masters` `bridge.mastersChanged` sinyaline bağlı bir `Property`, yani buradaki
+ * okumalar canlı. Cihaz listeleri ise fonksiyon çağrısı olduğu için `bridge.revision`
+ * okuyarak tazeleniyor — QML fonksiyon çağrısına bağlama kurmuyor.
+ */
 Item {
     id: root
     property var bridge
@@ -9,13 +15,13 @@ Item {
 
     readonly property var masters: bridge ? bridge.masters : ({})
 
-    Column {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
         SonarPanel {
-            width: parent.width
-            height: 34
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
             color: Theme.raised
             Row {
                 anchors.centerIn: parent
@@ -35,10 +41,11 @@ Item {
         }
 
         SonarPanel {
-            width: parent.width
-            height: 200
+            Layout.fillWidth: true
+            Layout.preferredHeight: devices.implicitHeight + Theme.s3 * 2
 
             Column {
+                id: devices
                 anchors.fill: parent
                 anchors.margins: Theme.s3
                 spacing: Theme.s3
@@ -48,7 +55,6 @@ Item {
                 Repeater {
                     model: [
                         { key: "personal", label: "Kişisel Miks", source: false },
-                        { key: "stream",   label: "Yayın Miksi",  source: false },
                         { key: "mic",      label: "Mikrofon",     source: true }
                     ]
                     Column {
@@ -66,7 +72,7 @@ Item {
                                 width: parent.width - percent.width - Theme.s1
                                 accent: Theme.master
                                 model: root.deviceList(modelData.source)
-                                currentValue: root.deviceOf(modelData.key)
+                                currentValue: (root.masters, root.deviceOf(modelData.key))
                                 onActivated: (value) => root.setDevice(modelData.key, value)
                             }
                             Rectangle {
@@ -77,7 +83,7 @@ Item {
                                 border.color: Theme.border
                                 Text {
                                     anchors.centerIn: parent
-                                    text: Theme.volumeText(root.volumeOf(modelData.key))
+                                    text: Theme.volumeText((root.masters, root.volumeOf(modelData.key)))
                                     color: Theme.textDim
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSmall
@@ -87,12 +93,52 @@ Item {
                         }
                     }
                 }
+
+                /* Yayın Miksi'nin fiziksel bir cihazı yok: çıkışı sanal bir kaynak.
+                   Burada eskiden bir fiziksel cihaz açılırı vardı ve hiçbir şey
+                   yapmıyordu (`bus.device` stream bus'ta confgen'de hiç kullanılmıyor).
+                   Yerine OBS'e ne ekleneceğini söyleyen bilgi satırı. */
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    SonarSectionLabel { text: "Yayın Miksi"; color: Theme.textFaint }
+                    Rectangle {
+                        width: parent.width
+                        height: 26
+                        color: Theme.sunken
+                        border.width: 1
+                        border.color: Theme.border
+                        Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.s2
+                            anchors.rightMargin: Theme.s2
+                            verticalAlignment: Text.AlignVCenter
+                            text: "Sonar Stream Mix — Virtual Input"
+                            color: Theme.textDim
+                            elide: Text.ElideRight
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "OBS'te bu aygıtı ekleyin; yayın fader'ları buraya karışır."
+                        color: Theme.textFaint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        renderType: Text.NativeRendering
+                    }
+                }
             }
         }
 
         SonarPanel {
-            width: parent.width
-            height: 250
+            id: faders
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 160
             Row {
                 anchors.centerIn: parent
                 spacing: Theme.s6
@@ -106,27 +152,27 @@ Item {
                         spacing: Theme.s1
                         SonarIcon {
                             name: modelData.icon
-                            color: root.mutedOf(modelData.key) ? Theme.textFaint : Theme.master
+                            color: (root.masters, root.mutedOf(modelData.key)) ? Theme.textFaint : Theme.master
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Theme.volumeText(root.volumeOf(modelData.key))
+                            text: Theme.volumeText((root.masters, root.volumeOf(modelData.key)))
                             color: Theme.textDim
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall
                             renderType: Text.NativeRendering
                         }
                         SonarFader {
-                            height: 150
-                            value: root.volumeOf(modelData.key)
-                            muted: root.mutedOf(modelData.key)
+                            height: Math.max(80, faders.height - 100)
+                            value: (root.masters, root.volumeOf(modelData.key))
+                            muted: (root.masters, root.mutedOf(modelData.key))
                             accent: Theme.master
                             onMoved: (v) => root.bridge.setMasterVolume(modelData.key, v)
                         }
                         SonarIconButton {
                             icon: "mute"
-                            active: root.mutedOf(modelData.key)
+                            active: (root.masters, root.mutedOf(modelData.key))
                             accent: Theme.danger
                             anchors.horizontalCenter: parent.horizontalCenter
                             onClicked: root.bridge.setMasterMute(modelData.key,

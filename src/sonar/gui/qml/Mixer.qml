@@ -20,13 +20,15 @@ Item {
             height: parent.height
         }
 
+        /* Şerit satırı **sözlük kopyası değil**, model rolleri olarak geçiyor.
+           `channels.get(index)` bir fonksiyon çağrısıydı ve hiç yeniden değerlenmiyordu:
+           mute düğmesi tepkisiz, fader donuk, profil adı eski kalıyordu. */
         Repeater {
             model: root.bridge ? root.bridge.channels : null
             ChannelStrip {
-                required property int index
                 height: strips.height
-                channel: root.bridge.channels.get(index)
                 bridge: root.bridge
+                dragProxy: dragLayer
                 onOpenFx: (id) => root.openFx(id)
                 onStreamMenuRequested: (streamId, label) => menu.open(streamId, label)
                 onRemoveRequested: (id, name) => removeDialog.open(id, name)
@@ -65,13 +67,23 @@ Item {
                 spacing: Theme.s2
                 SonarIcon { name: "gamepad"; color: Theme.ok; anchors.verticalCenter: parent.verticalCenter }
                 SonarSlider {
+                    id: chatmixSlider
                     width: 320
                     accent: Theme.master
                     value: root.bridge ? root.bridge.chatmix / 100.0 : 0.5
                     onMoved: (v) => root.bridge.setChatMix(v * 100)
                     anchors.verticalCenter: parent.verticalCenter
+                    // Çift tık zaten 50'ye döndürüyor (SonarSlider), ama keşfedilmiyordu;
+                    // yanına görünür bir "Sıfırla" düğmesi kondu.
                 }
                 SonarIcon { name: "chat"; color: "#3B9EFF"; anchors.verticalCenter: parent.verticalCenter }
+                SonarButton {
+                    text: "Sıfırla"
+                    variant: "ghost"
+                    enabled: root.bridge ? Math.abs(root.bridge.chatmix - 50) > 0.5 : false
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: root.bridge.setChatMix(50)
+                }
             }
         }
     }
@@ -321,5 +333,11 @@ Item {
             nameInput.text = ""
             visible = false
         }
+    }
+
+    /* Sürüklenen uygulama kutucuğunun imleci izleyen kopyası. En üstte durmalı:
+       asıl kutucuk `ListView`'ün `clip`i içinde ve kardeş sütunların altında kalıyordu. */
+    SonarDragProxy {
+        id: dragLayer
     }
 }

@@ -7,7 +7,7 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 19 — Arayüzün canlılığı ve yerleşimi
+**Aktif faz:** Faz 20 — Çoklu çıkış bus'ı
 **Son güncelleme:** 2026-09-03
 **Sonraki adım:** Faz 18 → 19 → 20 → 21 → 22 → 23 → 24. Sonra kullanıcı üçüncü test
 turunu yapar; Faz 11 (Paketleme) ondan sonra.
@@ -41,8 +41,8 @@ turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 16 | [Profil deneyimi](16-profiles.md) | 🟢 Tamamlandı |
 | 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟢 Tamamlandı |
 | 18 | [Ses yolunun güvenilirliği](18-audio-path.md) | 🟢 Tamamlandı |
-| 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | 🟡 Sıradaki |
-| 20 | [Çoklu çıkış bus'ı](20-outputs.md) | ⚪ Bekliyor |
+| 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | 🟢 Tamamlandı |
+| 20 | [Çoklu çıkış bus'ı](20-outputs.md) | 🟡 Sıradaki |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | ⚪ Bekliyor |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | ⚪ Bekliyor |
 | 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | ⚪ Bekliyor |
