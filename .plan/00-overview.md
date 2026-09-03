@@ -7,10 +7,11 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 24 — Doğrulama ve dokümantasyon (Faz 23 udev kuralını bekliyor)
+**Aktif faz:** — (test turu 3 bekleniyor)
 **Son güncelleme:** 2026-09-03
-**Sonraki adım:** Faz 18 → 19 → 20 → 21 → 22 → 23 → 24. Sonra kullanıcı üçüncü test
-turunu yapar; Faz 11 (Paketleme) ondan sonra.
+**Sonraki adım:** Kullanıcı üçüncü test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/24-verify.md` içinde işaretsiz duruyor. Faz 23 (ChatMix tekeri) tek
+seferlik bir `sudo` bekliyor. Sonra Faz 11 — Paketleme.
 
 > **Test turu 2 (2026-09-03).** Kullanıcı ikinci turu yaptı. Çıkan tablo: ses yolu
 > aralıklı kopuyor, arayüz daemon'ı hiç yansıtmıyor ve dört yeni yetenek isteniyor.
@@ -46,7 +47,7 @@ turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | 🟢 Tamamlandı |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟢 Tamamlandı |
 | 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟡 Kullanıcı bekleniyor (udev) |
-| 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟡 Sıradaki |
+| 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟡 Ekran testleri kullanıcıda |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
