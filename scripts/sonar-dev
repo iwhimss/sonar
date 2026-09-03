@@ -20,6 +20,9 @@ daemon_pids() {
     for p in $(pgrep -x python 2>/dev/null || true); do
         tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "sonar.daemon" && echo "$p"
     done
+    # Fonksiyonun çıkış kodu son `grep`inki oluyordu: GUI açıkken (daemon olmayan ikinci
+    # bir python süreci) son eşleşme başarısız oluyor, `set -e` betiği sessizce öldürüyordu.
+    return 0
 }
 
 case "${1:-}" in

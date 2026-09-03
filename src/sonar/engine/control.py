@@ -223,6 +223,23 @@ class Control:
         """
         return self._run(["pw-metadata", str(int(stream_id)), "target.object", target_node])
 
+    def set_target(self, node: str, target: str) -> bool:
+        """Bir **akış** node'unun bağlanacağı cihazı canlı değiştirir.
+
+        `move_stream` ile aynı mekanizma, tek farkı id'yi node adından çözmesi. Ölçüldü
+        (Faz 18): `sonar_personal_out` Arctis ↔ Realtek arasında gidip geldi, bağlantı
+        `pw-link -lo` çıktısında anında taşındı ve kesinti kayıt gürültüsünün üstüne
+        çıkmadı (anahtarlamasız kontrol 20/397, anahtarlamayla 37/396 düşük pencere).
+
+        Bu yüzden cihaz seçimi conf'a **yazılmıyor**: conf'ta olsaydı her cihaz değişimi
+        grafı yeniden kurar, yani çalan sesi keserdi.
+        """
+        node_id = self.state.node_id(node)
+        if node_id is None:
+            log.debug("node haritada yok, hedef yazımı atlandı: %s", node)
+            return False
+        return self.move_stream(node_id, target)
+
     def set_default_sink(self, node: str) -> bool:
         return self._run(["wpctl", "set-default", str(self.state.node_id(node) or node)])
 

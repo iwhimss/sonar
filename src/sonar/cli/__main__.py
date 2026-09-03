@@ -135,6 +135,39 @@ def _cmd_status(client: Client, args) -> int:
     return 0
 
 
+def _cmd_doctor(client: Client, args) -> int:
+    """Ses gelmiyorsa ilk bakılacak yer."""
+    report = client.call("Diagnose")
+    if args.json:
+        json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+        return 0
+
+    problems = 0
+    print(f"Graf hazır         : {'evet' if report['graph_ready'] else 'HAYIR'}")
+    problems += 0 if report["graph_ready"] else 1
+
+    broken = report["broken_links"]
+    print(f"Gönderi bağlantısı : {report['expected_links'] - len(broken)}/"
+          f"{report['expected_links']}")
+    for link in broken:
+        print(f"  ✗ {link}")
+    problems += len(broken)
+
+    for node in report["missing_nodes"]:
+        print(f"  ✗ node grafta yok: {node}")
+    problems += len(report["missing_nodes"])
+
+    for stream in report["unrouted_streams"]:
+        print(f"  ⚠ yönlendirilmemiş akış: #{stream['id']} {stream['label']}")
+
+    for conflict in report["conflicts"]:
+        print(f"  ⚠ {conflict['message']}")
+
+    print("\nSorun bulunamadı." if problems == 0 else f"\n{problems} sorun bulundu.")
+    return 0 if problems == 0 else 1
+
+
 def _cmd_volume(client: Client, args) -> int:
     client.call("SetChannelVolume", args.channel, args.bus, args.value / 100.0)
     return 0
@@ -245,7 +278,7 @@ def _cmd_device(client: Client, args) -> int:
         client.call("SetMicDevice", args.target, args.device)
     else:
         client.call("SetBusDevice", args.target, args.device)
-    print(f"{args.target} → {args.device}  (graf yeniden kuruluyor)")
+    print(f"{args.target} → {args.device}")
     return 0
 
 
@@ -372,6 +405,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="kanallar, fader'lar, profiller, çalan uygulamalar")
+    doctor = sub.add_parser("doctor", help="ses yolu teşhisi — ses gelmiyorsa buraya bakın")
+    doctor.add_argument("--json", action="store_true", help="ham çıktı")
 
     p = sub.add_parser("volume", help="kanal ses seviyesi (0-100)")
     p.add_argument("channel")
@@ -468,6 +503,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 _COMMANDS = {
     "status": _cmd_status,
+    "doctor": _cmd_doctor,
     "volume": _cmd_volume,
     "mute": _cmd_mute,
     "master": _cmd_master,

@@ -917,6 +917,54 @@ context.modules = [
         }
     }
     {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Mic → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_mic_monitor_capture"
+                node.passive = true
+                target.object = "sonar_mic"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_mic_monitor"
+                node.description = "Sonar Mic"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Mic → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_mic_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_mic"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_mic_to_stream"
+                node.description = "Sonar Mic"
+                target.object = "sonar_stream"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
         name = "libpipewire-module-filter-chain"
         args = {
             node.description = "Sonar Stream Mic"
@@ -1024,6 +1072,54 @@ context.modules = [
                 media.class = "Audio/Source"
                 device.icon-name = "audio-input-microphone"
                 priority.session = 0
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Stream Mic → personal"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_stream_mic_monitor_capture"
+                node.passive = true
+                target.object = "sonar_stream_mic"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_stream_mic_monitor"
+                node.description = "Sonar Stream Mic"
+                target.object = "sonar_personal"
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+        }
+    }
+    {
+        name = "libpipewire-module-loopback"
+        args = {
+            node.description = "Sonar Stream Mic → stream"
+            audio.position = [ "FL" "FR" ]
+            capture.props = {
+                node.name = "sonar_stream_mic_to_stream_capture"
+                node.passive = true
+                target.object = "sonar_stream_mic"
+                stream.capture.sink = false
+                audio.rate = 48000
+                audio.channels = 2
+                audio.position = [ "FL" "FR" ]
+            }
+            playback.props = {
+                node.name = "sonar_stream_mic_to_stream"
+                node.description = "Sonar Stream Mic"
+                target.object = "sonar_stream"
                 audio.rate = 48000
                 audio.channels = 2
                 audio.position = [ "FL" "FR" ]

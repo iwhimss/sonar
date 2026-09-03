@@ -47,6 +47,10 @@ MAX_CRASHES = len(BACKOFF_SECONDS)
 #: PipeWire yeniden başlatıldıktan ~4 sn sonra ses geri gelir.
 HEALTH_INTERVAL = 2.0
 
+#: Bağlantı bekçisi üst üste bu kadar kez eksik bağlantı bırakırsa kullanıcıya haber
+#: verilir. Sessizce susan bir kanal, kullanıcının bulabileceği en zor hata.
+LINK_FAILURE_LIMIT = 3
+
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
@@ -126,10 +130,11 @@ def live_volumes(cfg: SonarConfig) -> dict[str, tuple[float, bool]]:
 
     for mic in cfg.mic_chains:
         out[mic.source_node] = (mic.volume, mic.muted)
-        if mic.monitor_enabled:
-            out[f"{mic.source_node}_monitor"] = (mic.monitor_volume, False)
-        if mic.send_to_stream_bus:
-            out[f"{mic.source_node}_to_stream"] = (mic.volume, mic.muted)
+        # İki gönderi de conf'ta **her zaman** kurulu (bkz. `confgen._mic_modules`);
+        # açma/kapama burada mute ile yapılıyor, böylece sidetone'u açmak grafı yeniden
+        # kurmuyor ve çalan sesi kesmiyor.
+        out[f"{mic.source_node}_monitor"] = (mic.monitor_volume, not mic.monitor_enabled)
+        out[f"{mic.source_node}_to_stream"] = (mic.volume, mic.muted or not mic.send_to_stream_bus)
     return out
 
 
@@ -197,6 +202,13 @@ class Supervisor:
         self.load_profile: Callable[[str, str], Profile] = self.store.load_profile
         self.on_rebuild: list[Callable[[], None]] = []
         self.on_failure: list[Callable[[str], None]] = []
+        #: Bağlantı bekçisinin son sonucu: eksik kalan (çıkış, giriş) çiftleri.
+        self._broken_links: list[tuple[str, str]] = []
+        self._link_failures = 0
+        #: Bağlantı yolu bozulduğunda/düzeldiğinde çağrılır: `(eksik çiftler)`.
+        self.on_links_changed: list[Callable[[list[tuple[str, str]]], None]] = []
+        self._link_timer: threading.Timer | None = None
+        self.monitor.listen(self._on_graph_change)
 
     # ------------------------------------------------------------------ ana akış
 
@@ -224,6 +236,7 @@ class Supervisor:
             self.control.set_params(node, params)
         self.apply_volumes(cfg, flush=False)
         self.control.flush()
+        self.apply_targets(cfg)
 
     def apply_volumes(self, cfg: SonarConfig, *, flush: bool = True) -> None:
         """Tüm fader'ları yazar.
@@ -237,6 +250,15 @@ class Supervisor:
             self.control.set_mute(node, muted)
         if flush:
             self.control.flush()
+
+    def apply_targets(self, cfg: SonarConfig) -> None:
+        """Cihaz seçimlerini canlı yazar (çıkış bus'ları ve mikrofon kaynakları).
+
+        Conf'ta `target.object` yok; hedefler buradan `pw-metadata` ile veriliyor.
+        Bu yüzden cihaz değiştirmek grafı yeniden kurmuyor.
+        """
+        for node, device in confgen.live_targets(cfg).items():
+            self.control.set_target(node, device)
 
     def apply_target(self, cfg: SonarConfig, target: str) -> bool:
         """Tek bir hedefin DSP parametrelerini yazar (profil geçişi, EQ dokunuşu)."""
@@ -253,6 +275,10 @@ class Supervisor:
     def stop(self, *, restore_default_sink: bool = True) -> None:
         """Temiz kapanış: graf süreci öldürülür, varsayılan sink geri alınır."""
         self._stopping.set()
+        with self._lock:
+            if self._link_timer is not None:
+                self._link_timer.cancel()
+                self._link_timer = None
         if restore_default_sink and self._previous_default:
             self.control.set_default_sink(self._previous_default)
         with self._lock:
@@ -303,7 +329,7 @@ class Supervisor:
         self._start_watchdog()
 
         self._wait_for_graph(cfg, stale)
-        self._wire_sends(cfg)
+        self.reconcile_links(cfg)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()
@@ -315,39 +341,104 @@ class Supervisor:
             nodes.add(target)
         return nodes
 
-    def _wire_sends(self, cfg: SonarConfig) -> bool:
-        """Kanal çıkışlarını bus gönderilerine bağlar.
+    def reconcile_links(self, cfg: SonarConfig | None = None) -> list[tuple[str, str]]:
+        """Kanal çıkışlarını bus gönderilerine bağlar. Eksik kalanları döndürür.
 
         Bu bağlantılar conf'ta `target.object` ile ifade edilemiyor: `_fx` node'u
         `media.class` taşımadığında WirePlumber onu bir kaynak saymıyor ve politika
         motoru bağlamıyor (bkz. `confgen._send_loopback`). Bağlantıyı burada `pw-link`
         ile açıkça kuruyoruz.
 
+        Eskiden bu tek atışlıktı: yeniden inşadan hemen sonra iki kez denenir, tutmazsa
+        yalnızca bir `log.error` bırakılırdı. Node'lar geç doğduğunda kanal **tamamen ve
+        sessizce** susuyordu — test turu 2'nin "hiç ses gelmiyor" şikâyetinin bir ayağı
+        buydu. Artık sürekli bir uzlaştırıcı: grafta node değiştikçe ve sağlık
+        yoklamasında yeniden çalışıyor, eksik kalırsa kullanıcıya haber veriyor.
+
         `pw-link` var olan bir bağlantı için de sıfırdan farklı dönebildiği için sonuç
         komutun çıkış koduna değil, `pw-link -l` çıktısına bakılarak doğrulanır.
         """
+        if cfg is None:
+            with self._lock:
+                cfg = self._cfg
+        if cfg is None:
+            return []
         wanted = confgen.send_links(cfg)
         if not wanted:
-            return True
-        for attempt in (1, 2):
-            existing = self.control.node_links()
-            missing = [pair for pair in wanted if pair not in existing]
-            if not missing:
-                return True
+            self._note_links([])
+            return []
+
+        existing = self.control.node_links()
+        missing = [pair for pair in wanted if pair not in existing]
+        if missing:
             for output, target in missing:
                 self.control.link_nodes(output, target)
-            if attempt == 1:
-                time.sleep(0.1)
-        remaining = [pair for pair in wanted if pair not in self.control.node_links()]
-        if remaining:
+            time.sleep(0.1)
+            missing = [pair for pair in wanted if pair not in self.control.node_links()]
+
+        self._note_links(missing)
+        return missing
+
+    def _note_links(self, missing: list[tuple[str, str]]) -> None:
+        """Bekçinin sonucunu kaydeder; durum değişmişse dinleyicileri uyarır."""
+        with self._lock:
+            was_broken = bool(self._broken_links)
+            self._broken_links = list(missing)
+            if missing:
+                self._link_failures += 1
+                failures = self._link_failures
+            else:
+                self._link_failures = 0
+                failures = 0
+
+        if missing and failures == LINK_FAILURE_LIMIT:
             log.error(
                 "%d kanal gönderisi bağlanamadı (örnek: %s → %s); o kanalın sesi bus'a "
                 "ulaşmaz",
-                len(remaining),
-                *remaining[0],
+                len(missing),
+                *missing[0],
             )
-            return False
-        return True
+        # Kullanıcıya yalnızca eşik aşılınca söyle; geçici yarışlar için susalım.
+        if (missing and failures == LINK_FAILURE_LIMIT) or (was_broken and not missing):
+            for callback in list(self.on_links_changed):
+                try:
+                    callback(list(missing))
+                except Exception:  # pragma: no cover - dinleyici hatası grafı düşürmesin
+                    log.exception("bağlantı dinleyicisi hata verdi")
+
+    @property
+    def broken_links(self) -> list[tuple[str, str]]:
+        """Şu an eksik olan gönderi bağlantıları — `sonar-cli doctor` bunu basar."""
+        with self._lock:
+            return list(self._broken_links)
+
+    def _on_graph_change(self, changed: frozenset[str]) -> None:
+        """Grafta node değiştiğinde bağlantı bekçisini (debounce'lu) çalıştırır.
+
+        Node'lar conf'un kurduğu sırayla, birbirinden bağımsız anlarda doğuyor; tek bir
+        olayda uzlaştırma yapmak `pw-link -l` fırtınası demek olurdu. 300 ms'lik pencere
+        bir yeniden inşanın tüm node'larını tek uzlaştırmada toplar.
+        """
+        if GraphState.NODES not in changed or self._stopping.is_set():
+            return
+        with self._lock:
+            if self._cfg is None or self._link_timer is not None:
+                return
+            timer = threading.Timer(0.3, self._reconcile_links_soon)
+            timer.name = "sonar-link-keeper"
+            timer.daemon = True
+            self._link_timer = timer
+        timer.start()
+
+    def _reconcile_links_soon(self) -> None:
+        with self._lock:
+            self._link_timer = None
+        if self._stopping.is_set():
+            return
+        try:
+            self.reconcile_links()
+        except Exception:  # pragma: no cover - bekçi daemon'ı düşürmemeli
+            log.exception("bağlantı bekçisi hata verdi")
 
     def _snapshot_ids(self, cfg: SonarConfig) -> dict[str, int]:
         """Yeniden başlatmadan **önceki** node id'leri."""
@@ -470,6 +561,7 @@ class Supervisor:
         while not self._stopping.is_set():
             if process.poll() is not None:
                 return True
+            self._reconcile_links_soon()
             if self._graph_is_empty():
                 vanished += 1
                 # İki üst üste ölçüm: kendi yeniden inşamızın ortasına denk gelmeyelim.
@@ -497,7 +589,7 @@ class Supervisor:
         if cfg is None:  # pragma: no cover - reconcile'dan önce çökme
             return
         self._wait_for_graph(cfg, stale)
-        self._wire_sends(cfg)
+        self.reconcile_links(cfg)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()

@@ -396,3 +396,57 @@ def test_default_rules_are_all_valid_regexes():
     for _key, pattern, _channel, is_regex in SUGGESTED_RULES:
         if is_regex:
             re.compile(pattern)
+
+
+# --------------------------------------------------------------------------- yeniden oturtma
+#
+# Yeniden inşa node id'lerini eskitir ama kullanıcının kararını geçersiz kılmaz. Eskiden
+# burada `reset()` çağrılıyordu ve `_is_routable` hedefi `sonar_` ile başlayan akışı
+# "kullanıcı seçmiş" sayıp atladığı için **hiçbir akış yeniden yerleştirilmiyordu** —
+# test turu 2'deki "ses gidiyor" şikâyetlerinin bir ayağı buydu.
+
+
+def test_reassert_moves_streams_back_onto_their_decision(router, graph):
+    graph.add(10, "firefox", **{"application.process.binary": "firefox"})
+    router.sync()
+    graph.moves.clear()
+
+    decisions = router.reassert()
+
+    assert graph.moves == [(10, "sonar_media")]
+    assert [(d.stream_id, d.channel_id, d.reason) for d in decisions] == [
+        (10, "media", "reassert")
+    ]
+    assert router.decided  # karar korunuyor
+
+
+def test_reassert_waits_for_the_node_to_appear(router, graph):
+    graph.add(10, "firefox", **{"application.process.binary": "firefox"})
+    router.sync()
+    graph.moves.clear()
+
+    assert router.reassert(lambda _name: False) == []
+    assert graph.moves == []
+    assert router.decided  # karar yine korunuyor; sonraki tur dener
+
+
+def test_reassert_forgets_a_channel_that_no_longer_exists(graph):
+    config = default_config()
+    router = Router(graph.state, graph.move, lambda: config)
+    graph.add(10, "firefox", **{"application.process.binary": "firefox"})
+    router.sync()
+    config.channels = [c for c in config.channels if c.id != "media"]
+
+    assert router.reassert() == []
+    assert router.decided == {}
+
+
+def test_forget_channel_drops_only_that_channels_decisions(router, graph):
+    graph.add(10, "firefox", **{"application.process.binary": "firefox"})
+    graph.add(11, "discord", **{"application.process.binary": "Discord"})
+    router.sync()
+    assert set(router.decided.values()) == {"media", "chat"}
+
+    router.forget_channel("media")
+
+    assert set(router.decided.values()) == {"chat"}

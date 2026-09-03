@@ -151,8 +151,53 @@ class Router:
         return stream.serial or stream.id
 
     def reset(self) -> None:
-        """Graf yeniden kurulduğunda: node id'leri değişti, kayıtlar geçersiz."""
+        """Kayıtları tümden unutur."""
         self._decided.clear()
+
+    def forget_channel(self, channel_id: str) -> None:
+        """Silinen bir kanala verilmiş kararları unutur; akışlar yeniden dağıtılır."""
+        for key in [k for k, v in self._decided.items() if v == channel_id]:
+            del self._decided[key]
+
+    def reassert(self, node_exists: Callable[[str], bool] | None = None) -> list[Decision]:
+        """Yeniden inşadan sonra akışları kararlarının üstüne geri oturtur.
+
+        Eskiden burada `reset()` çağrılıyordu ve sonuç şuydu: kayıtlar silinince
+        `sync()` akışlara yeniden bakıyor, ama `_is_routable` hedefi `sonar_` ile
+        başlayan akışı "kullanıcı kendi seçmiş" sayıp atlıyordu. Yani **hiçbir akış
+        yeniden yerleştirilmiyordu** ve akışın nereye bağlanacağı WirePlumber'ın
+        eline kalıyordu. Test turu 2'deki "cihaz değiştirince ses gidiyor" ve
+        "kanal değiştirince ses kesiliyor" şikâyetlerinin ikinci ayağı buydu.
+
+        Yeniden inşa kararı **geçersiz kılmaz**, yalnızca node id'lerini eskitir. Bu
+        yüzden karar korunur ve taşıma tekrarlanır.
+        """
+        config = self.config_provider()
+        decisions: list[Decision] = []
+        for stream in list(self.state.streams.values()):
+            key = stream.serial or stream.id
+            channel_id = self._decided.get(key)
+            if channel_id is None:
+                continue
+            channel = config.channel(channel_id)
+            if channel is None:
+                # Kanal silinmiş: kararı unut, `sync()` yeniden karar versin.
+                del self._decided[key]
+                continue
+            if node_exists is not None and not node_exists(channel.sink_node):
+                continue
+            if self.move(stream.id, channel.sink_node):
+                decisions.append(Decision(stream.id, channel_id, "reassert"))
+            else:
+                log.warning(
+                    "akış yeniden oturtulamadı: #%s (%s) → %s",
+                    stream.id,
+                    stream.label,
+                    channel_id,
+                )
+        if decisions:
+            log.info("%d akış yeniden inşadan sonra yerine oturtuldu", len(decisions))
+        return decisions
 
     @property
     def decided(self) -> dict[int, str]:

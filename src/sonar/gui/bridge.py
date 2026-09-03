@@ -359,6 +359,7 @@ class SonarBridge(QObject):
     _NOTICES: ClassVar[dict[str, tuple[str, bool]]] = {
         "profile_copied": ("Gömülü preset düzenlenemez; '{to}' kopyasına geçildi.", False),
         "save_failed": ("{message}", True),
+        "path_ok": ("Ses yolu onarıldı.", False),
     }
 
     def _announce(self, payload: str) -> None:
@@ -373,6 +374,15 @@ class SonarBridge(QObject):
         except (json.JSONDecodeError, AttributeError):
             return
         for change in changes:
+            # Kopan ses yolu şablona sığmıyor: kanal adları listeden geliyor.
+            if change.get("kind") == "path_broken":
+                names = ", ".join(change.get("channels") or []) or "Bir kanal"
+                self.noticeRaised.emit(
+                    f"{names} çıkışa bağlanamadı — o kanaldan ses gelmiyor olabilir. "
+                    f"Ayrıntı için: sonar-cli doctor",
+                    True,
+                )
+                continue
             notice = self._NOTICES.get(change.get("kind"))
             if notice is None:
                 continue

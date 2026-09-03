@@ -103,14 +103,35 @@ def test_removing_a_channel_changes_the_conf(portable):
     assert "sonar_aux" not in after
 
 
-def test_device_change_changes_the_conf(portable):
-    """Cihaz conf'ta `target.object` olarak yazılı; değişimi yapısal."""
+def test_device_change_does_not_touch_the_conf(portable):
+    """Cihaz seçimi conf'a **girmez**; `pw-metadata` ile canlı verilir.
+
+    Faz 18'de değişti. Eskiden `target.object` olarak conf'a yazılıyordu, yani cihaz
+    değiştirmek grafı yeniden kurup çalan müziği kesiyordu — test turu 2'nin
+    "master'dan cihaz değiştirince şarkı duruyor" şikâyeti buydu.
+    """
     config = default_config()
     before = confgen.generate(config)
     config.bus(BusId.PERSONAL).device = "alsa_output.usb-SteelSeries_Arctis_7"
-    after = confgen.generate(config)
-    assert after != before
-    assert "alsa_output.usb-SteelSeries_Arctis_7" in after
+    assert confgen.generate(config) == before
+    assert confgen.live_targets(config) == {
+        "sonar_personal_out": "alsa_output.usb-SteelSeries_Arctis_7"
+    }
+
+
+def test_mic_device_is_live_too(portable):
+    config = default_config()
+    before = confgen.generate(config)
+    config.mic("mic").source_device = "alsa_input.usb-Fifine"
+    assert confgen.generate(config) == before
+    assert confgen.live_targets(config)["sonar_mic_capture"] == "alsa_input.usb-Fifine"
+
+
+def test_stream_bus_has_no_device_target(portable):
+    """Yayın miksinin çıkışı sanal bir kaynak; fiziksel bir hedefi yok."""
+    config = default_config()
+    config.bus(BusId.STREAM).device = "alsa_output.usb-SteelSeries_Arctis_7"
+    assert "sonar_stream_out" not in confgen.live_targets(config)
 
 
 def test_band_count_change_changes_the_conf(portable):
@@ -170,17 +191,21 @@ def test_sample_rate_is_pinned_everywhere(portable):
 # --------------------------------------------------------------------------- mikrofon
 
 
-def test_mic_monitor_and_stream_send_are_off_by_default(conf):
-    assert "sonar_mic_monitor" not in conf
-    assert "sonar_mic_to_stream" not in conf
+def test_mic_sends_are_always_in_the_conf(conf):
+    """Kapalıyken de kurulurlar; açma/kapama mute ile yapılıyor (Faz 18).
 
-
-def test_mic_monitor_appears_when_enabled(portable):
-    config = default_config()
-    config.mic("mic").monitor_enabled = True
-    conf = confgen.generate(config)
+    Eskiden conf'a bağlıydı: sidetone'u açmak grafı yeniden kurup sesi kesiyordu.
+    """
     assert 'node.name = "sonar_mic_monitor"' in conf
-    assert 'target.object = "sonar_personal"' in conf
+    assert 'node.name = "sonar_mic_to_stream"' in conf
+
+
+def test_toggling_a_mic_send_does_not_touch_the_conf(portable):
+    config = default_config()
+    before = confgen.generate(config)
+    config.mic("mic").monitor_enabled = True
+    config.mic("mic").send_to_stream_bus = True
+    assert confgen.generate(config) == before
 
 
 def test_shared_mic_chain_uses_a_loopback_instead_of_a_second_dsp(portable):
@@ -244,7 +269,8 @@ def test_pipewire_can_parse_the_generated_conf(conf, tmp_path):
     chains = [m for m in modules if m["name"] == "libpipewire-module-filter-chain"]
     loopbacks = [m for m in modules if m["name"] == "libpipewire-module-loopback"]
     assert len(chains) == 4 + 2 + 2  # kanallar + bus'lar + mikrofonlar
-    assert len(loopbacks) == 4 * 2  # kanal başına personal + stream
+    # kanal başına personal + stream, artı mikrofon başına monitor + to_stream
+    assert len(loopbacks) == 4 * 2 + 2 * 2
 
     game = next(c for c in chains if c["args"]["capture.props"]["node.name"] == "sonar_game")
     graph = game["args"]["filter.graph"]

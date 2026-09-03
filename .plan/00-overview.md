@@ -7,7 +7,7 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 18 — Ses yolunun güvenilirliği
+**Aktif faz:** Faz 19 — Arayüzün canlılığı ve yerleşimi
 **Son güncelleme:** 2026-09-03
 **Sonraki adım:** Faz 18 → 19 → 20 → 21 → 22 → 23 → 24. Sonra kullanıcı üçüncü test
 turunu yapar; Faz 11 (Paketleme) ondan sonra.
@@ -40,8 +40,8 @@ turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | 🟢 Tamamlandı |
 | 16 | [Profil deneyimi](16-profiles.md) | 🟢 Tamamlandı |
 | 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟢 Tamamlandı |
-| 18 | [Ses yolunun güvenilirliği](18-audio-path.md) | 🟡 Sıradaki |
-| 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | ⚪ Bekliyor |
+| 18 | [Ses yolunun güvenilirliği](18-audio-path.md) | 🟢 Tamamlandı |
+| 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | 🟡 Sıradaki |
 | 20 | [Çoklu çıkış bus'ı](20-outputs.md) | ⚪ Bekliyor |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | ⚪ Bekliyor |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | ⚪ Bekliyor |

@@ -17,6 +17,8 @@ class FakeSupervisor:
         self.load_profile = None
         self.calls: list[tuple[str, object]] = []
         self.monitor = FakeMonitor()
+        self.on_links_changed: list = []
+        self.broken_links: list[tuple[str, str]] = []
 
     def apply_volumes(self, cfg, *, flush=True):
         self.calls.append(("volumes", None))
@@ -24,6 +26,13 @@ class FakeSupervisor:
     def apply_target(self, cfg, target):
         self.calls.append(("target", target))
         return True
+
+    def apply_targets(self, cfg):
+        self.calls.append(("targets", None))
+
+    def reconcile_links(self, cfg=None):
+        self.calls.append(("links", None))
+        return []
 
     def reconcile(self, cfg):
         self.calls.append(("reconcile", None))
@@ -47,9 +56,14 @@ class FakeControl:
         self.moved: list[tuple[int, str]] = []
         self.move_ok = True
 
+        self.links: set[tuple[str, str]] = set()
+
     def move_stream(self, stream_id, node):
         self.moved.append((stream_id, node))
         return self.move_ok
+
+    def node_links(self):
+        return set(self.links)
 
 
 class FakeMonitor:
@@ -153,10 +167,6 @@ def test_dsp_changes_are_live(api, call, args):
 @pytest.mark.parametrize(
     ("call", "args"),
     [
-        ("set_bus_device", ("personal", "alsa_output.usb")),
-        ("set_mic_device", ("mic", "alsa_input.usb")),
-        ("set_mic_monitor", ("mic", True)),
-        ("set_mic_stream_send", ("mic", True)),
         ("set_band_count", ("game", 32)),
         ("add_channel", ("Music",)),
     ],
@@ -166,12 +176,33 @@ def test_structural_changes_rebuild(api, call, args):
     assert api.supervisor.kinds == ["reconcile"]
 
 
-def test_mic_monitor_is_structural_because_it_adds_a_loopback(api):
-    """Conf'a `sonar_mic_monitor` modülü ekleniyor; canlı yazımla halledilemez."""
+@pytest.mark.parametrize(
+    ("call", "args", "kind"),
+    [
+        ("set_bus_device", ("personal", "alsa_output.usb"), "targets"),
+        ("set_mic_device", ("mic", "alsa_input.usb"), "targets"),
+        ("set_mic_monitor", ("mic", True), "volumes"),
+        ("set_mic_stream_send", ("mic", True), "volumes"),
+    ],
+)
+def test_device_and_send_changes_are_live(api, call, args, kind):
+    """Hiçbiri grafı yeniden kurmamalı — hepsi eskiden çalan müziği kesiyordu.
+
+    Cihaz seçimi conf'a girmiyor (`pw-metadata` ile canlı), monitör ve yayına gönderi
+    loopback'leri ise conf'ta her zaman kurulu ve mute ile açılıp kapanıyor.
+    """
+    getattr(api, call)(*args)
+    assert api.supervisor.kinds == [kind]
+
+
+def test_live_changes_never_touch_the_conf(api):
+    """Ses kesintisinin tek ölçütü: conf metni değişti mi?"""
     before = confgen.generate(api.config)
+    api.set_bus_device("personal", "alsa_output.usb")
+    api.set_mic_device("mic", "alsa_input.usb")
     api.set_mic_monitor("mic", True)
-    assert confgen.generate(api.config) != before
-    assert "sonar_mic_monitor" in confgen.generate(api.config)
+    api.set_mic_stream_send("mic", True)
+    assert confgen.generate(api.config) == before
 
 
 # --------------------------------------------------------------------------- doğrulama
@@ -556,6 +587,25 @@ def test_manual_move_stops_the_router_from_touching_it(api):
     assert api.supervisor.control.moved == [(10, "sonar_game")]
 
 
+def test_move_retries_when_the_link_did_not_appear(api):
+    """Taşıma komutu başarılı dönse de bağlantı kurulmamış olabilir; bir kez yenilenir.
+
+    Kullanıcı bunu yalnızca sesin kesilmesiyle fark ediyordu (test turu 2).
+    """
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.supervisor.control.links = {("some_other_node", "sonar_chat")}
+    api.move_stream(10, "game")
+    assert api.supervisor.control.moved == [(10, "sonar_game"), (10, "sonar_game")]
+
+
+def test_move_does_not_retry_when_the_link_is_there(api):
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    name = api.supervisor.state.node_name(10)
+    api.supervisor.control.links = {(name, "sonar_game")}
+    api.move_stream(10, "game")
+    assert api.supervisor.control.moved == [(10, "sonar_game")]
+
+
 def test_move_with_remember_creates_a_rule_from_the_binary(api):
     _stream_obj(api, 10, "cs2", **{"application.process.binary": "cs2_linux64"})
     api.move_stream(10, "game", remember=True)
@@ -594,12 +644,27 @@ def test_routing_decisions_are_announced(config_store):
     assert seen[-1]["channel"] == "media"
 
 
-def test_structural_change_resets_the_router(api):
-    """Node id'leri değişti; hangi akışın nereye gittiğine dair kayıt geçersiz."""
+def test_structural_change_reasserts_instead_of_forgetting(api):
+    """Yeniden inşa node id'lerini eskitir ama kullanıcının kararını geçersiz kılmaz.
+
+    Eskiden burada `router.reset()` vardı; kayıt silinince `_is_routable` akışı
+    "kullanıcı seçmiş" sayıp atlıyor ve **hiçbir akış yeniden yerleştirilmiyordu**.
+    """
     _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
     api.sync_routing()
     assert api.router.decided
-    api.set_mic_monitor("mic", True)
+    api.supervisor.state.nodes["sonar_media"] = 99
+    api.supervisor.control.moved.clear()
+    api.set_band_count("game", 32)
+    assert api.router.decided  # karar korunuyor
+    assert api.supervisor.control.moved == [(10, "sonar_media")]  # taşıma tekrarlandı
+
+
+def test_removing_a_channel_forgets_its_streams(api):
+    _stream_obj(api, 10, "firefox", **{"application.process.binary": "firefox"})
+    api.sync_routing()
+    assert api.router.decided
+    api.remove_channel("media")
     assert api.router.decided == {}
 
 

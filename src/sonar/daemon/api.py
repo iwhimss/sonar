@@ -144,6 +144,9 @@ class SonarApi:
         self._lock = threading.RLock()
 
         supervisor.load_profile = self._profile_provider
+        # Ses yolu koptuğunda kullanıcıya haber ver: sessizce susan bir kanal,
+        # bulunması en zor hata. `supervisor` bekçisi eşiği aşınca burayı çağırır.
+        supervisor.on_links_changed.append(self._on_links_changed)
         self.meters = MeterManager(on_levels=on_levels)
         self.meters.configure(meter_sources(self.config))
         self.router = Router(
@@ -195,6 +198,37 @@ class SonarApi:
             },
             "chatmix_gains": chatmix_gains(self.config),
             "headsets": self.headsets(),
+        }
+
+    def diagnose(self) -> dict:
+        """`sonar-cli doctor`: ses yolunun neresi bozuk?
+
+        Sessizce susan bir kanal, kullanıcının bulabileceği en zor hata. Buraya bakınca
+        hangi bağlantının eksik, hangi node'un doğmadığı ve hangi uygulamanın
+        yönlendirilmediği tek çıktıda görünür.
+        """
+        state = self.supervisor.state
+        expected_links = confgen.send_links(self.config)
+        missing_nodes = sorted(
+            name
+            for name in set(confgen.dsp_nodes(self.config).values())
+            if state.node_id(name) is None
+        )
+        broken = self.supervisor.broken_links
+        return {
+            "graph_ready": bool(state.sonar_nodes()),
+            "expected_links": len(expected_links),
+            "broken_links": [f"{source} → {target}" for source, target in broken],
+            "missing_nodes": missing_nodes,
+            "conflicts": self.conflicts(),
+            "unrouted_streams": [
+                {"id": stream.id, "label": stream.label}
+                for stream in state.streams.values()
+                if not stream.is_internal
+                and not stream.is_capture
+                and not stream.target_node.startswith("sonar_")
+                and (stream.serial or stream.id) not in self.router.decided
+            ],
         }
 
     def sync_routing(self) -> list[Decision]:
@@ -581,20 +615,27 @@ class SonarApi:
     # ------------------------------------------------------------------ yapısal
 
     def set_bus_device(self, bus: str, device: str) -> None:
+        """Bir çıkış bus'ının fiziksel cihazı. **Canlı** — ses kesilmez.
+
+        Eskiden `_structural()` idi: cihaz adı conf'a `target.object` olarak giriyordu,
+        yani her değişiklik grafı yeniden kurup çalan müziği kesiyor, metre süreçlerini
+        öldürüyordu. Artık hedef `pw-metadata` ile canlı yazılıyor (Faz 18'de ölçüldü).
+        """
         self._master(bus).device = str(device)
-        self._structural({"kind": "bus_device", "bus": bus})
+        self._live_targets({"kind": "bus_device", "bus": bus})
 
     def set_mic_device(self, chain: str, device: str) -> None:
         self._mic(chain).source_device = str(device)
-        self._structural({"kind": "mic_device", "chain": chain})
+        self._live_targets({"kind": "mic_device", "chain": chain})
 
     def set_mic_monitor(self, chain: str, enabled: bool) -> None:
+        # Monitör loopback'i conf'ta her zaman kurulu; açma/kapama bir mute yazımı.
         self._mic(chain).monitor_enabled = bool(enabled)
-        self._structural({"kind": "mic_monitor", "chain": chain})
+        self._live_volumes({"kind": "mic_monitor", "chain": chain})
 
     def set_mic_stream_send(self, chain: str, enabled: bool) -> None:
         self._mic(chain).send_to_stream_bus = bool(enabled)
-        self._structural({"kind": "mic_stream_send", "chain": chain})
+        self._live_volumes({"kind": "mic_stream_send", "chain": chain})
 
     def set_channel_stream_source(self, channel: str, enabled: bool) -> None:
         """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlayıp yayınlamayacağı.
@@ -692,9 +733,10 @@ class SonarApi:
         if not chatmix.left_channel or not chatmix.right_channel:
             chatmix.enabled = False
 
-        # O kanalda çalan akışların yönlendirme kaydını temizlemeye gerek yok:
-        # `_structural()` zaten `router.reset()` çağırıyor ve graf yeniden kurulduktan
-        # sonra her akış kurallara göre baştan dağıtılıyor.
+        # O kanalda çalan akışların kaydını burada unutuyoruz: kanal artık yok, karar
+        # geçersiz. `_structural()` sonrası `sync()` onlara kurallara göre baştan
+        # karar verir.
+        self.router.forget_channel(channel)
 
     def _remove_input_channel(self, chain: str) -> None:
         if len(self.config.mic_chains) <= 1:
@@ -723,11 +765,30 @@ class SonarApi:
         node = self._channel(channel).sink_node
         if not self.supervisor.control.move_stream(int(stream_id), node):
             raise ApiError("move_failed", f"akış taşınamadı: {stream_id}")
+        # Taşıma komutu başarılı dönse de bağlantı kurulmamış olabilir; kullanıcı bunu
+        # yalnızca sesin kesilmesiyle fark ediyordu. Bir kez daha deneyip bırakıyoruz.
+        if not self._stream_reached(int(stream_id), node):
+            self.supervisor.control.move_stream(int(stream_id), node)
         # Kural motoru bu akışa bir daha dokunmasın: kullanıcının kararı kalıcıdır.
         self.router.mark_manual(int(stream_id), channel)
         self._emit({"kind": "stream_moved", "stream": int(stream_id), "channel": channel})
         if remember:
             self._remember_stream(int(stream_id), channel)
+
+    def _stream_reached(self, stream_id: int, node: str) -> bool:
+        """Akış gerçekten hedefe bağlandı mı? `pw-link -l` üzerinden bakar."""
+        stream = self.supervisor.state.streams.get(stream_id)
+        if stream is None:
+            return True  # akış kapanmış; taşımayı zorlamanın anlamı yok
+        name = self.supervisor.state.node_name(stream_id)
+        if name is None:
+            return True
+        links = self.supervisor.control.node_links()
+        if not links:
+            # `pw-link -l` okunamadı (komut yok, zaman aşımı). Bilmediğimiz için
+            # körlemesine tekrar denemek akışı ikinci kez sarsmaktan başka işe yaramaz.
+            return True
+        return any(source == name and target == node for source, target in links)
 
     def _remember_stream(self, stream_id: int, channel: str) -> None:
         stream = self.supervisor.state.streams.get(stream_id)
@@ -878,6 +939,26 @@ class SonarApi:
 
     # ------------------------------------------------------------------ iç kısım
 
+    def _on_links_changed(self, missing: list[tuple[str, str]]) -> None:
+        if not missing:
+            self._emit({"kind": "path_ok"})
+            return
+        names = sorted({self._channel_of_node(source) for source, _ in missing})
+        self._emit(
+            {
+                "kind": "path_broken",
+                "channels": [name for name in names if name],
+                "links": [f"{source} → {target}" for source, target in sorted(missing)],
+            }
+        )
+
+    def _channel_of_node(self, node: str) -> str:
+        """`sonar_game_fx` → `Game`. Kullanıcıya node adı değil kanal adı gösterilir."""
+        for channel in self.config.channels:
+            if node == channel.fx_node:
+                return channel.name
+        return ""
+
     def _on_route(self, decision: Decision) -> None:
         self._emit(
             {
@@ -895,6 +976,12 @@ class SonarApi:
             return cached
         return self._load(target, name)
 
+    def _live_targets(self, delta: dict) -> None:
+        self.supervisor.apply_targets(self.config)
+        self._dirty_config = True
+        self._emit(delta)
+        self._save_soon()
+
     def _live_volumes(self, delta: dict) -> None:
         self.supervisor.apply_volumes(self.config)
         self._dirty_config = True
@@ -911,8 +998,10 @@ class SonarApi:
     def _structural(self, delta: dict) -> None:
         self._dirty_config = True
         self.supervisor.reconcile(self.config)
-        # Node id'leri değişti; hangi akışın nereye gittiğine dair kayıt geçersiz.
-        self.router.reset()
+        # Node id'leri değişti ama kullanıcının kararları geçerli: akışları kararlarının
+        # üstüne geri oturt. Eskiden burada `reset()` vardı ve hiçbir akış yeniden
+        # yerleştirilmiyordu (bkz. `Router.reassert` başlığı).
+        self.router.reassert(lambda name: self.supervisor.state.node_id(name) is not None)
         # Kanal eklendi/silindi olabilir: ölçüm noktaları yeniden bağlanmalı.
         self.meters.configure(meter_sources(self.config))
         self._emit(delta)

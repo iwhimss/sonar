@@ -64,13 +64,22 @@ def test_live_volumes_cover_every_fader():
     assert "sonar_mic" in volumes and "sonar_stream_mic" in volumes
 
 
-def test_optional_mic_sends_appear_only_when_enabled():
+def test_optional_mic_sends_are_always_present_but_muted_when_off():
+    """Loopback'ler conf'ta her zaman kurulu; açma/kapama bir mute yazımı.
+
+    Eskiden conf'a bağlıydı, yani sidetone'u açmak grafı yeniden kurup çalan sesi
+    kesiyordu (test turu 2).
+    """
     config = default_config()
-    assert "sonar_mic_monitor" not in live_volumes(config)
+    off = live_volumes(config)
+    assert off["sonar_mic_monitor"][1] is True
+    assert off["sonar_mic_to_stream"][1] is True
+
     config.mic("mic").monitor_enabled = True
     config.mic("mic").send_to_stream_bus = True
-    volumes = live_volumes(config)
-    assert "sonar_mic_monitor" in volumes and "sonar_mic_to_stream" in volumes
+    on = live_volumes(config)
+    assert on["sonar_mic_monitor"] == (0.5, False)
+    assert on["sonar_mic_to_stream"][1] is False
 
 
 def test_mute_travels_with_the_volume():
@@ -189,9 +198,14 @@ def supervisor(config_store, monkeypatch):
     spawned: list[FakeProcess] = []
     # `pw-link` gerçekten çalıştırılmasın: testler geliştiricinin ses grafına dokunmamalı.
     linked: list[tuple[str, str]] = []
+    #: `sup._link_ok = False` → `pw-link` çağrılıyor ama bağlantı kurulmuyor.
+    #: Bekçinin "onaramadım" yolunu test etmek için.
+    link_ok = {"value": True}
 
     def run(argv: list[str]) -> bool:
         if argv[:1] == ["pw-link"]:
+            if not link_ok["value"]:
+                return False
             linked.append((argv[1], argv[2]))
         return True
 
@@ -216,6 +230,7 @@ def supervisor(config_store, monkeypatch):
     sup._spawned = spawned  # type: ignore[attr-defined]
     sup._session = session  # type: ignore[attr-defined]
     sup._linked = linked  # type: ignore[attr-defined]
+    sup._link_ok = link_ok  # type: ignore[attr-defined]
     return sup
 
 
@@ -401,6 +416,39 @@ def test_existing_links_are_not_duplicated(supervisor, config_store):
     config = config_store.load()
     supervisor.reconcile(config)
     before = len(supervisor._linked)
-    assert supervisor._wire_sends(config) is True
+    assert supervisor.reconcile_links(config) == []
     assert len(supervisor._linked) == before
+    supervisor.stop(restore_default_sink=False)
+
+
+def test_link_keeper_repairs_a_missing_link(supervisor, config_store):
+    """Bekçinin asıl işi: bağlantı sonradan kopsa da geri kuruluyor.
+
+    Eskiden bu tek atışlıktı; tutmazsa kanal sessizce susuyordu ve kullanıcıya
+    hiçbir işaret gitmiyordu (test turu 2, "hiç ses gelmiyor").
+    """
+    config = config_store.load()
+    supervisor.reconcile(config)
+    lost = confgen.send_links(config)[0]
+    supervisor._linked.remove(lost)
+
+    assert supervisor.reconcile_links(config) == []
+    assert lost in supervisor._linked
+    supervisor.stop(restore_default_sink=False)
+
+
+def test_link_keeper_reports_what_it_cannot_fix(supervisor, config_store):
+    config = config_store.load()
+    supervisor.reconcile(config)
+    seen: list[list[tuple[str, str]]] = []
+    supervisor.on_links_changed.append(seen.append)
+
+    supervisor._link_ok["value"] = False  # bağlantı kurulamıyor
+    lost = confgen.send_links(config)[0]
+    supervisor._linked.remove(lost)
+    for _ in range(3):
+        supervisor.reconcile_links(config)
+
+    assert supervisor.broken_links == [lost]
+    assert seen == [[lost]]  # eşik aşılınca **bir kez** haber verilir
     supervisor.stop(restore_default_sink=False)

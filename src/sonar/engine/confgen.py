@@ -36,6 +36,7 @@ __all__ = [
     "dsp_nodes",
     "generate",
     "generate_modules",
+    "live_targets",
     "send_links",
 ]
 
@@ -228,6 +229,31 @@ def send_links(cfg: SonarConfig) -> list[tuple[str, str]]:
     ]
 
 
+def live_targets(cfg: SonarConfig) -> dict[str, str]:
+    """Canlı yazılacak `node adı → hedef cihaz` eşlemesi.
+
+    Bu değerler bilinçli olarak conf'un **dışında** tutuluyor: `pw-metadata <node-id>
+    target.object <cihaz>` bir akışı kesintisiz taşıyor (ölçüldü: `sonar_personal_out`
+    Arctis ↔ Realtek arası gidip geldi, kesinti kayıt gürültüsünün üstüne çıkmadı).
+    Conf'a yazılsaydı her cihaz değişimi ~200 ms'lik bir yeniden kurulum olurdu.
+
+    Boş dize "hedef verme" demek — WirePlumber sistem varsayılanına bağlar.
+    """
+    targets = {
+        f"{bus.sink_node}_out": bus.device
+        for bus in cfg.buses
+        if bus.id is not BusId.STREAM
+    }
+    targets.update(
+        {
+            f"{mic.source_node}_capture": mic.source_device
+            for mic in cfg.mic_chains
+            if not mic.share_chain_with_mic
+        }
+    )
+    return {node: device for node, device in targets.items() if device}
+
+
 # --------------------------------------------------------------------------- bus'lar
 
 
@@ -249,14 +275,14 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
             **_stereo(rate),
         }
     else:
+        # Hedef cihaz conf'a **yazılmaz**: `pw-metadata <id> target.object <cihaz>` ile
+        # canlı veriliyor (bkz. `live_targets`). Conf'a yazılsaydı cihaz değiştirmek
+        # conf metnini değiştirir, yani grafı yeniden kurar ve çalan sesi keserdi.
         playback = {
             "node.name": f"{bus.sink_node}_out",
             "node.description": f"Sonar {bus.name} Output",
             **_stereo(rate),
         }
-        # Cihaz boşsa hedef verilmez; WirePlumber sistem varsayılanına bağlar.
-        if bus.device:
-            playback["target.object"] = bus.device
 
     return _filter_chain(
         description=f"Sonar {bus.name}",
@@ -313,6 +339,7 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
             }
         )
     else:
+        # `mic.source_device` de conf'a girmez; `live_targets` canlı yazar.
         capture = {
             "node.name": f"{mic.source_node}_capture",
             "node.description": f"Sonar {mic.name} Input",
@@ -320,8 +347,6 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
             "stream.capture.sink": False,
             **_stereo(rate),
         }
-        if mic.source_device:
-            capture["target.object"] = mic.source_device
         modules.append(
             _filter_chain(
                 description=f"Sonar {mic.name}",
@@ -339,10 +364,11 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
             )
         )
 
-    if mic.monitor_enabled:
-        modules.append(_mic_send(mic, BusId.PERSONAL, "monitor", rate))
-    if mic.send_to_stream_bus:
-        modules.append(_mic_send(mic, BusId.STREAM, "to_stream", rate))
+    # Her ikisi de **koşulsuz** kurulur; açma/kapama artık mute ile yapılıyor
+    # (`supervisor.live_volumes`). Eskiden conf'a bağlıydı, yani sidetone'u açmak
+    # grafı yeniden kurup çalan sesi kesiyordu.
+    modules.append(_mic_send(mic, BusId.PERSONAL, "monitor", rate))
+    modules.append(_mic_send(mic, BusId.STREAM, "to_stream", rate))
     return modules
 
 

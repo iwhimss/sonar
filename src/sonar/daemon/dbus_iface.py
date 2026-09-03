@@ -131,6 +131,11 @@ class SonarDBusInterface(QObject):
         return reply(self.api.headsets)
 
     @Slot(result=str)
+    def Diagnose(self) -> str:
+        """Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar."""
+        return reply(self.api.diagnose)
+
+    @Slot(result=str)
     def ListRules(self) -> str:
         """Uygulama → kanal yönlendirme kuralları."""
         return reply(self.api.list_rules)
