@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as C
 import "ui"
 
 /* Mikser görünümü: master şeridi + kanal şeritleri + ChatMix. */
@@ -11,43 +12,55 @@ Item {
     readonly property bool chatmixByWheel:
         bridge ? (bridge.revision, bridge.chatmixIsHardware()) : false
 
-    Row {
-        id: strips
+    /* Şeritler yatay kaydırılabilir: kanal sayısı arttıkça pencereye sığmıyordu ve
+       "＋ Kanal ekle" paneli ekrandan yarım taşıyordu. */
+    C.ScrollView {
+        id: scroller
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: chatmix.top
         anchors.bottomMargin: Theme.s2
-        spacing: Theme.s1
+        clip: true
+        C.ScrollBar.horizontal.policy: C.ScrollBar.AsNeeded
+        C.ScrollBar.vertical.policy: C.ScrollBar.AlwaysOff
 
-        MasterStrip {
-            bridge: root.bridge
-            height: parent.height
-        }
+        Row {
+            id: strips
+            height: scroller.availableHeight
+            spacing: Theme.s1
 
-        /* Şerit satırı **sözlük kopyası değil**, model rolleri olarak geçiyor.
-           `channels.get(index)` bir fonksiyon çağrısıydı ve hiç yeniden değerlenmiyordu:
-           mute düğmesi tepkisiz, fader donuk, profil adı eski kalıyordu. */
-        Repeater {
-            model: root.bridge ? root.bridge.channels : null
-            ChannelStrip {
-                height: strips.height
+            MasterStrip {
                 bridge: root.bridge
-                dragProxy: dragLayer
-                onOpenFx: (id) => root.openFx(id)
-                onStreamMenuRequested: (streamId, label) => menu.open(streamId, label)
-                onRemoveRequested: (id, name) => removeDialog.open(id, name)
+                height: strips.height
             }
-        }
 
-        // + Kanal ekle
-        SonarPanel {
-            width: 150
-            height: strips.height
-            color: Theme.bg
-            SonarButton {
-                anchors.centerIn: parent
-                text: "＋  Kanal ekle"
-                onClicked: addDialog.open()
+            /* Şerit satırı **sözlük kopyası değil**, model rolleri olarak geçiyor.
+               `channels.get(index)` bir fonksiyon çağrısıydı ve hiç yeniden
+               değerlenmiyordu: mute düğmesi tepkisiz, fader donuk kalıyordu. */
+            Repeater {
+                model: root.bridge ? root.bridge.channels : null
+                ChannelStrip {
+                    height: strips.height
+                    bridge: root.bridge
+                    dragProxy: dragLayer
+                    onOpenFx: (id) => root.openFx(id)
+                    onStreamMenuRequested: (streamId, label) => menu.open(streamId, label)
+                    onRemoveRequested: (id, name) => removeDialog.open(id, name)
+                }
+            }
+
+            SonarPanel {
+                width: 150
+                height: strips.height
+                color: Theme.bg
+                SonarButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.s3
+                    text: "＋  Kanal ekle"
+                    onClicked: addDialog.open()
+                }
             }
         }
     }
@@ -64,14 +77,17 @@ Item {
             anchors.centerIn: parent
             spacing: 2
             SonarSectionLabel {
-                text: "ChatMix"
+                text: root.chatmixByWheel ? "ChatMix — kulaklık tekeri yönetiyor" : "ChatMix"
+                color: root.chatmixByWheel ? Theme.warn : Theme.textFaint
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Row {
                 spacing: Theme.s2
-                SonarIcon { name: "gamepad"; color: Theme.ok; anchors.verticalCenter: parent.verticalCenter }
+                SonarIcon {
+                    name: "gamepad"; color: Theme.ok
+                    anchors.verticalCenter: parent.verticalCenter
+                }
                 SonarSlider {
-                    id: chatmixSlider
                     width: 320
                     accent: Theme.master
                     value: root.bridge ? root.bridge.chatmix / 100.0 : 0.5
@@ -80,10 +96,11 @@ Item {
                     enabled: !root.chatmixByWheel
                     opacity: root.chatmixByWheel ? 0.6 : 1.0
                     anchors.verticalCenter: parent.verticalCenter
-                    // Çift tık zaten 50'ye döndürüyor (SonarSlider), ama keşfedilmiyordu;
-                    // yanına görünür bir "Sıfırla" düğmesi kondu.
                 }
-                SonarIcon { name: "chat"; color: "#3B9EFF"; anchors.verticalCenter: parent.verticalCenter }
+                SonarIcon {
+                    name: "chat"; color: "#3B9EFF"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
                 SonarButton {
                     text: "Sıfırla"
                     variant: "ghost"
@@ -97,96 +114,62 @@ Item {
     }
 
     // --- akış bağlam menüsü ------------------------------------------------
-    Rectangle {
+    SonarDialog {
         id: menu
-        visible: false
-        z: 200
-        width: 240
-        color: Theme.raised
-        border.width: 1
-        border.color: Theme.borderStrong
-        height: menuColumn.implicitHeight + 2
+        title: menu.label
+        preferredWidth: 260
         property int streamId: -1
         property string label: ""
 
-        function open(id, text) {
-            streamId = id
-            label = text
-            x = Math.min(root.width - width, 40)
-            y = Math.min(root.height - height, 80)
-            visible = true
-        }
+        function open(id, text) { streamId = id; label = text; visible = true }
 
         Column {
-            id: menuColumn
-            anchors.fill: parent
-            anchors.margins: 1
-
-            SonarSectionLabel {
-                text: menu.label
-                leftPadding: Theme.s2
-                topPadding: Theme.s2
-                bottomPadding: Theme.s1
-            }
+            width: parent.width
             Repeater {
                 model: root.bridge ? root.bridge.channels : null
                 Column {
                     required property int index
-                    width: menuColumn.width
+                    width: parent.width
+                    readonly property var row: root.bridge.channels.get(index)
                     SonarButton {
                         width: parent.width
                         variant: "ghost"
-                        text: "→ " + root.bridge.channels.get(index).name
+                        text: "→ " + parent.row.name
                         onClicked: {
-                            root.bridge.moveStream(menu.streamId,
-                                                   root.bridge.channels.get(index).id, false)
-                            menu.visible = false
+                            root.bridge.moveStream(menu.streamId, parent.parent.row.id, false)
+                            menu.close()
                         }
                     }
                     SonarButton {
                         width: parent.width
                         variant: "ghost"
-                        text: "★ Hep " + root.bridge.channels.get(index).name + "'e gönder"
-                        visible: root.bridge.channels.get(index).kind === "channel"
+                        text: "★ Hep " + parent.row.name + "'e gönder"
+                        visible: parent.row.kind === "channel"
                         height: visible ? 28 : 0
                         onClicked: {
-                            root.bridge.moveStream(menu.streamId,
-                                                   root.bridge.channels.get(index).id, true)
-                            menu.visible = false
+                            root.bridge.moveStream(menu.streamId, parent.parent.row.id, true)
+                            menu.close()
                         }
                     }
                 }
             }
         }
     }
-    MouseArea {
-        anchors.fill: parent
-        z: 199
-        visible: menu.visible
-        onClicked: menu.visible = false
-    }
 
     // --- kanal silme onayı ---------------------------------------------------
-    Rectangle {
+    SonarDialog {
         id: removeDialog
-        visible: false
-        z: 300
-        anchors.centerIn: parent
-        width: 340
-        height: 150
-        color: Theme.raised
-        border.width: 1
-        border.color: Theme.danger
+        title: "Kanalı sil"
+        accent: Theme.danger
+        preferredWidth: 380
         property string channelId: ""
         property string channelName: ""
 
         function open(id, name) { channelId = id; channelName = name; visible = true }
 
         Column {
-            anchors.fill: parent
-            anchors.margins: Theme.s4
+            width: parent.width
             spacing: Theme.s3
-            SonarSectionLabel { text: "Kanalı sil" }
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
@@ -205,38 +188,33 @@ Item {
                     variant: "danger"
                     onClicked: {
                         root.bridge.removeChannel(removeDialog.channelId)
-                        removeDialog.visible = false
+                        removeDialog.close()
                     }
                 }
-                SonarButton { text: "Vazgeç"; onClicked: removeDialog.visible = false }
+                SonarButton { text: "Vazgeç"; onClicked: removeDialog.close() }
             }
         }
     }
 
     // --- kanal ekleme --------------------------------------------------------
-    Rectangle {
+    SonarDialog {
         id: addDialog
-        visible: false
-        z: 300
-        anchors.centerIn: parent
-        width: 380
-        height: 250
-        color: Theme.raised
-        border.width: 1
-        border.color: Theme.borderStrong
+        title: "Yeni kanal"
+        preferredWidth: 420
 
         // "output" = uygulamaların çaldığı sanal çıkış, "input" = işlenmiş mikrofon.
         property string direction: "output"
 
-        function open() { direction = "output"; nameInput.text = ""; visible = true
-                          nameInput.forceActiveFocus() }
+        function open() {
+            direction = "output"
+            nameInput.text = ""
+            visible = true
+            nameInput.forceActiveFocus()
+        }
 
         Column {
-            anchors.fill: parent
-            anchors.margins: Theme.s4
+            width: parent.width
             spacing: Theme.s3
-
-            SonarSectionLabel { text: "Yeni kanal" }
 
             Rectangle {
                 width: parent.width
@@ -269,29 +247,36 @@ Item {
                           hint: "İşlenmiş bir mikrofon — sanal giriş cihazı" }
                     ]
                     Rectangle {
+                        id: kindCard
                         required property var modelData
-                        width: (addDialog.width - Theme.s4 * 2 - Theme.s2) / 2
-                        height: 52
+                        width: (addDialog.availableWidth - Theme.s2) / 2
+                        // Yükseklik içerikten: sabit vermek metni kartın dışına
+                        // taşırıyordu.
+                        height: kindBody.implicitHeight + Theme.s2 * 2
                         readonly property bool picked: addDialog.direction === modelData.value
                         color: picked ? Qt.rgba(0.49, 0.42, 0.94, 0.15)
                              : (kindMouse.containsMouse ? Theme.surface : Theme.sunken)
                         border.width: 1
                         border.color: picked ? Theme.master : Theme.border
+
                         Column {
-                            anchors.fill: parent
+                            id: kindBody
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
                             anchors.margins: Theme.s2
                             spacing: 2
                             Text {
-                                text: parent.parent.modelData.label
-                                color: parent.parent.picked ? Theme.master : Theme.text
+                                text: kindCard.modelData.label
+                                color: kindCard.picked ? Theme.master : Theme.text
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBody
                                 font.bold: true
                                 renderType: Text.NativeRendering
                             }
                             Text {
-                                width: parent.width
-                                text: parent.parent.modelData.hint
+                                width: kindBody.width
+                                text: kindCard.modelData.hint
                                 wrapMode: Text.WordWrap
                                 color: Theme.textFaint
                                 font.family: Theme.fontFamily
@@ -304,7 +289,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: addDialog.direction = parent.modelData.value
+                            onClicked: addDialog.direction = kindCard.modelData.value
                         }
                     }
                 }
@@ -322,15 +307,8 @@ Item {
 
             Row {
                 spacing: Theme.s2
-                SonarButton {
-                    text: "Ekle"
-                    variant: "accent"
-                    onClicked: addDialog.commit()
-                }
-                SonarButton {
-                    text: "Vazgeç"
-                    onClicked: { nameInput.text = ""; addDialog.visible = false }
-                }
+                SonarButton { text: "Ekle"; variant: "accent"; onClicked: addDialog.commit() }
+                SonarButton { text: "Vazgeç"; onClicked: addDialog.close() }
             }
         }
 
@@ -339,7 +317,7 @@ Item {
             if (name.length > 0)
                 root.bridge.addChannel(name, direction, "#8B95A5")
             nameInput.text = ""
-            visible = false
+            close()
         }
     }
 

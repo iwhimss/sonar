@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as C
 import QtQuick.Layouts
 import "ui"
 
@@ -66,16 +67,27 @@ Item {
         }
 
         // --- cihazlar (dişliyle katlanır) -----------------------------------
+        //
+        // Kendi içinde kaydırılıyor: kısa bir pencerede bu bölüm fader'ları eziyordu.
+        // Artık fader panelinin payı garanti, cihaz listesi gerekirse kayıyor.
         SonarPanel {
             Layout.fillWidth: true
-            Layout.preferredHeight: root.devicesOpen ? devices.implicitHeight + Theme.s3 * 2 : 0
-            visible: root.devicesOpen
+            Layout.preferredHeight: root.devicesOpen
+                ? Math.min(devices.implicitHeight + Theme.s3 * 2, root.height - 34 - 200)
+                : 0
+            visible: root.devicesOpen && Layout.preferredHeight > 40
             clip: true
+
+            C.ScrollView {
+                anchors.fill: parent
+                anchors.margins: Theme.s3
+                clip: true
+                contentWidth: availableWidth
+                C.ScrollBar.horizontal.policy: C.ScrollBar.AlwaysOff
 
             Column {
                 id: devices
-                anchors.fill: parent
-                anchors.margins: Theme.s3
+                width: parent.width
                 spacing: Theme.s3
 
                 SonarSectionLabel { text: "Kişisel Miks" }
@@ -121,7 +133,7 @@ Item {
                 Text {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: "OBS'e **yalnızca** bu aygıtı ekleyin. Aynı miksi bir de "
+                    text: "OBS'e yalnızca bu aygıtı ekleyin — aynı miksi bir de "
                         + "\"Ses Çıkışı Yakalama\" ile almak sesi iki kez verir."
                     color: Theme.textFaint
                     font.family: Theme.fontFamily
@@ -129,13 +141,16 @@ Item {
                     renderType: Text.NativeRendering
                 }
             }
+            }
         }
 
         SonarPanel {
             id: faders
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 200
+            //: Kanal şeritleriyle aynı sıkışma davranışı; daha da darsa dişliyle
+            //: cihaz bölümü katlanabiliyor.
+            Layout.minimumHeight: 140
             Row {
                 anchors.centerIn: parent
                 spacing: Theme.s6
@@ -174,7 +189,7 @@ Item {
                             renderType: Text.NativeRendering
                         }
                         SonarFader {
-                            height: Math.max(80, faders.height - 130)
+                            height: Math.max(60, faders.height - 130)
                             maximum: Theme.maxVolume
                             value: busColumn.vol
                             muted: busColumn.mute

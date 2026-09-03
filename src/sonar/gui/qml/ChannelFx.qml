@@ -43,8 +43,14 @@ Item {
         return out
     }
 
+    /* Sayfa kendi yüksekliğini bildiriyor; dışarıdaki `ScrollView` gerisini hallediyor.
+       Eskiden `anchors.fill: parent` ile pencereye sıkıştırılıyordu ve panel içerikleri
+       kutularının dışına taşıyordu (test turu 3). */
+    implicitHeight: page.implicitHeight
+
     Column {
-        anchors.fill: parent
+        id: page
+        width: parent.width
         spacing: Theme.s2
 
         // --- profil şeridi -------------------------------------------------
@@ -118,9 +124,12 @@ Item {
                         onClicked: exportDialog.open()
                     }
 
-                    /* Değişiklikler otomatik kaydediliyor; kullanıcı "kaydet" aramasın. */
+                    /* Değişiklikler otomatik kaydediliyor; kullanıcı "kaydet" aramasın.
+                       Dar pencerede satıra sığmıyorsa tamamen gizleniyor — yarım
+                       kırpılmış bir cümle bilgi vermiyor. */
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        visible: x + implicitWidth <= parent.width
                         text: "değişiklikler otomatik kaydediliyor"
                         color: Theme.textFaint
                         font.family: Theme.fontFamily
@@ -220,7 +229,8 @@ Item {
         // --- EQ ------------------------------------------------------------
         EqPanel {
             width: parent.width
-            height: parent.height - 86 - dynamics.height - Theme.s2 * 2
+            //: Eğrinin okunabilir kaldığı en kısa boy. Pencere daha kısaysa sayfa kayar.
+            height: Math.max(360, root.height - 86 - dynamics.implicitHeight - Theme.s2 * 4)
             bridge: root.bridge
             target: root.target
             accent: root.accent

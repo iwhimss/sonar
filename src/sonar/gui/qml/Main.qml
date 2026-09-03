@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as C
 import QtQuick.Window
 import "ui"
 
@@ -8,8 +9,11 @@ Window {
     visible: true
     width: 1180
     height: 720
-    minimumWidth: 900
-    minimumHeight: 620
+    /* Pencere bundan küçük olamaz ama içerik sığmazsa **kaydırılır**: sabit
+       yüksekliklere güvenmek yerine kullanıcının pencereyi istediği gibi
+       küçültebilmesi tercih edildi (test turu 3). */
+    minimumWidth: 640
+    minimumHeight: 420
     color: Theme.bg
     title: "Sonar"
 
@@ -175,6 +179,7 @@ Window {
 
     // --- içerik ------------------------------------------------------------
     Item {
+        id: content
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: notice.bottom
@@ -182,6 +187,8 @@ Window {
         anchors.margins: Theme.s6
         anchors.topMargin: Theme.s3
 
+        /* Mikser kendi içinde yatay kaydırılıyor ve şeritler pencere yüksekliğine
+           uyuyor; bu yüzden dikey kaydırmaya ihtiyacı yok. */
         Mixer {
             anchors.fill: parent
             visible: bridge.connected && window.currentTab === "mixer"
@@ -189,11 +196,20 @@ Window {
             onOpenFx: (id) => window.currentTab = id
         }
 
-        ChannelFx {
+        /* FX sayfası uzun: EQ eğrisi + sarılabilen panel satırı. Pencere kısaldığında
+           panelleri ezmek yerine sayfayı kaydırıyoruz. */
+        C.ScrollView {
             anchors.fill: parent
             visible: bridge.connected && window.currentTab !== "mixer"
-            bridge: window.bridgeRef()
-            target: window.currentTab
+            clip: true
+            contentWidth: availableWidth
+            C.ScrollBar.horizontal.policy: C.ScrollBar.AlwaysOff
+
+            ChannelFx {
+                width: parent.width
+                bridge: window.bridgeRef()
+                target: window.currentTab
+            }
         }
 
         // --- daemon yok ----------------------------------------------------

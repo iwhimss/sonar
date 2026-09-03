@@ -4,12 +4,16 @@ import QtQuick
  * Sürüklenen uygulama kutucuğunun imleci izleyen kopyası.
  *
  * Neden gerekiyor: asıl kutucuk `ListView` içinde ve o liste `clip: true`. Sürüklenirken
- * kutucuk kendi listesinin dışına çıkamıyor, üstelik QML'de `z` yalnızca **kardeşler
- * arasında** geçerli — kutucuk komşu kanal sütunlarının altında kalıyordu.
+ * kendi listesinin dışına çıkamıyor, üstelik QML'de `z` yalnızca **kardeşler arasında**
+ * geçerli — kutucuk komşu kanal sütunlarının altında kalıyordu.
  *
  * Çözüm asıl kutucuğu taşımak değil: `DropArea` hedefi asıl öğenin konumundan buluyor,
- * yani o hareket etmeye devam etmeli. Bunun yerine asıl kutucuk görünmez olur ve
+ * yani o hareket etmeye devam etmeli. Bunun yerine asıl kutucuk soluklaşıyor ve
  * mikserin en üst katmanındaki bu vekil çizilir.
+ *
+ * `moveTo()` her çağrıda görünürlüğü de açıyor: ilk sürümde `show()` yalnızca sürükleme
+ * başlarken bir kez çağrılıyordu ve o çağrı herhangi bir sebeple kaçırıldığında kutucuk
+ * hiç görünmüyordu — kullanıcı "sürüklerken kutucuk kayboluyor" dedi.
  */
 Item {
     id: root
@@ -20,18 +24,21 @@ Item {
     anchors.fill: parent
     z: 900
     visible: chip.visible
+    // Vekil yalnızca çizim: fare olaylarını asıl kutucuk alıyor.
+    enabled: false
 
-    /* Sürükleme başladı: kutucuğu göster. */
     function show(text, color) {
         root.label = text
         root.accent = color
         chip.visible = true
     }
 
-    /* `point` bu öğenin koordinat sisteminde olmalı. */
+    /* `point` bu öğenin koordinat sisteminde. Konum gelmemişse çizmiyoruz: kutucuğun
+       sol üst köşede takılı kalması sürüklemeden daha kafa karıştırıcı olurdu. */
     function moveTo(x, y) {
         chip.x = x - chip.width / 2
         chip.y = y - chip.height / 2
+        chip.visible = true
     }
 
     function hide() {
@@ -41,7 +48,7 @@ Item {
     Rectangle {
         id: chip
         visible: false
-        width: 140
+        width: 150
         height: 22
         color: Qt.lighter(Theme.raised, 1.5)
         border.width: 1

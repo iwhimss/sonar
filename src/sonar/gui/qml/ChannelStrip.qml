@@ -297,8 +297,9 @@ Item {
                 spacing: Theme.s1
 
                 SonarSectionLabel {
-                    text: (root.isMic ? "Mikrofonu kullananlar  (" : "Apps  (")
-                          + root.apps.length + ")"
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: (root.isMic ? "Mikrofon  (" : "Apps  (") + root.apps.length + ")"
                 }
 
                 ListView {
@@ -319,10 +320,10 @@ Item {
                         color: Theme.raised
                         border.width: 1
                         border.color: Theme.border
-                        // Sürüklenirken asıl kutucuk görünmez olur; imleci vekil izler.
+                        // Sürüklenirken asıl kutucuk soluklaşır; imleci vekil izler.
                         // Kutucuğun kendisi hareket etmeye devam etmeli, çünkü
                         // `DropArea` hedefi onun konumundan buluyor.
-                        opacity: chipMouse.drag.active ? 0.0 : 1.0
+                        opacity: chipMouse.drag.active ? 0.25 : 1.0
 
                         Drag.active: chipMouse.drag.active
                         Drag.source: chip
@@ -378,9 +379,13 @@ Item {
                                 if (mouse.button === Qt.RightButton)
                                     root.streamMenuRequested(chip.streamId, chip.modelData.label)
                             }
+                            /* Vekil hem konumu hem görünürlüğü buradan alıyor: tek bir
+                               "başlat" çağrısına bağlı kalmak, o çağrı kaçırıldığında
+                               kutucuğun tamamen kaybolması demekti. */
                             onPositionChanged: (mouse) => {
                                 if (!chip.Drag.active || !root.dragProxy) return
                                 const point = mapToItem(root.dragProxy, mouse.x, mouse.y)
+                                root.dragProxy.show(chip.modelData.label, root.accent)
                                 root.dragProxy.moveTo(point.x, point.y)
                             }
                             onReleased: {
@@ -390,12 +395,11 @@ Item {
                         }
 
                         /* `drag.active` bir grup özelliği; doğrudan sinyal handler'ı yok.
-                           Yerel bir özelliğe bağlayıp onun değişimini dinliyoruz. */
+                           Yerel bir özelliğe bağlayıp onun değişimini dinliyoruz.
+                           Sürükleme bitince vekili kaldırmak buranın işi. */
                         property bool dragging: chipMouse.drag.active
                         onDraggingChanged: {
-                            if (!root.dragProxy) return
-                            if (dragging) root.dragProxy.show(chip.modelData.label, root.accent)
-                            else root.dragProxy.hide()
+                            if (!dragging && root.dragProxy) root.dragProxy.hide()
                         }
                     }
 
