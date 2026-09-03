@@ -73,6 +73,11 @@ class StreamInfo:
     target_node: str = ""
     pid: int = 0
     is_capture: bool = False
+    #: Masaüstü sesini yakalıyor (`stream.capture.sink`), mikrofonu değil. cava, OBS'in
+    #: "Masaüstü Sesi" kaynağı ve ekran kaydediciler böyle. Bunları mikrofon zincirine
+    #: taşımak kullanıcının görselleştiricisini/kaydını bozar — ölçüldü: cava sessizce
+    #: `sonar_mic`'e çekildi.
+    captures_sink: bool = False
 
     @property
     def label(self) -> str:
@@ -227,6 +232,7 @@ class GraphState:
                 target_node=str(props.get("target.object", "") or ""),
                 pid=int(props.get("application.process.id", 0) or 0),
                 is_capture=media_class == "Stream/Input/Audio",
+                captures_sink=_truthy(props.get("stream.capture.sink")),
             )
             previous_stream = self.streams.get(node_id)
             if previous_stream is None or previous_stream.serial != stream.serial:
@@ -375,3 +381,10 @@ class PwMonitor:
                 callback(changed)
             except Exception:  # pragma: no cover - dinleyici hatası izleyiciyi düşürmemeli
                 log.exception("pwstate dinleyicisi hata verdi")
+
+
+def _truthy(value: object) -> bool:
+    """`pw-dump` bu bayrağı bazen `true`, bazen `"true"` olarak veriyor."""
+    if isinstance(value, str):
+        return value.strip().casefold() in ("1", "true", "yes")
+    return bool(value)

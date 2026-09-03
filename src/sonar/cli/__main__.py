@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 from PySide6.QtCore import QCoreApplication
-from PySide6.QtDBus import QDBusConnection, QDBusInterface
+from PySide6.QtDBus import QDBus, QDBusConnection, QDBusInterface
 
 from sonar.daemon.dbus_iface import BUS_NAME, INTERFACE, OBJECT_PATH
 
@@ -39,7 +39,10 @@ class Client:
             raise SystemExit(_NOT_RUNNING)
 
     def call(self, method: str, *args: Any) -> Any:
-        message = self.iface.call(method, *args)
+        # `iface.call(method, *args)` PySide6'da en fazla 4 argüman alıyor; beşincisinde
+        # `TypeError` veriyor (ölçüldü: 5 argümanlı `SetRule`). `callWithArgumentList`
+        # sınırsız ve aynı işi yapıyor.
+        message = self.iface.callWithArgumentList(QDBus.CallMode.Block, method, list(args))
         arguments = message.arguments()
         if not arguments:
             raise SystemExit(f"'{method}' çağrısı yanıtsız kaldı. {_NOT_RUNNING}")
@@ -129,7 +132,8 @@ def _print_status(state: dict) -> None:
         print(f"\nMİKROFON KULLANANLAR ({len(capture)})")
         for stream in capture:
             label = stream["app_name"] or stream["app_binary"] or stream["media_name"]
-            print(f"  #{stream['id']:<6} {label:<24} ← {stream['target_node'] or '?'}")
+            target = stream.get("channel") or stream["target_node"] or "(yönlendirilmedi)"
+            print(f"  #{stream['id']:<6} {label:<24} ← {target}")
 
     if not state["graph_ready"]:
         print("\n⚠ Graf henüz hazır değil.")
@@ -237,8 +241,9 @@ def _cmd_save(client: Client, args) -> int:
 
 
 def _cmd_route(client: Client, args) -> int:
-    client.call("SetRule", args.key, args.pattern, args.channel, args.regex)
-    print(f"kural: {args.key}={args.pattern} → {args.channel}")
+    client.call("SetRule", args.key, args.pattern, args.channel, args.regex, args.direction)
+    arrow = "←" if args.direction == "in" else "→"
+    print(f"kural: {args.key}={args.pattern} {arrow} {args.channel}")
     return 0
 
 
@@ -247,7 +252,7 @@ def _cmd_rules(client: Client, args) -> int:
         key, _, pattern = args.remove.partition("=")
         if not pattern:
             raise SystemExit("kaldırmak için biçim: --remove <anahtar>=<desen>")
-        client.call("RemoveRule", key, pattern)
+        client.call("RemoveRule", key, pattern, args.direction)
         print(f"kaldırıldı: {key}={pattern}")
         return 0
     rules = client.call("ListRules")
@@ -260,7 +265,12 @@ def _cmd_rules(client: Client, args) -> int:
     for rule in rules:
         flags = " (regex)" if rule["is_regex"] else ""
         state = "" if rule["enabled"] else " [kapalı]"
-        print(f"{rule['match_key']:<12} {rule['pattern']:<28} → {rule['channel_id']}{flags}{state}")
+        way = rule.get("direction", "out")
+        arrow = "← MİK" if way == "in" else "→ SES"
+        print(
+            f"{rule['match_key']:<12} {rule['pattern']:<28} "
+            f"{arrow} {rule['channel_id']}{flags}{state}"
+        )
     return 0
 
 
@@ -485,11 +495,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("channel")
     p.add_argument("--key", default="binary", choices=["binary", "app_name", "media_name"])
     p.add_argument("--regex", action="store_true")
+    p.add_argument(
+        "--direction",
+        default="out",
+        choices=["out", "in"],
+        help="out: uygulamanın çaldığı ses · in: dinlediği mikrofon",
+    )
 
     p = sub.add_parser("rules", help="kuralları listele veya kaldır")
     p.add_argument("--remove", metavar="ANAHTAR=DESEN")
+    p.add_argument("--direction", default="", choices=["", "out", "in"],
+                   help="kaldırırken yalnızca bu yöndeki kuralı sil")
 
-    p = sub.add_parser("move", help="çalan bir akışı başka kanala taşı")
+    p = sub.add_parser("move", help="bir akışı başka kanala veya mikrofon zincirine taşı")
     p.add_argument("stream", type=int)
     p.add_argument("channel")
     p.add_argument(

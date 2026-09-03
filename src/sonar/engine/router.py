@@ -35,10 +35,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from sonar.core.model import MatchKey, RoutingRule, SonarConfig
+from sonar.core.model import MatchKey, RoutingRule, SonarConfig, StreamDirection
 from sonar.engine.pwstate import GraphState, StreamInfo
 
-__all__ = ["Decision", "Router", "choose_channel", "stream_value"]
+__all__ = ["Decision", "Router", "choose_channel", "stream_value", "target_node_for"]
 
 log = logging.getLogger(__name__)
 
@@ -68,13 +68,29 @@ def stream_value(stream: StreamInfo, key: MatchKey) -> str:
     }[key]
 
 
+def target_node_for(target_id: str, config: SonarConfig) -> str | None:
+    """Bir hedefin akışa verilecek node adı. Çıkışta sink, girişte sanal kaynak."""
+    channel = config.channel(target_id)
+    if channel is not None:
+        return channel.sink_node
+    mic = config.mic(target_id)
+    return mic.source_node if mic is not None else None
+
+
 def choose_channel(stream: StreamInfo, config: SonarConfig) -> tuple[str, RoutingRule | None]:
-    """Akışın gideceği kanalı seçer. Eşleşme yoksa varsayılan kanala düşer."""
+    """Akışın gideceği hedefi seçer. Eşleşme yoksa yönün varsayılanına düşer.
+
+    Yakalama akışları (uygulamanın **dinlediği** mikrofon) giriş zincirlerine, oynatma
+    akışları kanallara gider. Bir uygulamanın ikisi için ayrı kuralı olabilir; Discord
+    hem `chat` kanalında hem `mic` zincirinde görünür (Faz 21).
+    """
+    wanted = StreamDirection.IN if stream.is_capture else StreamDirection.OUT
     candidates = [
         rule
         for rule in config.rules
         if rule.enabled
-        and config.channel(rule.channel_id) is not None
+        and StreamDirection(rule.direction) is wanted
+        and target_node_for(rule.channel_id, config) is not None
         and rule.matches(stream_value(stream, MatchKey(rule.match_key)))
     ]
     if candidates:
@@ -84,6 +100,13 @@ def choose_channel(stream: StreamInfo, config: SonarConfig) -> tuple[str, Routin
             key=lambda r: (MatchKey(r.match_key).priority, -r.specificity, r.pattern),
         )
         return best.channel_id, best
+
+    if wanted is StreamDirection.IN:
+        fallback = config.settings.default_mic_chain
+        if config.mic(fallback) is None:
+            mics = config.ordered_mics()
+            fallback = mics[0].id if mics else ""
+        return fallback, None
 
     fallback = config.settings.default_channel
     if config.channel(fallback) is None:  # pragma: no cover - config bozulmuşsa
@@ -179,14 +202,14 @@ class Router:
             channel_id = self._decided.get(key)
             if channel_id is None:
                 continue
-            channel = config.channel(channel_id)
-            if channel is None:
-                # Kanal silinmiş: kararı unut, `sync()` yeniden karar versin.
+            node = target_node_for(channel_id, config)
+            if node is None:
+                # Hedef silinmiş: kararı unut, `sync()` yeniden karar versin.
                 del self._decided[key]
                 continue
-            if node_exists is not None and not node_exists(channel.sink_node):
+            if node_exists is not None and not node_exists(node):
                 continue
-            if self.move(stream.id, channel.sink_node):
+            if self.move(stream.id, node):
                 decisions.append(Decision(stream.id, channel_id, "reassert"))
             else:
                 log.warning(
@@ -213,14 +236,14 @@ class Router:
             return None
 
         channel_id, rule = choose_channel(stream, config)
-        channel = config.channel(channel_id)
-        if channel is None:  # pragma: no cover - kanalsız yapılandırma
+        node = target_node_for(channel_id, config)
+        if node is None:  # pragma: no cover - hedefsiz yapılandırma
             return None
 
         # Kararı taşımadan **önce** kaydet: taşıma başarısız olsa bile aynı akışı her
         # olayda yeniden denemeyelim; aksi hâlde saniyede onlarca taşıma çağrısı olur.
         self._decided[key] = channel_id
-        if not self.move(stream.id, channel.sink_node):
+        if not self.move(stream.id, node):
             log.warning("akış taşınamadı: #%s (%s) → %s", stream.id, stream.label, channel_id)
             return None
 
@@ -250,10 +273,20 @@ class Router:
 
     @staticmethod
     def _is_routable(stream: StreamInfo) -> bool:
-        """Kendi tesisatımıza ve kayıt akışlarına dokunmuyoruz."""
-        if stream.is_internal or stream.is_capture:
+        """Kendi tesisatımıza dokunmuyoruz.
+
+        Yakalama akışları artık **yönlendiriliyor** (Faz 21): kullanıcı hangi
+        uygulamanın hangi mikrofonu kullanacağını seçebilmeli. Eskiden buradan
+        eleniyorlardı.
+        """
+        if stream.is_internal:
             return False
-        # Hedefi zaten bir Sonar kanalı olan akış (uygulama kendi seçmiş olabilir) korunur.
+        # Masaüstü sesini yakalayan akışlar (cava, OBS "Masaüstü Sesi") mikrofon
+        # kullanıcısı değil; onları bir mikrofon zincirine çekmek kullanıcının
+        # görselleştiricisini veya kaydını bozar.
+        if stream.captures_sink:
+            return False
+        # Hedefi zaten bir Sonar node'u olan akış (uygulama kendi seçmiş olabilir) korunur.
         return not stream.target_node.startswith("sonar_")
 
     def _forget_closed(self, streams: dict[int, StreamInfo]) -> None:

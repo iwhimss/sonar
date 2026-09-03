@@ -97,11 +97,20 @@ Item {
 
     /* Şeridin tamamı bırakma hedefi: kullanıcı çipi şeridin herhangi bir yerine
        bırakabilsin, yalnızca küçük Apps kutusuna nişan almak zorunda kalmasın. */
+    /* Şeridin tamamı bırakma hedefi. Yön uyuşmazlığı reddediliyor: bir mikrofon akışı
+       çıkış kanalına, bir oynatma akışı giriş zincirine bırakılamaz — PipeWire tarafında
+       da anlamsız olurdu. */
     DropArea {
         id: drop
         anchors.fill: parent
         z: 10
+        readonly property bool accepts: {
+            const source = drag.source
+            if (!source || source.streamDirection === undefined) return false
+            return (source.streamDirection === "in") === root.isMic
+        }
         onDropped: (event) => {
+            if (!drop.accepts) { event.accepted = false; return }
             const source = event.source
             if (source && source.streamId !== undefined)
                 root.bridge.moveStream(source.streamId, root.id, false)
@@ -112,7 +121,7 @@ Item {
     // Bırakma sırasında hedef şerit vurgulanır.
     Rectangle {
         anchors.fill: parent
-        visible: drop.containsDrag
+        visible: drop.containsDrag && drop.accepts
         color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
         border.width: 2
         border.color: root.accent
@@ -306,14 +315,16 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 0
-            visible: !root.isMic
 
             Column {
                 anchors.fill: parent
                 anchors.margins: Theme.s2
                 spacing: Theme.s1
 
-                SonarSectionLabel { text: "Apps  (" + root.apps.length + ")" }
+                SonarSectionLabel {
+                    text: (root.isMic ? "Mikrofonu kullananlar  (" : "Apps  (")
+                          + root.apps.length + ")"
+                }
 
                 ListView {
                     id: appList
@@ -343,12 +354,36 @@ Item {
                         Drag.hotSpot.x: width / 2
                         Drag.hotSpot.y: height / 2
                         property int streamId: modelData.id
+                        property string streamDirection: modelData.direction
 
-                        Text {
-                            anchors.fill: parent
+                        /* Yön rozeti: aynı uygulama hem çıkış hem giriş şeridinde
+                           görünebiliyor (Discord). Hangisi olduğu okunabilmeli. */
+                        Rectangle {
+                            id: badge
+                            anchors.left: parent.left
                             anchors.leftMargin: Theme.s1
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 22
+                            height: 14
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Theme.borderStrong
+                            Text {
+                                anchors.centerIn: parent
+                                text: chip.modelData.direction === "in" ? "IN" : "OUT"
+                                color: Theme.textFaint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 9
+                                font.letterSpacing: 0.4
+                                renderType: Text.NativeRendering
+                            }
+                        }
+                        Text {
+                            anchors.left: badge.right
+                            anchors.leftMargin: Theme.s1
+                            anchors.right: parent.right
                             anchors.rightMargin: Theme.s1
-                            verticalAlignment: Text.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
                             text: chip.modelData.label
                             color: Theme.text
                             elide: Text.ElideRight

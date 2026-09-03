@@ -141,10 +141,14 @@ def stream_rows(state: dict) -> list[dict]:
     """
     config = state.get("config") or {}
     by_node = {f"sonar_{c['id']}": c["id"] for c in config.get("channels", [])}
+    by_node.update({f"sonar_{m['id']}": m["id"] for m in config.get("mic_chains", [])})
     rows = []
     for stream in state.get("streams", []):
-        if stream.get("is_capture"):
-            continue
+        # Yakalama akışları artık atılmıyor: aynı uygulama hem çıkış hem giriş
+        # şeridinde görünüyor (Discord örneği). Ayrım `direction` alanında.
+        capture = bool(stream.get("is_capture"))
+        if capture and stream.get("captures_sink"):
+            continue  # masaüstü sesi yakalayan akış; mikrofon kullanıcısı değil
         rows.append(
             {
                 "id": stream["id"],
@@ -154,6 +158,7 @@ def stream_rows(state: dict) -> list[dict]:
                 or f"#{stream['id']}",
                 "binary": stream.get("app_binary", ""),
                 "channel": stream.get("channel") or by_node.get(stream.get("target_node", ""), ""),
+                "direction": stream.get("direction") or ("in" if capture else "out"),
             }
         )
     return rows
@@ -256,7 +261,7 @@ class ChannelModel(_DictModel):
 
 
 class StreamModel(_DictModel):
-    keys = ("id", "label", "binary", "channel")
+    keys = ("id", "label", "binary", "channel", "direction")
 
 
 class DeviceModel(_DictModel):

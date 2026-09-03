@@ -84,7 +84,13 @@ def test_stream_rows_use_the_channel_from_the_daemon():
         ]
     )
     assert stream_rows(state) == [
-        {"id": 1, "label": "Firefox", "binary": "firefox", "channel": "media"}
+        {
+            "id": 1,
+            "label": "Firefox",
+            "binary": "firefox",
+            "channel": "media",
+            "direction": "out",
+        }
     ]
 
 
@@ -96,9 +102,30 @@ def test_stream_rows_fall_back_to_the_target_node():
     assert stream_rows(state)[0]["channel"] == "game"
 
 
-def test_capture_streams_are_not_shown():
-    state = make_state(streams=[{"id": 3, "app_name": "OBS", "is_capture": True}])
-    assert stream_rows(state) == []
+def test_capture_streams_are_shown_with_their_direction():
+    """Faz 21: aynı uygulama hem çıkış hem giriş şeridinde görünebilmeli.
+
+    Eskiden yakalama akışları buradan atılıyordu ve mikrofon kullanan uygulamalar
+    arayüzde hiç görünmüyordu.
+    """
+    state = make_state(
+        streams=[
+            {"id": 3, "app_name": "OBS", "is_capture": True, "channel": "mic"},
+            {"id": 4, "app_name": "OBS", "is_capture": False, "channel": "media"},
+        ]
+    )
+    rows = stream_rows(state)
+    assert [(r["id"], r["direction"], r["channel"]) for r in rows] == [
+        (3, "in", "mic"),
+        (4, "out", "media"),
+    ]
+
+
+def test_a_capture_stream_falls_back_to_its_mic_chain_node():
+    state = make_state(
+        streams=[{"id": 3, "app_name": "OBS", "is_capture": True, "target_node": "sonar_mic"}]
+    )
+    assert stream_rows(state)[0]["channel"] == "mic"
 
 
 def test_stream_label_falls_back():

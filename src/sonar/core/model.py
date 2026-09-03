@@ -36,6 +36,7 @@ __all__ = [
     "RoutingRule",
     "Settings",
     "SonarConfig",
+    "StreamDirection",
     "default_band_frequencies",
     "default_band_q",
     "default_config",
@@ -121,6 +122,18 @@ class EqBandType(StrEnum):
     NOTCH = "notch"
     ALLPASS = "allpass"
     BANDPASS = "bandpass"
+
+
+class StreamDirection(StrEnum):
+    """Bir akışın yönü.
+
+    `OUT` uygulamanın **çaldığı** ses (kanal sink'ine gider), `IN` uygulamanın
+    **dinlediği** mikrofon (Sonar giriş zincirinden beslenir). Discord ikisine de
+    sahiptir; kullanıcı ikisini ayrı ayrı yönlendirebilmeli (Faz 21).
+    """
+
+    OUT = "out"
+    IN = "in"
 
 
 class MatchKey(StrEnum):
@@ -340,6 +353,10 @@ class RoutingRule:
     channel_id: str
     is_regex: bool = False
     enabled: bool = True
+    #: Kuralın hangi yöndeki akışa baktığı. `out` uygulamanın çaldığı ses, `in` onun
+    #: dinlediği mikrofon. Aynı uygulamanın ikisi için ayrı kuralı olabilir — Discord
+    #: örneği tam olarak bu. Eski kurallar `out` olarak okunur (alan varsayılanı).
+    direction: StreamDirection = StreamDirection.OUT
 
     def matches(self, value: str) -> bool:
         """`value` bu kurala uyuyor mu? Hatalı regex sessizce eşleşmez sayılır."""
@@ -390,6 +407,8 @@ class Settings:
     sample_rate: int = 48_000
     #: Hiçbir kurala uymayan uygulamanın gideceği kanal.
     default_channel: str = "media"
+    #: Hiçbir kurala uymayan **mikrofon** akışının bağlanacağı giriş zinciri.
+    default_mic_chain: str = "mic"
     default_band_count: int = 10
     start_minimized: bool = False
 

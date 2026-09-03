@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import QObject
-from PySide6.QtDBus import QDBusConnection, QDBusInterface
+from PySide6.QtDBus import QDBus, QDBusConnection, QDBusInterface
 
 from sonar.daemon.dbus_iface import BUS_NAME, INTERFACE, OBJECT_PATH
 
@@ -39,7 +39,10 @@ class DBusClient(QObject):
         """Metodu çağırır ve JSON zarfını çözer. Hata durumunda yükseltir."""
         if not self.available:
             raise DaemonUnavailableError("daemon D-Bus'ta yok")
-        message = self.iface.call(method, *args)
+        # `iface.call(method, *args)` PySide6'da en fazla 4 argüman alıyor; beşincisinde
+        # `TypeError` veriyor (ölçüldü: 5 argümanlı `SetRule`). `callWithArgumentList`
+        # sınırsız ve aynı işi yapıyor.
+        message = self.iface.callWithArgumentList(QDBus.CallMode.Block, method, list(args))
         arguments = message.arguments()
         if not arguments:
             raise DaemonUnavailableError(f"'{method}' yanıtsız kaldı")

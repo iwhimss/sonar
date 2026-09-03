@@ -335,15 +335,24 @@ class SonarDBusInterface(QObject):
         """`remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir."""
         return reply(lambda: self.api.move_stream(stream_id, channel, remember))
 
-    @Slot(str, str, str, bool, result=str)
-    def SetRule(self, match_key: str, pattern: str, channel: str, is_regex: bool) -> str:
-        """Uygulama → kanal kuralı ekler veya günceller."""
-        return reply(lambda: self.api.set_rule(match_key, pattern, channel, is_regex))
+    @Slot(str, str, str, bool, str, result=str)
+    def SetRule(
+        self, match_key: str, pattern: str, channel: str, is_regex: bool, direction: str
+    ) -> str:
+        """Uygulama → hedef kuralı ekler veya günceller.
 
-    @Slot(str, str, result=str)
-    def RemoveRule(self, match_key: str, pattern: str) -> str:
-        """Kuralı kaldırır."""
-        return reply(lambda: self.api.remove_rule(match_key, pattern))
+        `direction` `"out"` (uygulamanın çaldığı ses) veya `"in"` (dinlediği mikrofon).
+        """
+        return reply(
+            lambda: self.api.set_rule(
+                match_key, pattern, channel, is_regex, direction or "out"
+            )
+        )
+
+    @Slot(str, str, str, result=str)
+    def RemoveRule(self, match_key: str, pattern: str, direction: str) -> str:
+        """Kuralı kaldırır. `direction` boşsa desenin her iki yönü de silinir."""
+        return reply(lambda: self.api.remove_rule(match_key, pattern, direction))
 
     # ------------------------------------------------------------------ ChatMix ve ayarlar
 

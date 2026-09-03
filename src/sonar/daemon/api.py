@@ -70,13 +70,14 @@ from sonar.core.model import (
     Profile,
     RoutingRule,
     SonarConfig,
+    StreamDirection,
     default_profile,
     slugify,
 )
 from sonar.engine import confgen
 from sonar.engine.headset import detect_headsets
 from sonar.engine.meters import Level, MeterManager, meter_sources
-from sonar.engine.router import Decision, Router
+from sonar.engine.router import Decision, Router, target_node_for
 from sonar.engine.supervisor import Supervisor, chatmix_gains
 
 __all__ = ["ApiError", "SonarApi", "envelope"]
@@ -252,6 +253,8 @@ class SonarApi:
                 continue
             row = serde.to_jsonable(stream)
             row["channel"] = decided.get(stream.serial or stream.id, "")
+            # Arayüz aynı uygulamayı hem çıkış hem giriş şeridinde gösteriyor.
+            row["direction"] = "in" if stream.is_capture else "out"
             out.append(row)
         return out
 
@@ -841,10 +844,16 @@ class SonarApi:
     def move_stream(self, stream_id: int, channel: str, remember: bool = False) -> None:
         """Bir akışı elle taşır.
 
+        `channel` bir çıkış kanalı ya da bir giriş zinciri olabilir; hangisi olduğunu
+        hedefin kendisi söylüyor. Yakalama akışları (uygulamanın dinlediği mikrofon) da
+        aynı yolla taşınıyor — ayrı bir API'ye gerek yok (Faz 21).
+
         `remember` verilirse uygulamanın binary'sinden kalıcı bir kural üretilir —
-        arayüzdeki "bu uygulamayı hep buraya gönder" seçeneği bunu kullanır.
+        arayüzdeki "bu uygulamayı hep buraya gönder" seçeneği bunu kullanır. Üretilen
+        kural akışın **yönünü** taşır, yoksa Discord'un mikrofon kuralı ses kuralını
+        da eziyor olurdu.
         """
-        node = self._channel(channel).sink_node
+        node = self._target_node(channel)
         if not self.supervisor.control.move_stream(int(stream_id), node):
             raise ApiError("move_failed", f"akış taşınamadı: {stream_id}")
         # Taşıma komutu başarılı dönse de bağlantı kurulmamış olabilir; kullanıcı bunu
@@ -856,6 +865,13 @@ class SonarApi:
         self._emit({"kind": "stream_moved", "stream": int(stream_id), "channel": channel})
         if remember:
             self._remember_stream(int(stream_id), channel)
+
+    def _target_node(self, target: str) -> str:
+        """Taşıma hedefinin node adı: kanalda sink, giriş zincirinde sanal kaynak."""
+        node = target_node_for(target, self.config)
+        if node is None:
+            raise ApiError("unknown_channel", f"böyle bir kanal yok: {target}")
+        return node
 
     def _stream_reached(self, stream_id: int, node: str) -> bool:
         """Akış gerçekten hedefe bağlandı mı? `pw-link -l` üzerinden bakar."""
@@ -876,28 +892,45 @@ class SonarApi:
         stream = self.supervisor.state.streams.get(stream_id)
         if stream is None:
             raise ApiError("unknown_stream", f"böyle bir akış yok: {stream_id}")
+        direction = StreamDirection.IN if stream.is_capture else StreamDirection.OUT
         for key in (MatchKey.BINARY, MatchKey.APP_NAME, MatchKey.MEDIA_NAME):
             value = _stream_field(stream, key)
             if value:
-                self.set_rule(key.value, value, channel)
+                self.set_rule(key.value, value, channel, direction=direction.value)
                 return
         raise ApiError(
             "not_identifiable",
             "bu akışın kural üretilebilecek bir kimliği yok (binary/ad/medya adı boş)",
         )
 
-    def set_rule(self, match_key: str, pattern: str, channel: str, is_regex: bool = False) -> None:
-        self._channel(channel)
+    def set_rule(
+        self,
+        match_key: str,
+        pattern: str,
+        channel: str,
+        is_regex: bool = False,
+        direction: str = "out",
+    ) -> None:
+        """Bir yönlendirme kuralı ekler veya günceller.
+
+        Kural **yön taşır**: aynı desenin bir çıkış bir de giriş kuralı olabilir
+        (Discord hem `chat` kanalına hem `mic` zincirine).
+        """
+        self._target_node(channel)
         try:
             key = MatchKey(match_key)
         except ValueError as exc:
             raise ApiError(
                 "unknown_match_key", f"bilinmeyen eşleşme anahtarı: {match_key}"
             ) from exc
+        try:
+            way = StreamDirection(direction)
+        except ValueError as exc:
+            raise ApiError("unknown_direction", f"yön 'out' veya 'in' olmalı: {direction}") from exc
         if not str(pattern).strip():
             raise ApiError("invalid_pattern", "desen boş olamaz")
         for rule in self.config.rules:
-            if rule.match_key == key and rule.pattern == pattern:
+            if rule.match_key == key and rule.pattern == pattern and rule.direction is way:
                 rule.channel_id = channel
                 rule.is_regex = bool(is_regex)
                 rule.enabled = True
@@ -905,16 +938,27 @@ class SonarApi:
         else:
             self.config.rules.append(
                 RoutingRule(
-                    match_key=key, pattern=pattern, channel_id=channel, is_regex=bool(is_regex)
+                    match_key=key,
+                    pattern=pattern,
+                    channel_id=channel,
+                    is_regex=bool(is_regex),
+                    direction=way,
                 )
             )
         self._emit({"kind": "rules", "pattern": pattern})
         self._save_soon()
 
-    def remove_rule(self, match_key: str, pattern: str) -> None:
+    def remove_rule(self, match_key: str, pattern: str, direction: str = "") -> None:
+        """Kuralı siler. `direction` verilmezse o desenin her iki yönü de silinir."""
         before = len(self.config.rules)
         self.config.rules = [
-            r for r in self.config.rules if not (r.match_key == match_key and r.pattern == pattern)
+            r
+            for r in self.config.rules
+            if not (
+                r.match_key == match_key
+                and r.pattern == pattern
+                and (not direction or r.direction == direction)
+            )
         ]
         if len(self.config.rules) == before:
             raise ApiError("unknown_rule", f"böyle bir kural yok: {match_key}={pattern}")

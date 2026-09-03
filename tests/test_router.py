@@ -214,9 +214,16 @@ def test_our_own_loopbacks_are_never_touched(router, graph):
     assert graph.moves == []
 
 
-def test_capture_streams_are_never_touched(router, graph):
+def test_capture_streams_go_to_an_input_chain(router, graph):
+    """Faz 21: yakalama akışları da yönlendiriliyor.
+
+    Kullanıcı hangi uygulamanın hangi mikrofonu kullanacağını seçebilmeli. Eskiden
+    yakalama akışlarına hiç dokunulmuyordu.
+    """
     graph.add(30, "obs", "Stream/Input/Audio", **{"application.process.binary": "obs"})
-    assert router.sync() == []
+    decisions = router.sync()
+    assert [(d.stream_id, d.channel_id, d.reason) for d in decisions] == [(30, "mic", "default")]
+    assert graph.moves == [(30, "sonar_mic")]
 
 
 def test_stream_already_aimed_at_a_sonar_channel_is_left_alone(router, graph):
@@ -450,3 +457,80 @@ def test_forget_channel_drops_only_that_channels_decisions(router, graph):
     router.forget_channel("media")
 
     assert set(router.decided.values()) == {"chat"}
+
+
+# --------------------------------------------------------------------------- yön
+#
+# Discord hem ses çalar hem mikrofon dinler. İkisi ayrı kurallarla, ayrı hedeflere
+# yönlendirilebilmeli (Faz 21).
+
+
+def test_output_rules_do_not_catch_capture_streams(graph):
+    config = default_config()
+    router = Router(graph.state, graph.move, lambda: config)
+    graph.add(10, "Discord", "Stream/Input/Audio", **{"application.process.binary": "Discord"})
+
+    router.sync()
+
+    # "Discord → chat" kuralı bir **çıkış** kuralı; mikrofon akışını yakalamamalı.
+    assert graph.moves == [(10, "sonar_mic")]
+
+
+def test_an_input_rule_sends_the_microphone_to_its_chain(graph):
+    from sonar.core.model import MatchKey, RoutingRule, StreamDirection
+
+    config = default_config()
+    config.rules.append(
+        RoutingRule(
+            match_key=MatchKey.BINARY,
+            pattern="Discord",
+            channel_id="stream_mic",
+            direction=StreamDirection.IN,
+        )
+    )
+    router = Router(graph.state, graph.move, lambda: config)
+    graph.add(10, "Discord", "Stream/Input/Audio", **{"application.process.binary": "Discord"})
+    graph.add(11, "Discord", **{"application.process.binary": "Discord"})
+
+    router.sync()
+
+    assert sorted(graph.moves) == [(10, "sonar_stream_mic"), (11, "sonar_chat")]
+
+
+def test_an_input_rule_never_catches_playback(graph):
+    from sonar.core.model import MatchKey, RoutingRule, StreamDirection
+
+    config = default_config()
+    config.rules = [
+        RoutingRule(
+            match_key=MatchKey.BINARY,
+            pattern="spotify",
+            channel_id="mic",
+            direction=StreamDirection.IN,
+        )
+    ]
+    router = Router(graph.state, graph.move, lambda: config)
+    graph.add(10, "spotify", **{"application.process.binary": "spotify"})
+
+    router.sync()
+
+    assert graph.moves == [(10, "sonar_media")], "giriş kuralı oynatmayı kaçırmalı"
+
+
+def test_desktop_audio_capture_is_left_alone(graph):
+    """cava, OBS "Masaüstü Sesi" gibi akışlar mikrofon kullanıcısı değil.
+
+    Ölçüldü (Faz 21): yakalama akışları yönlendirilmeye başlayınca cava sessizce
+    `sonar_mic`'e çekildi ve kullanıcının görselleştiricisi bozuldu.
+    """
+    config = default_config()
+    router = Router(graph.state, graph.move, lambda: config)
+    graph.add(
+        20,
+        "cava",
+        "Stream/Input/Audio",
+        **{"application.process.binary": "cava", "stream.capture.sink": True},
+    )
+
+    assert router.sync() == []
+    assert graph.moves == []
