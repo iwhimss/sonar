@@ -7,16 +7,19 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 2 bekleniyor)
-**Son güncelleme:** 2026-09-01
-**Sonraki adım:** Kullanıcı ikinci test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/17-verify.md` içinde işaretsiz duruyor. Sonra Faz 11 — Paketleme.
+**Aktif faz:** Faz 18 — Ses yolunun güvenilirliği
+**Son güncelleme:** 2026-09-03
+**Sonraki adım:** Faz 18 → 19 → 20 → 21 → 22 → 23 → 24. Sonra kullanıcı üçüncü test
+turunu yapar; Faz 11 (Paketleme) ondan sonra.
 
-> **Test turu 1 (2026-09-01) kapandı.** Kullanıcı `scripts/sonar-dev` ile uygulamayı ilk
-> kez gerçek kullanımda denedi; çıkan eksikler ve hatalar Faz 12–17'de giderildi.
-> Üç hatanın kök nedeni ölçülerek bulundu: `pw-dump -m` silme olayları `type` alanı
-> taşımıyordu, QML'de fonksiyon çağrısı bağlama kurmuyordu, mikser şeride sözlük
-> kopyası veriyordu. **Sırada test turu 2 var**; Faz 11 (Paketleme) ondan sonra.
+> **Test turu 2 (2026-09-03).** Kullanıcı ikinci turu yaptı. Çıkan tablo: ses yolu
+> aralıklı kopuyor, arayüz daemon'ı hiç yansıtmıyor ve dört yeni yetenek isteniyor.
+> Kök nedenler yine ölçülerek bulundu:
+> `Mixer.qml` şeride donmuş bir sözlük kopyası veriyordu (arayüzün tamamı bu yüzden
+> ölüydü); cihaz değişimi conf'u değiştirip grafı restart ediyordu; `_wire_sends`
+> tek atışlıktı ve başarısız olunca kanal sessizce susuyordu.
+> Kullanıcı kararları: **çoklu çıkış bus'ı** (her cihaz kendi master'ını alır),
+> **Spatial Audio stereo binaural**, **donanım ChatMix tekeri için udev kuralı**.
 
 | # | Faz | Durum |
 |---|---|---|
@@ -37,7 +40,14 @@ maddeler `.plan/17-verify.md` içinde işaretsiz duruyor. Sonra Faz 11 — Paket
 | 15 | [Arayüz altyapısı](15-ui-foundation.md) | 🟢 Tamamlandı |
 | 16 | [Profil deneyimi](16-profiles.md) | 🟢 Tamamlandı |
 | 17 | [Doğrulama ve dokümantasyon](17-verify.md) | 🟢 Tamamlandı |
-| 11 | [Paketleme](11-packaging.md) | 🟡 Sıradaki (test turu 2'den sonra) |
+| 18 | [Ses yolunun güvenilirliği](18-audio-path.md) | 🟡 Sıradaki |
+| 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | ⚪ Bekliyor |
+| 20 | [Çoklu çıkış bus'ı](20-outputs.md) | ⚪ Bekliyor |
+| 21 | [Mikrofon yönlendirme](21-mic-routing.md) | ⚪ Bekliyor |
+| 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | ⚪ Bekliyor |
+| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | ⚪ Bekliyor |
+| 24 | [Doğrulama ve dokümantasyon](24-verify.md) | ⚪ Bekliyor |
+| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi

@@ -109,11 +109,8 @@ Yalnızca mikser penceresi açıkken oluşan bir maliyet olduğu için v1 engell
 
 ## Faz 9'dan devreden
 
-### Donanım ChatMix tekerinin okunması
-`engine/headset.py` cihazı buluyor ve udev kuralı `packaging/99-sonar-headset.rules`'ta
-hazır. Kalan iş: kural kurulduktan sonra `/dev/hidraw*`'dan gelen raporları izleyip teker
-konumunu çözmek (SteelSeries Arctis 7+ = `1038:220e`). Protokol cihazdan okumadan
-doğrulanamayacağı için tahminle yazılmadı.
+### ~~Donanım ChatMix tekerinin okunması~~
+→ **Faz 23'e alındı** (test turu 2). Kullanıcı udev kuralını kurmayı kabul etti.
 
 ### Arayüz kolaylıkları
 - Arama kutulu profil gözat paneli
@@ -122,3 +119,16 @@ doğrulanamayacağı için tahminle yazılmadı.
 - Mikrofon dalga formu görseli
 - `mic` ↔ `stream_mic` sekmesi ve "zinciri paylaş" seçeneği
 - Ctrl+Z / Ctrl+Y, A/B karşılaştırma, tüm zinciri geçici bypass eden düğme
+
+
+## Faz 22'den devreden
+
+### Gerçek 7.1 sanal surround
+Faz 22'de Spatial Audio **stereo binaural genişletme** olarak yapıldı (HRTF ile ±30° iki
+sanal hoparlör) — kullanıcı kararı. Gerçek 7.1 sanal surround için kanal zincirlerinin
+8 kanallı hâle gelmesi gerekiyor: `plan_chain(channels=...)` bugün yalnızca 1 ve 2'yi
+kabul ediyor, sanal sink'lerin `audio.position` listesi, metre noktaları ve tüm LSP
+eklenti seçimi (`_stereo`/`_mono` sonekleri) buna göre genişlemeli. Oyun 7.1 çıkış
+vermediği sürece kullanıcı için hiçbir fark üretmeyeceği için ertelendi.
+
+SOFA altyapısı Faz 22'de kurulduğu için asıl iş kalan çok kanallı zincir tarafı.
