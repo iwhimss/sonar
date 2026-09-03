@@ -80,7 +80,7 @@ def test_get_state_round_trips(iface):
 
 def test_set_channel_volume(iface):
     assert _call(iface, "SetChannelVolume", "game", "personal", 0.5)["ok"] is True
-    assert iface.api.config.channel("game").personal.volume == 0.5
+    assert iface.api.config.channel("game").output.volume == 0.5
 
 
 def test_unknown_channel_returns_a_code_not_a_crash(iface):

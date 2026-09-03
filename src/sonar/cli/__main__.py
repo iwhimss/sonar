@@ -67,26 +67,41 @@ def _pct(value: float) -> str:
     return f"{value * 100:5.1f}%"
 
 
+def _send_of(channel: dict, bus_id: str) -> dict:
+    """Kanalın bir bus'a gönderisi; yoksa nötr (yeni eklenen bus henüz diskte olmayabilir)."""
+    send = (channel.get("sends") or {}).get(bus_id)
+    return send if isinstance(send, dict) else {"volume": 1.0, "muted": False}
+
+
 def _print_status(state: dict) -> None:
     config = state["config"]
     channels = sorted(config["channels"], key=lambda c: (c["order"], c["id"]))
     streams = state["streams"]
 
-    print(f"{'KANAL':<12} {'PROFİL':<16} {'KULAKLIK':<26} {'YAYIN':<26}")
-    print("─" * 82)
+    buses = {b["id"]: b for b in config["buses"]}
+    print(f"{'KANAL':<12} {'PROFİL':<14} {'ÇIKIŞ':<14} {'ÇIKIŞ SEVİYESİ':<26} {'YAYIN':<26}")
+    print("─" * 96)
     for channel in channels:
+        output_bus = channel.get("output_bus", "personal")
         rows = []
-        for bus in ("personal", "stream"):
-            send = channel[bus]
+        for bus_id in (output_bus, "stream"):
+            send = _send_of(channel, bus_id)
             mark = "M" if send["muted"] else " "
             rows.append(f"{mark} {_bar(send['volume'])} {_pct(send['volume'])}")
-        print(f"{channel['name']:<12} {channel['active_profile']:<16} {rows[0]:<26} {rows[1]:<26}")
+        output_name = buses.get(output_bus, {}).get("name", output_bus)
+        print(
+            f"{channel['name']:<12} {channel['active_profile']:<14} "
+            f"{output_name:<14} {rows[0]:<26} {rows[1]:<26}"
+        )
 
     print()
     for bus in config["buses"]:
         mark = "M" if bus["muted"] else " "
-        device = bus["device"] or "(sistem varsayılanı)"
-        print(f"{bus['name']:<24} {mark} {_bar(bus['volume'])} {_pct(bus['volume'])}  → {device}")
+        if bus.get("kind") == "stream":
+            where = "→ Sonar Stream Mix — Virtual Input (OBS)"
+        else:
+            where = f"→ {bus['device'] or '(sistem varsayılanı)'}"
+        print(f"{bus['name']:<24} {mark} {_bar(bus['volume'])} {_pct(bus['volume'])}  {where}")
     for mic in config["mic_chains"]:
         mark = "M" if mic["muted"] else " "
         device = mic["source_device"] or "(sistem varsayılanı)"
@@ -179,7 +194,8 @@ def _cmd_mute(client: Client, args) -> int:
         channel = next((c for c in state["config"]["channels"] if c["id"] == args.channel), None)
         if channel is None:
             raise SystemExit(f"hata [unknown_channel]: böyle bir kanal yok: {args.channel}")
-        muted = not channel[args.bus]["muted"]
+        bus_id = channel.get("output_bus", "personal") if args.bus == "output" else args.bus
+        muted = not _send_of(channel, bus_id)["muted"]
     else:
         muted = args.state == "on"
     client.call("SetChannelMute", args.channel, args.bus, muted)
@@ -311,6 +327,37 @@ def _cmd_channel(client: Client, args) -> int:
     return 0
 
 
+def _cmd_output(client: Client, args) -> int:
+    """Çıkış bus'ları: her biri bir fiziksel cihaz + kendi master'ı."""
+    if args.action == "list":
+        state = client.call("GetState")
+        for bus in state["config"]["buses"]:
+            if bus.get("kind") == "stream":
+                continue
+            users = [
+                c["name"]
+                for c in state["config"]["channels"]
+                if c.get("output_bus", "personal") == bus["id"]
+            ]
+            device = bus["device"] or "(sistem varsayılanı)"
+            print(f"{bus['id']:<14} {bus['name']:<18} → {device}")
+            print(f"{'':<14} kanallar: {', '.join(users) or '(yok)'}")
+        return 0
+    if args.action == "add":
+        new_id = client.call("AddOutputBus", args.name, args.device or "")
+        print(f"çıkış eklendi: {new_id}  (graf yeniden kuruluyor)")
+        return 0
+    client.call("RemoveOutputBus", args.name)
+    print(f"çıkış silindi: {args.name}  (graf yeniden kuruluyor)")
+    return 0
+
+
+def _cmd_route_output(client: Client, args) -> int:
+    client.call("SetChannelOutput", args.channel, args.bus)
+    print(f"{args.channel} → {args.bus}")
+    return 0
+
+
 def _cmd_obs(client: Client, args) -> int:
     """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlaması."""
     enabled = args.state == "on"
@@ -410,16 +457,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("volume", help="kanal ses seviyesi (0-100)")
     p.add_argument("channel")
-    p.add_argument("bus", choices=["personal", "stream"])
+    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
+                                "veya 'stream'")
     p.add_argument("value", type=float)
 
     p = sub.add_parser("mute", help="kanalı sustur/aç")
     p.add_argument("channel")
-    p.add_argument("bus", choices=["personal", "stream"])
+    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
+                                "veya 'stream'")
     p.add_argument("state", nargs="?", default="toggle", choices=["on", "off", "toggle"])
 
     p = sub.add_parser("master", help="Personal/Stream master seviyesi (0-100)")
-    p.add_argument("bus", choices=["personal", "stream"])
+    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
+                                "veya 'stream'")
     p.add_argument("value", type=float)
 
     p = sub.add_parser("profile", help="profil listele veya yükle")
@@ -473,6 +523,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--color", default="#8B95A5")
 
+    p = sub.add_parser("output", help="çıkış bus'ları (fiziksel cihaz başına bir master)")
+    p.add_argument("action", choices=("list", "add", "remove"))
+    p.add_argument("name", nargs="?", default="", help="ekleme: görünen ad · silme: bus id'si")
+    p.add_argument("--device", default="", help="yalnızca ekleme: fiziksel cihaz node adı")
+
+    p = sub.add_parser("send", help="bir kanalı başka bir çıkışa taşı (canlı)")
+    p.add_argument("channel")
+    p.add_argument("bus", help="çıkış bus'ının kimliği")
+
     p = sub.add_parser("obs", help="kanal için OBS'e ayrı sanal giriş cihazı ver")
     p.add_argument("channel")
     p.add_argument("state", choices=("on", "off"))
@@ -517,6 +576,8 @@ _COMMANDS = {
     "device": _cmd_device,
     "obs": _cmd_obs,
     "channel": _cmd_channel,
+    "output": _cmd_output,
+    "send": _cmd_route_output,
     "new": _cmd_new,
     "favorite": _cmd_favorite,
     "presets": _cmd_presets,

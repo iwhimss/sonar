@@ -173,7 +173,7 @@ def meter_sources(config: SonarConfig) -> dict[str, bool]:
     sources: dict[str, bool] = {}
     for channel in config.ordered_channels():
         sources[channel.sink_node] = True
-    for bus in sorted(config.buses, key=lambda b: b.id.value):
+    for bus in config.ordered_buses():
         sources[bus.sink_node] = True
     for mic in config.mic_chains:
         sources[mic.source_node] = False

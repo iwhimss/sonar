@@ -73,8 +73,18 @@ def channel_rows(state: dict) -> list[dict]:
         ]
         for target, names in (state.get("profile_names") or {}).items()
     }
+    buses = sorted(config.get("buses", []), key=lambda b: (b.get("order", 0), b["id"]))
+    outputs = [b for b in buses if b.get("kind") != "stream"]
+    output_names = {b["id"]: b["name"] for b in outputs}
+    default_output = outputs[0]["id"] if outputs else "personal"
+
     rows = []
     for channel in sorted(config.get("channels", []), key=lambda c: (c["order"], c["id"])):
+        sends = channel.get("sends") or {}
+        # Kanalın **seçili** çıkışı; o bus silinmişse ilk çıkışa düşer.
+        output_bus = channel.get("output_bus", default_output)
+        if output_bus not in output_names:
+            output_bus = default_output
         rows.append(
             {
                 "id": channel["id"],
@@ -84,10 +94,12 @@ def channel_rows(state: dict) -> list[dict]:
                 "builtin": bool(channel.get("builtin")),
                 "activeProfile": channel.get("active_profile", "Default"),
                 "profiles": profiles.get(channel["id"], []),
-                "personalVolume": channel["personal"]["volume"],
-                "personalMuted": channel["personal"]["muted"],
-                "streamVolume": channel["stream"]["volume"],
-                "streamMuted": channel["stream"]["muted"],
+                "personalVolume": _send(sends, output_bus)["volume"],
+                "personalMuted": _send(sends, output_bus)["muted"],
+                "streamVolume": _send(sends, "stream")["volume"],
+                "streamMuted": _send(sends, "stream")["muted"],
+                "outputBus": output_bus,
+                "outputName": output_names.get(output_bus, ""),
                 "kind": "channel",
             }
         )
@@ -107,10 +119,18 @@ def channel_rows(state: dict) -> list[dict]:
                 "personalMuted": not mic.get("monitor_enabled", False),
                 "streamVolume": mic["volume"],
                 "streamMuted": mic["muted"],
+                "outputBus": "",
+                "outputName": "",
                 "kind": "mic",
             }
         )
     return rows
+
+
+def _send(sends: dict, bus_id: str) -> dict:
+    """Bir gönderi; yoksa nötr. Yeni eklenen bir bus'ın gönderisi henüz diskte yok."""
+    value = sends.get(bus_id)
+    return value if isinstance(value, dict) else {"volume": 1.0, "muted": False}
 
 
 def stream_rows(state: dict) -> list[dict]:
@@ -230,7 +250,8 @@ class _DictModel(QAbstractListModel):
 class ChannelModel(_DictModel):
     keys = (
         "id", "name", "color", "icon", "builtin", "activeProfile", "profiles",
-        "personalVolume", "personalMuted", "streamVolume", "streamMuted", "kind",
+        "personalVolume", "personalMuted", "streamVolume", "streamMuted",
+        "outputBus", "outputName", "kind",
     )  # fmt: skip
 
 
@@ -489,16 +510,28 @@ class SonarBridge(QObject):
     chatmix = Property(float, _get_chatmix, notify=chatmixChanged)
 
     def _get_masters(self) -> dict:
+        """Bus id → bus sözlüğü, artı `"mic"` anahtarıyla birincil mikrofon zinciri.
+
+        Çıkış bus'ı sayısı artık sabit değil; `outputs` listesi mikserin master
+        şeritlerini soldan sağa sürüyor.
+        """
         config = self._state.get("config") or {}
         buses = {b["id"]: b for b in config.get("buses", [])}
         mic = next((m for m in config.get("mic_chains", []) if m["id"] == "mic"), {})
-        return {
-            "personal": buses.get("personal", {}),
-            "stream": buses.get("stream", {}),
-            "mic": mic,
-        }
+        return {**buses, "mic": mic}
 
     masters = Property("QVariant", _get_masters, notify=mastersChanged)
+
+    def _get_outputs(self) -> list:
+        """Çıkış bus'ları, sıralı. Yayın bus'ı burada yok — onun fiziksel cihazı yok."""
+        config = self._state.get("config") or {}
+        buses = sorted(
+            (b for b in config.get("buses", []) if b.get("kind") != "stream"),
+            key=lambda b: (b.get("order", 0), b["id"]),
+        )
+        return buses
+
+    outputs = Property("QVariant", _get_outputs, notify=mastersChanged)
 
     def _get_conflicts(self) -> list:
         return self._state.get("conflicts", [])
@@ -509,15 +542,34 @@ class SonarBridge(QObject):
 
     @Slot(str, str, float)
     def setChannelVolume(self, channel: str, bus: str, value: float) -> None:
-        field = "personalVolume" if bus == "personal" else "streamVolume"
+        # Arayüzdeki iki fader "output" (kanalın seçili çıkışı) ve "stream" adını
+        # kullanıyor; hangi bus'a yazılacağını daemon çözüyor.
+        field = "streamVolume" if bus == "stream" else "personalVolume"
         self._optimistic(channel, field, value)
         self._call("SetChannelVolume", channel, bus, value)
 
     @Slot(str, str, bool)
     def setChannelMute(self, channel: str, bus: str, muted: bool) -> None:
-        field = "personalMuted" if bus == "personal" else "streamMuted"
+        field = "streamMuted" if bus == "stream" else "personalMuted"
         self._optimistic(channel, field, muted)
         self._call("SetChannelMute", channel, bus, muted)
+
+    @Slot(str, str)
+    def setChannelOutput(self, channel: str, bus: str) -> None:
+        """Kanalı başka bir çıkış cihazına taşır. Canlı — ses kesilmez."""
+        self._optimistic(channel, "outputBus", bus)
+        self._call("SetChannelOutput", channel, bus)
+        self.refresh()
+
+    @Slot(str, str)
+    def addOutputBus(self, name: str, device: str) -> None:
+        self._call("AddOutputBus", name, device)
+        self.refresh()
+
+    @Slot(str)
+    def removeOutputBus(self, bus: str) -> None:
+        self._call("RemoveOutputBus", bus)
+        self.refresh()
 
     @Slot(str, float)
     def setMasterVolume(self, bus: str, value: float) -> None:

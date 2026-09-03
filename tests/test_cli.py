@@ -53,9 +53,14 @@ def test_every_subcommand_is_wired():
     assert set(actions[0].choices) == set(_COMMANDS)
 
 
-def test_bus_argument_is_restricted():
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["volume", "game", "hayali", "50"])
+def test_bus_argument_is_free_text_now():
+    """Çıkış bus'ları kullanıcı tarafından ekleniyor; `choices` listesi tutulamaz.
+
+    Bilinmeyen bir ad daemon tarafında `unknown_bus` hatasına düşüyor ve var olan
+    bus'ları sayıyor.
+    """
+    args = build_parser().parse_args(["volume", "game", "hoparlor", "50"])
+    assert args.bus == "hoparlor"
 
 
 # --------------------------------------------------------------------------- komutlar
@@ -76,7 +81,7 @@ def test_status_json(cli, capsys):
 def test_volume_converts_percent_to_linear(cli):
     run(["volume", "game", "personal", "50"])
     assert cli.calls[-1] == ("SetChannelVolume", ("game", "personal", 0.5))
-    assert cli.iface.api.config.channel("game").personal.volume == 0.5
+    assert cli.iface.api.config.channel("game").output.volume == 0.5
 
 
 def test_master_volume(cli):
@@ -86,9 +91,9 @@ def test_master_volume(cli):
 
 def test_mute_toggle_reads_current_state_first(cli):
     run(["mute", "game", "personal"])
-    assert cli.iface.api.config.channel("game").personal.muted is True
+    assert cli.iface.api.config.channel("game").output.muted is True
     run(["mute", "game", "personal"])
-    assert cli.iface.api.config.channel("game").personal.muted is False
+    assert cli.iface.api.config.channel("game").output.muted is False
 
 
 def test_mute_explicit(cli):
@@ -215,7 +220,7 @@ def test_status_handles_no_streams(cli, capsys):
 def test_print_status_survives_a_muted_everything(config_store, capsys):
     api = SonarApi(config_store, FakeSupervisor(), save_delay=0)
     for channel in api.config.channels:
-        channel.personal.muted = True
+        channel.output.muted = True
         channel.stream.muted = True
     state = api.get_state()
     _print_status(state)

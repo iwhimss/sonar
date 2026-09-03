@@ -130,6 +130,25 @@ class SonarDBusInterface(QObject):
         """Donanım ChatMix tekeri olduğu bilinen kulaklıklar."""
         return reply(self.api.headsets)
 
+    @Slot(str, str, result=str)
+    def AddOutputBus(self, name: str, device: str) -> str:
+        """Yeni bir çıkış bus'ı (fiziksel cihaz + kendi master'ı). Sonuç: yeni id."""
+        return reply(lambda: self.api.add_output_bus(name, device))
+
+    @Slot(str, result=str)
+    def RemoveOutputBus(self, bus: str) -> str:
+        """Bir çıkış bus'ını siler; ona bağlı kanallar varsayılana düşer."""
+        return reply(lambda: self.api.remove_output_bus(bus))
+
+    @Slot(str, str, result=str)
+    def RenameBus(self, bus: str, name: str) -> str:
+        return reply(lambda: self.api.rename_bus(bus, name))
+
+    @Slot(str, str, result=str)
+    def SetChannelOutput(self, channel: str, bus: str) -> str:
+        """Kanalın hangi çıkış cihazına gideceği. Canlı — ses kesilmez."""
+        return reply(lambda: self.api.set_channel_output(channel, bus))
+
     @Slot(result=str)
     def Diagnose(self) -> str:
         """Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar."""

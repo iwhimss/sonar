@@ -225,7 +225,7 @@ def test_mute_change_is_announced_on_the_row(bridge):
     bridge.channels.dataChanged.connect(lambda top, _bottom, _roles: seen.append(top.row()))
 
     state = make_state()
-    state["config"]["channels"][0]["stream"]["muted"] = True
+    state["config"]["channels"][0]["sends"]["stream"]["muted"] = True
     bridge.apply_state(state)
 
     assert 0 in seen

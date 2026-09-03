@@ -30,7 +30,7 @@ from pathlib import Path
 from sonar.core import config as config_mod
 from sonar.core.dsp.chain import plan_chain
 from sonar.core.dsp.params import db_to_linear, profile_to_params
-from sonar.core.model import CHAIN_ORDER, BusId, FilterStage, Profile, SonarConfig
+from sonar.core.model import CHAIN_ORDER, FilterStage, Profile, SonarConfig
 from sonar.engine import confgen
 from sonar.engine.control import Control
 from sonar.engine.pwstate import GraphState, PwMonitor
@@ -117,13 +117,23 @@ def live_volumes(cfg: SonarConfig) -> dict[str, tuple[float, bool]]:
     out: dict[str, tuple[float, bool]] = {}
 
     for channel in cfg.channels:
-        for bus in BusId:
-            send = channel.send(bus)
-            volume = send.volume
-            if bus is BusId.PERSONAL:
-                # ChatMix yalnızca kulaklık miksini etkiler; yayın miksine dokunmaz.
-                volume *= gains.get(channel.id, 1.0)
-            out[channel.loopback_node(bus)] = (volume, send.muted)
+        active = cfg.output_bus_of(channel)
+        active_id = active.id if active is not None else channel.output_bus
+        for bus in cfg.buses:
+            send = channel.send(bus.id)
+            if bus.is_stream:
+                out[channel.loopback_node(bus.id)] = (send.volume, send.muted)
+                continue
+            # Kanal tek bir çıkışa gider; diğer çıkış bus'larının gönderisi susturulur.
+            # Çıkışı değiştirmek bu yüzden bir mute yazımı, yeniden inşa değil.
+            if bus.id != active_id:
+                out[channel.loopback_node(bus.id)] = (send.volume, True)
+                continue
+            # ChatMix yalnızca kulaklık miksini etkiler; yayın miksine dokunmaz.
+            out[channel.loopback_node(bus.id)] = (
+                send.volume * gains.get(channel.id, 1.0),
+                send.muted,
+            )
 
     for bus in cfg.buses:
         out[bus.sink_node] = (bus.volume, bus.muted)

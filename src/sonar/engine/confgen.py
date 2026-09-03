@@ -29,7 +29,14 @@ import re
 from typing import Any
 
 from sonar.core.dsp.chain import build_chain, plan_chain
-from sonar.core.model import BusId, Channel, MasterBus, MicChain, SonarConfig
+from sonar.core.model import (
+    DEFAULT_OUTPUT_BUS,
+    STREAM_BUS,
+    Channel,
+    MasterBus,
+    MicChain,
+    SonarConfig,
+)
 
 __all__ = [
     "dsp_node_for",
@@ -100,10 +107,13 @@ def generate_modules(cfg: SonarConfig) -> list[dict]:
 
     for channel in cfg.ordered_channels():
         modules.append(_channel_chain(channel, rate, bands))
-    for bus in sorted(cfg.buses, key=lambda b: b.id.value):
+    for bus in cfg.ordered_buses():
         modules.append(_bus_chain(bus, rate, bands))
+    # Her kanaldan **her** bus'a bir gönderi. Kanalın hangi çıkışa gittiği conf'a
+    # girmez; yalnızca hangi gönderinin açık olduğu değişir (`supervisor.live_volumes`).
+    # Böylece kanalı başka bir cihaza taşımak grafı yeniden kurmuyor.
     for channel in cfg.ordered_channels():
-        for bus in BusId:
+        for bus in cfg.ordered_buses():
             modules.append(_send_loopback(channel, bus, rate))
     for mic in cfg.mic_chains:
         modules.extend(_mic_modules(mic, cfg, rate, bands))
@@ -121,7 +131,7 @@ def dsp_nodes(cfg: SonarConfig) -> dict[str, str]:
     ve `engine.supervisor` adları tahmin etmek yerine buradan alır.
     """
     nodes = {channel.id: channel.sink_node for channel in cfg.channels}
-    nodes.update({bus.id.value: bus.sink_node for bus in cfg.buses})
+    nodes.update({bus.id: bus.sink_node for bus in cfg.buses})
     nodes.update(
         {
             mic.id: mic.source_node if mic.share_chain_with_mic else f"{mic.source_node}_capture"
@@ -183,7 +193,7 @@ def _channel_chain(channel: Channel, rate: int, bands: int) -> dict:
     )
 
 
-def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
+def _send_loopback(channel: Channel, bus: MasterBus, rate: int) -> dict:
     """Kanalın `_fx` çıkışından bir bus'a giden gönderi. Fader bu node'a uygulanır.
 
     Yakalama tarafı bilinçli olarak **bağlantısız** doğar (`node.autoconnect = false`,
@@ -192,11 +202,11 @@ def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
     `supervisor` graf ayağa kalktıktan sonra `pw-link` ile kendisi kurar. Tek kod yolu
     olsun diye bu, `stream_source` açıkken de böyle yapılır.
     """
-    name = channel.loopback_node(bus)
+    name = channel.loopback_node(bus.id)
     return {
         "name": "libpipewire-module-loopback",
         "args": {
-            "node.description": f"Sonar {channel.name} → {bus.value}",
+            "node.description": f"Sonar {channel.name} → {bus.id}",
             "audio.position": ["FL", "FR"],
             "capture.props": {
                 "node.name": f"{name}_capture",
@@ -208,7 +218,7 @@ def _send_loopback(channel: Channel, bus: BusId, rate: int) -> dict:
             "playback.props": {
                 "node.name": name,
                 "node.description": f"Sonar {channel.name}",
-                "target.object": _bus_node(bus),
+                "target.object": bus.sink_node,
                 **_stereo(rate),
             },
         },
@@ -223,9 +233,9 @@ def send_links(cfg: SonarConfig) -> list[tuple[str, str]]:
     `capture_FL` (Audio/Source) veya `output_FL` (sınıfsız) adını alıyor.
     """
     return [
-        (channel.fx_node, f"{channel.loopback_node(bus)}_capture")
+        (channel.fx_node, f"{channel.loopback_node(bus.id)}_capture")
         for channel in cfg.ordered_channels()
-        for bus in BusId
+        for bus in cfg.ordered_buses()
     ]
 
 
@@ -239,11 +249,7 @@ def live_targets(cfg: SonarConfig) -> dict[str, str]:
 
     Boş dize "hedef verme" demek — WirePlumber sistem varsayılanına bağlar.
     """
-    targets = {
-        f"{bus.sink_node}_out": bus.device
-        for bus in cfg.buses
-        if bus.id is not BusId.STREAM
-    }
+    targets = {bus.out_node: bus.device for bus in cfg.output_buses()}
     targets.update(
         {
             f"{mic.source_node}_capture": mic.source_device
@@ -264,9 +270,9 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
     `Audio/Source` olarak açığa çıkar; OBS onu "Sonar Stream Mix" adlı bir giriş cihazı
     olarak görür. Böylece yayın miksi hoparlöre gitmez.
     """
-    if bus.id is BusId.STREAM:
+    if bus.is_stream:
         playback = {
-            "node.name": f"{bus.sink_node}_out",
+            "node.name": bus.out_node,
             "node.description": f"Sonar {bus.name} — Virtual Input",
             "node.nick": bus.name,
             "media.class": VIRTUAL_SOURCE_CLASS,
@@ -279,7 +285,7 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
         # canlı veriliyor (bkz. `live_targets`). Conf'a yazılsaydı cihaz değiştirmek
         # conf metnini değiştirir, yani grafı yeniden kurar ve çalan sesi keserdi.
         playback = {
-            "node.name": f"{bus.sink_node}_out",
+            "node.name": bus.out_node,
             "node.description": f"Sonar {bus.name} Output",
             **_stereo(rate),
         }
@@ -298,10 +304,6 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
         },
         playback=playback,
     )
-
-
-def _bus_node(bus: BusId) -> str:
-    return f"sonar_{bus.value}"
 
 
 # --------------------------------------------------------------------------- mikrofon
@@ -367,17 +369,20 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
     # Her ikisi de **koşulsuz** kurulur; açma/kapama artık mute ile yapılıyor
     # (`supervisor.live_volumes`). Eskiden conf'a bağlıydı, yani sidetone'u açmak
     # grafı yeniden kurup çalan sesi kesiyordu.
-    modules.append(_mic_send(mic, BusId.PERSONAL, "monitor", rate))
-    modules.append(_mic_send(mic, BusId.STREAM, "to_stream", rate))
+    # Sidetone varsayılan çıkışa, yayın gönderisi yayın bus'ına gider.
+    modules.append(_mic_send(mic, DEFAULT_OUTPUT_BUS, "monitor", cfg, rate))
+    modules.append(_mic_send(mic, STREAM_BUS, "to_stream", cfg, rate))
     return modules
 
 
-def _mic_send(mic: MicChain, bus: BusId, suffix: str, rate: int) -> dict:
+def _mic_send(mic: MicChain, bus_id: str, suffix: str, cfg: SonarConfig, rate: int) -> dict:
     name = f"{mic.source_node}_{suffix}"
+    bus = cfg.bus(bus_id) or cfg.default_output_bus()
+    target = bus.sink_node if bus is not None else f"sonar_{bus_id}"
     return {
         "name": "libpipewire-module-loopback",
         "args": {
-            "node.description": f"Sonar {mic.name} → {bus.value}",
+            "node.description": f"Sonar {mic.name} → {bus_id}",
             "audio.position": ["FL", "FR"],
             "capture.props": {
                 "node.name": f"{name}_capture",
@@ -389,7 +394,7 @@ def _mic_send(mic: MicChain, bus: BusId, suffix: str, rate: int) -> dict:
             "playback.props": {
                 "node.name": name,
                 "node.description": f"Sonar {mic.name}",
-                "target.object": _bus_node(bus),
+                "target.object": target,
                 **_stereo(rate),
             },
         },

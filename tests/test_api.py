@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from sonar.core.model import BusId, FilterStage
+from sonar.core.model import FilterStage
 from sonar.daemon.api import ApiError, SonarApi
 from sonar.engine import confgen
 from sonar.engine.pwstate import GraphState
@@ -458,7 +458,7 @@ def test_chatmix_is_clamped(api):
 
 def test_config_is_persisted(api, config_store):
     api.set_channel_volume("game", "personal", 0.25)
-    assert config_store.load().channel("game").personal.volume == 0.25
+    assert config_store.load().channel("game").output.volume == 0.25
 
 
 def test_reload_picks_up_hand_edits(api, config_store):
@@ -493,12 +493,12 @@ def test_a_failing_listener_does_not_break_the_api(config_store):
 
     api = SonarApi(config_store, FakeSupervisor(), save_delay=0, on_change=boom)
     api.set_channel_volume("game", "personal", 0.5)  # yükseltmemeli
-    assert api.config.channel("game").personal.volume == 0.5
+    assert api.config.channel("game").output.volume == 0.5
 
 
 def test_bus_enum_round_trips(api):
-    api.set_channel_volume("game", BusId.STREAM.value, 0.3)
-    assert api.config.channel("game").send(BusId.STREAM).volume == 0.3
+    api.set_channel_volume("game", "stream", 0.3)
+    assert api.config.channel("game").send("stream").volume == 0.3
 
 
 def test_internal_loopbacks_are_hidden_from_the_stream_list(api):
@@ -927,7 +927,7 @@ def test_unwritable_config_does_not_crash_the_daemon(api, config_store, monkeypa
 
     monkeypatch.setattr(config_store, "save", boom)
     api.set_channel_volume("game", "personal", 0.42)  # yükseltmemeli
-    assert api.config.channel("game").personal.volume == 0.42
+    assert api.config.channel("game").output.volume == 0.42
 
 
 def test_failed_save_tells_the_user(config_store, monkeypatch):

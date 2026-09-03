@@ -7,7 +7,7 @@ import pytest
 
 from sonar.core.config import ConfigStore, Paths, safe_name, write_atomic
 from sonar.core.model import (
-    BusId,
+    BusSend,
     EqBand,
     FilterStage,
     RoutingRule,
@@ -29,9 +29,9 @@ def test_first_run_creates_config_and_profiles(config_store: ConfigStore):
 
 def test_roundtrip_preserves_everything(config_store: ConfigStore):
     config = default_config()
-    config.channel("game").personal.volume = 0.42
+    config.channel("game").output.volume = 0.42
     config.channel("game").stream.muted = True
-    config.bus(BusId.STREAM).device = "alsa_output.usb-Test"
+    config.bus("stream").device = "alsa_output.usb-Test"
     config.mic("mic").monitor_enabled = True
     config.chatmix.value = 73.5
     config.settings.take_over_default_sink = True
@@ -46,7 +46,7 @@ def test_config_file_is_valid_toml_and_hand_editable(config_store: ConfigStore):
     text = config_store.paths.config_file.read_text(encoding="utf-8")
     assert text.startswith("# Sonar yapılandırması")
     raw = tomllib.loads(text)
-    assert raw["schema_version"] == 2
+    assert raw["schema_version"] == 3
     assert raw["channels"][0]["id"] == "game"
 
 
@@ -257,20 +257,86 @@ def test_favorites_move_from_profile_files_to_the_config(config_store: ConfigSto
     # Yapılandırmayı şema 1'e geri düşür ki göç tetiklensin.
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 2", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 3", "schema_version = 1"),
         encoding="utf-8",
     )
 
     config = config_store.load()
     assert config.favorites["game"] == ["Arc", "CS2"], "eski slot numarası sırayı belirler"
-    assert config.schema_version == 2
+    assert config.schema_version == 3
 
 
 def test_a_config_without_old_favorites_migrates_to_an_empty_list(config_store: ConfigStore):
     config_store.save(default_config())
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 2", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 3", "schema_version = 1"),
         encoding="utf-8",
     )
     assert config_store.load().favorites == {}
+
+
+# --------------------------------------------------------------------------- şema 2 → 3
+#
+# Şema 2'de her kanalın `personal` ve `stream` diye iki sabit gönderisi vardı ve yalnızca
+# iki bus olabilirdi. Şema 3'te gönderiler bus kimliğine göre bir sözlük ve kullanıcı
+# istediği kadar **çıkış** bus'ı ekleyebiliyor (Faz 20).
+#
+# Göç ham sözlük üzerinde yapılıyor: `serde` bilinmeyen anahtarları sessizce attığı için
+# taşınmayan bir alan kullanıcının fader'larını sessizce sıfırlardı.
+
+
+def _schema2_toml() -> str:
+    return """\
+schema_version = 2
+
+[settings]
+default_channel = "media"
+
+[[channels]]
+id = "game"
+name = "Game"
+color = "#22C58B"
+order = 0
+active_profile = "CS2"
+
+[channels.personal]
+volume = 0.42
+muted = false
+
+[channels.stream]
+volume = 0.7
+muted = true
+
+[[buses]]
+id = "personal"
+name = "Personal Mix"
+device = "alsa_output.usb-Test"
+volume = 0.9
+
+[[buses]]
+id = "stream"
+name = "Stream Mix"
+"""
+
+
+def test_schema_2_sends_move_into_the_bus_dictionary(config_store: ConfigStore):
+    config_store.paths.config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_store.paths.config_file.write_text(_schema2_toml(), encoding="utf-8")
+    config = config_store.load()
+
+    channel = config.channel("game")
+    assert channel.send("personal").volume == 0.42
+    assert channel.send("stream") == BusSend(volume=0.7, muted=True)
+    assert channel.output_bus == "personal"
+    assert config.schema_version == 3
+
+
+def test_schema_2_buses_get_their_kind(config_store: ConfigStore):
+    config_store.paths.config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_store.paths.config_file.write_text(_schema2_toml(), encoding="utf-8")
+    config = config_store.load()
+
+    assert [b.id for b in config.output_buses()] == ["personal"]
+    assert config.stream_bus().id == "stream"
+    assert config.bus("personal").device == "alsa_output.usb-Test"

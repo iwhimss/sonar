@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from sonar.core.dsp import registry
-from sonar.core.model import BusId, Channel, default_config, default_profile
+from sonar.core.model import Channel, default_config, default_profile
 from sonar.engine import confgen
 
 GOLDEN = "tests/data/graph.conf.golden"
@@ -66,9 +66,9 @@ def test_profile_change_does_not_touch_the_conf(portable):
 def test_volume_and_mute_do_not_touch_the_conf(portable):
     config = default_config()
     before = confgen.generate(config)
-    config.channel("game").personal.volume = 0.3
+    config.channel("game").output.volume = 0.3
     config.channel("chat").stream.muted = True
-    config.bus(BusId.PERSONAL).volume = 0.6
+    config.bus("personal").volume = 0.6
     config.chatmix.value = 90.0
     assert confgen.generate(config) == before
 
@@ -112,7 +112,7 @@ def test_device_change_does_not_touch_the_conf(portable):
     """
     config = default_config()
     before = confgen.generate(config)
-    config.bus(BusId.PERSONAL).device = "alsa_output.usb-SteelSeries_Arctis_7"
+    config.bus("personal").device = "alsa_output.usb-SteelSeries_Arctis_7"
     assert confgen.generate(config) == before
     assert confgen.live_targets(config) == {
         "sonar_personal_out": "alsa_output.usb-SteelSeries_Arctis_7"
@@ -130,7 +130,7 @@ def test_mic_device_is_live_too(portable):
 def test_stream_bus_has_no_device_target(portable):
     """Yayın miksinin çıkışı sanal bir kaynak; fiziksel bir hedefi yok."""
     config = default_config()
-    config.bus(BusId.STREAM).device = "alsa_output.usb-SteelSeries_Arctis_7"
+    config.bus("stream").device = "alsa_output.usb-SteelSeries_Arctis_7"
     assert "sonar_stream_out" not in confgen.live_targets(config)
 
 

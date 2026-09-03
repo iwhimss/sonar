@@ -7,7 +7,6 @@ from sonar.core.model import (
     DEFAULT_FILTER_PARAMS,
     DYNAMIC_STAGES,
     SUGGESTED_RULES,
-    BusId,
     Channel,
     EqBand,
     FilterStage,
@@ -25,8 +24,8 @@ def test_channel_node_names():
     channel = Channel(id="game", name="Game", color="#22C58B")
     assert channel.sink_node == "sonar_game"
     assert channel.fx_node == "sonar_game_fx"
-    assert channel.loopback_node(BusId.PERSONAL) == "sonar_game_to_personal"
-    assert channel.loopback_node(BusId.STREAM) == "sonar_game_to_stream"
+    assert channel.loopback_node("personal") == "sonar_game_to_personal"
+    assert channel.loopback_node("stream") == "sonar_game_to_stream"
 
 
 def test_node_names_are_unique_across_the_graph():
@@ -34,7 +33,7 @@ def test_node_names_are_unique_across_the_graph():
     names = []
     for channel in config.channels:
         names += [channel.sink_node, channel.fx_node]
-        names += [channel.loopback_node(bus) for bus in BusId]
+        names += [channel.loopback_node(bus) for bus in ("personal", "stream")]
     names += [bus.sink_node for bus in config.buses]
     names += [mic.source_node for mic in config.mic_chains]
     assert len(names) == len(set(names)), "node adlarında çakışma var"
@@ -46,7 +45,7 @@ def test_node_names_are_unique_across_the_graph():
 def test_default_config_shape():
     config = default_config()
     assert [c.id for c in config.ordered_channels()] == ["game", "chat", "media", "aux"]
-    assert {b.id for b in config.buses} == {BusId.PERSONAL, BusId.STREAM}
+    assert {b.id for b in config.buses} == {"personal", "stream"}
     assert [m.id for m in config.mic_chains] == ["mic", "stream_mic"]
     assert config.settings.take_over_default_sink is False
     assert config.settings.sample_rate == 48_000
@@ -56,7 +55,7 @@ def test_default_config_is_transparent():
     """İlk kurulumda hiçbir şey değişmemeli: tam ses, filtreler kapalı."""
     config = default_config()
     for channel in config.channels:
-        for bus in BusId:
+        for bus in ("personal", "stream"):
             assert channel.send(bus).volume == 1.0
             assert channel.send(bus).muted is False
 
@@ -66,7 +65,7 @@ def test_lookup_helpers():
     assert config.channel("game").name == "Game"
     assert config.channel("yok") is None
     assert config.bus("stream").name == "Stream Mix"
-    assert config.bus(BusId.PERSONAL).id is BusId.PERSONAL
+    assert config.bus("personal").id == "personal"
     assert config.mic("stream_mic").name == "Stream Mic"
 
 
@@ -220,9 +219,9 @@ def test_specificity_prefers_longer_patterns():
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("Müzik", "m_zik"),
+        ("Müzik", "muzik"),
         ("Voice Chat", "voice_chat"),
-        ("  Boşluk  ", "bo_luk"),
+        ("  Boşluk  ", "bosluk"),
         ("", "kanal"),
         ("!!!", "kanal"),
         ("Aux 2", "aux_2"),
@@ -243,3 +242,19 @@ def test_bus_lookup_returns_none_for_unknown_names():
     assert config.bus("game") is None
     assert config.bus("") is None
     assert config.bus("personal") is not None
+
+
+def test_slugify_transliterates_turkish_letters():
+    """Kimlik PipeWire node adına giriyor, yani ASCII kalmalı — ama harfler düşmemeli.
+
+    Düzeltilmeden önce "Hoparlör" `hoparl_r` oluyordu ve kullanıcı bunu hem `sonar-cli`
+    çıktısında hem de hata mesajlarında görüyordu.
+    """
+    assert slugify("Hoparlör") == "hoparlor"
+    assert slugify("Oyun Kanalı") == "oyun_kanali"
+    assert slugify("Çalışma Müziği") == "calisma_muzigi"
+
+
+def test_slugify_never_returns_an_empty_id():
+    assert slugify("!!!") == "kanal"
+    assert slugify("   ") == "kanal"

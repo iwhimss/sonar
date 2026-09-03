@@ -258,7 +258,7 @@ def test_profile_change_does_not_restart_the_process(supervisor, config_store):
 def test_volume_change_does_not_restart_the_process(supervisor, config_store):
     config = config_store.load()
     supervisor.reconcile(config)
-    config.channel("game").personal.volume = 0.25
+    config.channel("game").output.volume = 0.25
     supervisor.reconcile(config)
     assert len(supervisor._spawned) == 1
     assert any("0.250000" in line for line in supervisor._session.sent)
@@ -282,7 +282,7 @@ def test_adding_a_channel_restarts_the_process(supervisor, config_store):
 def test_rebuild_reapplies_the_whole_live_state(supervisor, config_store):
     """Conf nötr doğar ve node id'leri değişir; her şey baştan yazılmalı."""
     config = config_store.load()
-    config.channel("game").personal.volume = 0.4
+    config.channel("game").output.volume = 0.4
     supervisor.reconcile(config)
     sent = "\n".join(supervisor._session.sent)
     assert "eq:enabled" in sent
@@ -382,7 +382,7 @@ def test_watchdog_survives_a_rebuild(supervisor, config_store):
 def test_crash_recovery_uses_the_last_applied_config_not_the_disk(supervisor, config_store):
     """Kullanıcı henüz kaydetmediyse diskteki hâl yanlıştır — hatta graftan farklı olabilir."""
     config = config_store.load()
-    config.channel("game").personal.volume = 0.33  # bilinçli olarak KAYDEDİLMİYOR
+    config.channel("game").output.volume = 0.33  # bilinçli olarak KAYDEDİLMİYOR
     supervisor.reconcile(config)
     assert supervisor._cfg is config
 
@@ -452,3 +452,59 @@ def test_link_keeper_reports_what_it_cannot_fix(supervisor, config_store):
     assert supervisor.broken_links == [lost]
     assert seen == [[lost]]  # eşik aşılınca **bir kez** haber verilir
     supervisor.stop(restore_default_sink=False)
+
+
+# --------------------------------------------------------------------------- çoklu çıkış
+#
+# Kanal tek bir çıkış bus'ına gider; diğer çıkışların gönderisi susturulur. Bu yüzden
+# kanalı başka bir cihaza taşımak bir mute yazımı, yeniden inşa değil (Faz 20).
+
+
+def _two_outputs():
+    from sonar.core.model import BusKind, MasterBus
+
+    config = default_config()
+    config.buses.append(MasterBus(id="hoparlor", name="Hoparlör", kind=BusKind.OUTPUT, order=2))
+    config.ensure_sends()
+    return config
+
+
+def test_only_the_selected_output_send_is_open():
+    config = _two_outputs()
+    config.channel("game").output_bus = "hoparlor"
+    volumes = live_volumes(config)
+
+    assert volumes["sonar_game_to_hoparlor"] == (1.0, False)
+    assert volumes["sonar_game_to_personal"][1] is True, "seçilmeyen çıkış susturulmalı"
+    assert volumes["sonar_game_to_stream"][1] is False, "yayın gönderisi hep açık"
+    # Diğer kanallar varsayılan çıkışta kalır.
+    assert volumes["sonar_media_to_personal"][1] is False
+    assert volumes["sonar_media_to_hoparlor"][1] is True
+
+
+def test_changing_the_output_does_not_touch_the_conf():
+    """Ses kesintisinin tek ölçütü bu."""
+    config = _two_outputs()
+    before = confgen.generate(config)
+    config.channel("game").output_bus = "hoparlor"
+    assert confgen.generate(config) == before
+
+
+def test_chatmix_applies_on_the_channels_own_output():
+    config = _two_outputs()
+    config.channel("game").output_bus = "hoparlor"
+    config.chatmix.value = 100.0  # tam sağ: oyun kısılır, sohbet açık kalır
+    volumes = live_volumes(config)
+
+    # ChatMix kanalı hangi çıkışa bağlıysa oradaki gönderisine uygulanıyor.
+    assert volumes["sonar_game_to_hoparlor"][0] < 0.02  # -40 dB taban
+    assert volumes["sonar_chat_to_personal"][0] == pytest.approx(1.0)
+    # Yayın miksi ChatMix'ten etkilenmez.
+    assert volumes["sonar_game_to_stream"][0] == pytest.approx(1.0)
+
+
+def test_a_deleted_output_falls_back_to_the_default():
+    config = _two_outputs()
+    config.channel("game").output_bus = "yok_boyle_bir_sey"
+    volumes = live_volumes(config)
+    assert volumes["sonar_game_to_personal"][1] is False

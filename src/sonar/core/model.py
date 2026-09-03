@@ -17,8 +17,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 __all__ = [
+    "DEFAULT_OUTPUT_BUS",
     "SCHEMA_VERSION",
-    "BusId",
+    "STREAM_BUS",
+    "BusKind",
     "BusSend",
     "Channel",
     "ChatMixConfig",
@@ -40,7 +42,7 @@ __all__ = [
     "default_profile",
 ]
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: Varsayılan EQ bandlarının yayıldığı aralık. 31.25 Hz – 16 kHz tam 9 oktav olduğu için
 #: 10 bandda tam oktav aralıklı klasik grafik ekolayzer frekansları çıkar.
@@ -84,11 +86,27 @@ DYNAMIC_STAGES: tuple[FilterStage, ...] = (
 )
 
 
-class BusId(StrEnum):
-    """İki miks yolu: kullanıcının kulaklığı ve yayın."""
+class BusKind(StrEnum):
+    """Bir miks yolunun türü.
 
-    PERSONAL = "personal"
+    `OUTPUT` bir fiziksel cihaza çıkar ve birden fazla olabilir — kullanıcı Game'i
+    hoparlöre, Media'yı kulaklığa gönderebilsin diye (Faz 20). Her birinin kendi
+    master fader'ı, DSP'si ve profili var.
+
+    `STREAM` tektir: OBS'in gördüğü sanal giriş cihazı. Her kanal ona **ayrıca** ve
+    her zaman gönderir; hangi çıkışa gittiğinden bağımsız.
+    """
+
+    OUTPUT = "output"
     STREAM = "stream"
+
+
+#: İlk kurulumda oluşturulan çıkış bus'ının kimliği. Kod hiçbir yerde "personal"
+#: olduğunu varsaymaz; kullanıcı onu silip başkasını varsayılan yapabilir.
+DEFAULT_OUTPUT_BUS = "personal"
+
+#: Yayın bus'ının kimliği. Tek olduğu için sabit.
+STREAM_BUS = "stream"
 
 
 class EqBandType(StrEnum):
@@ -209,16 +227,36 @@ class Channel:
     order: int = 0
     builtin: bool = False
     active_profile: str = "Default"
-    personal: BusSend = field(default_factory=BusSend)
-    stream: BusSend = field(default_factory=BusSend)
+    #: Bus kimliği → gönderi seviyesi. Yayın bus'ı dâhil **her** bus için bir giriş
+    #: bulunur; eksikse `send()` varsayılanını üretir.
+    sends: dict[str, BusSend] = field(default_factory=dict)
+    #: Kanalın hangi çıkış bus'ına gittiği. Yalnızca bu bus'ın gönderisi açık kalır;
+    #: diğer çıkış bus'larının gönderileri susturulur. Değiştirmek grafı yeniden
+    #: kurmaz, yalnızca bir mute yazımıdır.
+    output_bus: str = DEFAULT_OUTPUT_BUS
     #: OBS'e kanal başına ayrı track vermek için `_fx` çıkışını sanal bir **giriş
     #: cihazı** olarak yayınla. Varsayılan kapalı: açıkken her çıkış kanalı sistemin
     #: mikrofon listesinde görünür ve "Media neden mikrofon?" sorusuna yol açar.
     #: SteelSeries GG'de de yalnızca birleşik Stream Mix vardı.
     stream_source: bool = False
 
-    def send(self, bus: BusId) -> BusSend:
-        return self.personal if bus is BusId.PERSONAL else self.stream
+    def send(self, bus_id: str) -> BusSend:
+        """Bu kanalın bir bus'a gönderisi. Yoksa nötr bir tane üretilip saklanır."""
+        send = self.sends.get(bus_id)
+        if send is None:
+            send = BusSend()
+            self.sends[bus_id] = send
+        return send
+
+    @property
+    def stream(self) -> BusSend:
+        """Yayın gönderisi — sık kullanıldığı için kısayol."""
+        return self.send(STREAM_BUS)
+
+    @property
+    def output(self) -> BusSend:
+        """Kanalın **seçili** çıkış bus'ına gönderisi; mikserdeki kulaklık fader'ı."""
+        return self.send(self.output_bus)
 
     @property
     def sink_node(self) -> str:
@@ -230,25 +268,37 @@ class Channel:
         """DSP sonrası çıkış. `stream_source` açıkken ayrıca sanal bir kaynaktır."""
         return f"sonar_{self.id}_fx"
 
-    def loopback_node(self, bus: BusId) -> str:
+    def loopback_node(self, bus_id: str) -> str:
         """Fader'ın uygulandığı loopback node adı."""
-        return f"sonar_{self.id}_to_{bus.value}"
+        return f"sonar_{self.id}_to_{bus_id}"
 
 
 @dataclass(slots=True)
 class MasterBus:
-    """Kişisel veya yayın miks yolu."""
+    """Bir miks yolu: bir çıkış cihazı ya da yayın miksi."""
 
-    id: BusId
+    id: str
     name: str
+    kind: BusKind = BusKind.OUTPUT
     device: str = ""  # boş = sistem varsayılanı
     volume: float = 1.0
     muted: bool = False
     active_profile: str = "Default"
+    order: int = 0
 
     @property
     def sink_node(self) -> str:
-        return f"sonar_{self.id.value}"
+        return f"sonar_{self.id}"
+
+    @property
+    def out_node(self) -> str:
+        """Bus'ın çıkış node'u: çıkış bus'larında fiziksel cihaza giden akış,
+        yayın bus'ında OBS'in gördüğü sanal kaynak."""
+        return f"sonar_{self.id}_out"
+
+    @property
+    def is_stream(self) -> bool:
+        return self.kind is BusKind.STREAM
 
 
 @dataclass(slots=True)
@@ -367,21 +417,46 @@ class SonarConfig:
     def channel(self, channel_id: str) -> Channel | None:
         return next((c for c in self.channels if c.id == channel_id), None)
 
-    def bus(self, bus_id: BusId | str) -> MasterBus | None:
-        """Bilinmeyen id'de `None` — `channel()` ve `mic()` ile aynı davranış.
+    def bus(self, bus_id: str) -> MasterBus | None:
+        """Bilinmeyen id'de `None` — `channel()` ve `mic()` ile aynı davranış."""
+        return next((b for b in self.buses if b.id == bus_id), None)
 
-        Eskiden `BusId(bus_id)` doğrudan çağrılıyor ve bilinmeyen bir ad `ValueError`
-        yükseltiyordu; imza `| None` dediği hâlde. "Bu ad bir kanal mı, bus mu?" diye
-        yoklayan her çağrı yeri patlıyordu.
+    def ordered_buses(self) -> list[MasterBus]:
+        """Conf üretimi buna bağlı: sıra deterministik olmalı."""
+        return sorted(self.buses, key=lambda b: (b.order, b.id))
+
+    def output_buses(self) -> list[MasterBus]:
+        """Fiziksel cihaza çıkan bus'lar — mikserdeki master şeritleri."""
+        return [b for b in self.ordered_buses() if not b.is_stream]
+
+    def stream_bus(self) -> MasterBus | None:
+        return next((b for b in self.buses if b.is_stream), None)
+
+    def default_output_bus(self) -> MasterBus | None:
+        """Kanalların düşeceği çıkış. `personal` yoksa ilk çıkış bus'ı."""
+        return self.bus(DEFAULT_OUTPUT_BUS) or next(iter(self.output_buses()), None)
+
+    def output_bus_of(self, channel: Channel) -> MasterBus | None:
+        """Kanalın gerçekten bağlı olduğu çıkış — seçtiği bus silinmişse varsayılan."""
+        return self.bus(channel.output_bus) or self.default_output_bus()
+
+    def ensure_sends(self) -> None:
+        """Her kanalın her bus'a bir gönderisi olsun.
+
+        `Channel.send()` eksik olanı zaten üretiyor, ama o tembel yol yalnızca bellekte
+        çalışıyor: `config.toml`'da ve arayüzün gördüğü JSON'da gönderi görünmüyordu.
+        Yükleme ve bus ekleme sonrasında bir kez çağrılır.
         """
-        if isinstance(bus_id, str):
-            try:
-                key = BusId(bus_id)
-            except ValueError:
-                return None
-        else:
-            key = bus_id
-        return next((b for b in self.buses if b.id is key), None)
+        bus_ids = [bus.id for bus in self.buses]
+        for channel in self.channels:
+            for bus_id in bus_ids:
+                channel.send(bus_id)
+            # Silinmiş bir bus'ın gönderisi artılıp durmasın.
+            for stale in [b for b in channel.sends if b not in bus_ids]:
+                del channel.sends[stale]
+
+    def next_bus_order(self) -> int:
+        return max((b.order for b in self.buses), default=-1) + 1
 
     def mic(self, mic_id: str) -> MicChain | None:
         return next((m for m in self.mic_chains if m.id == mic_id), None)
@@ -403,7 +478,7 @@ class SonarConfig:
         return (
             [c.id for c in self.ordered_channels()]
             + [m.id for m in self.mic_chains]
-            + [b.id.value for b in self.buses]
+            + [b.id for b in self.ordered_buses()]
         )
 
     def next_channel_order(self) -> int:
@@ -524,8 +599,8 @@ def default_config() -> SonarConfig:
         for i, (cid, name, color, icon) in enumerate(BUILTIN_CHANNELS)
     ]
     buses = [
-        MasterBus(id=BusId.PERSONAL, name="Personal Mix"),
-        MasterBus(id=BusId.STREAM, name="Stream Mix"),
+        MasterBus(id=DEFAULT_OUTPUT_BUS, name="Personal Mix", kind=BusKind.OUTPUT, order=0),
+        MasterBus(id=STREAM_BUS, name="Stream Mix", kind=BusKind.STREAM, order=1),
     ]
     mics = [
         MicChain(id="mic", name="Mic", order=0, builtin=True),
@@ -535,10 +610,28 @@ def default_config() -> SonarConfig:
         RoutingRule(match_key=key, pattern=pattern, channel_id=channel, is_regex=is_regex)
         for key, pattern, channel, is_regex in SUGGESTED_RULES
     ]
-    return SonarConfig(channels=channels, buses=buses, mic_chains=mics, rules=rules)
+    config = SonarConfig(channels=channels, buses=buses, mic_chains=mics, rules=rules)
+    config.ensure_sends()
+    return config
+
+
+#: Türkçe (ve yaygın Latin) harflerin ASCII karşılıkları. Bunlar olmadan "Hoparlör"
+#: `hoparl_r` oluyordu: kimlik node adına giriyor ve kullanıcıya da gösteriliyor.
+_TRANSLITERATE = str.maketrans(
+    {
+        "ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u", "â": "a", "î": "i",
+        "û": "u", "é": "e", "è": "e", "á": "a", "ñ": "n", "ä": "a", "å": "a", "ø": "o",
+        "æ": "ae", "ß": "ss",
+    }
+)  # fmt: skip
 
 
 def slugify(name: str) -> str:
-    """Kullanıcının verdiği adı güvenli bir kanal kimliğine çevirir."""
-    slug = _SLUG_RE.sub("_", name.strip().casefold().replace(" ", "_")).strip("_")
+    """Kullanıcının verdiği adı güvenli bir kimliğe çevirir.
+
+    Kimlik PipeWire node adına giriyor (`sonar_<id>`), yani ASCII kalmalı. Türkçe
+    harfler **düşürülmüyor, çevriliyor**: "Hoparlör" → `hoparlor`.
+    """
+    folded = name.strip().casefold().translate(_TRANSLITERATE)
+    slug = _SLUG_RE.sub("_", folded.replace(" ", "_")).strip("_")
     return slug or "kanal"

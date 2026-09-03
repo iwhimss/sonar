@@ -24,7 +24,9 @@ from pathlib import Path
 
 from sonar.core import tomlio
 from sonar.core.model import (
+    DEFAULT_OUTPUT_BUS,
     SCHEMA_VERSION,
+    STREAM_BUS,
     Profile,
     SonarConfig,
     default_config,
@@ -165,6 +167,7 @@ class ConfigStore:
         except (SerdeError, TypeError, ValueError) as exc:
             return self._recover(path, f"şemaya uymuyor: {exc}")
 
+        config.ensure_sends()
         if config.schema_version < 2:
             self._migrate_favorites(config)
         if config.schema_version != SCHEMA_VERSION:
@@ -303,10 +306,11 @@ class ConfigStore:
 
 
 def migrate(raw: dict) -> dict:
-    """Eski şema sürümlerini güncele taşır.
+    """Eski şema sürümlerini güncele taşır — **çözümlemeden önce**, ham sözlük üzerinde.
 
-    Şu an tek bir sürüm var, dolayısıyla gövde boş. Yeni bir sürüm eklendiğinde buraya
-    adım adım dönüşümler yazılır; her adım bir önceki sürümü bir sonrakine taşır.
+    Burada olmasının sebebi: `serde` bilinmeyen anahtarları sessizce atıyor. Kaldırılan
+    bir alan (örneğin şema 2'deki `channels[].personal`) burada taşınmazsa kullanıcının
+    fader'ları sessizce sıfırlanırdı.
     """
     version = raw.get("schema_version", SCHEMA_VERSION)
     if not isinstance(version, int) or version < 1:
@@ -315,6 +319,34 @@ def migrate(raw: dict) -> dict:
         raise SerdeError(
             f"yapılandırma daha yeni bir Sonar sürümüne ait (v{version} > v{SCHEMA_VERSION})"
         )
+    if version < 3:
+        raw = _migrate_to_buses(raw)
+    return raw
+
+
+def _migrate_to_buses(raw: dict) -> dict:
+    """Şema 2 → 3: iki sabit bus yerine adlandırılmış bus listesi.
+
+    Şema 2'de her kanalın `personal` ve `stream` diye iki sabit gönderisi vardı ve
+    yalnızca iki bus olabilirdi. Şema 3'te gönderiler bus kimliğine göre bir sözlük ve
+    kullanıcı istediği kadar **çıkış** bus'ı ekleyebiliyor (Game hoparlöre, Media
+    kulaklığa). Yayın bus'ı hâlâ tek.
+    """
+    for channel in raw.get("channels") or []:
+        if not isinstance(channel, dict):
+            continue
+        sends = channel.setdefault("sends", {})
+        for old, bus_id in (("personal", DEFAULT_OUTPUT_BUS), ("stream", STREAM_BUS)):
+            value = channel.pop(old, None)
+            if isinstance(value, dict):
+                sends.setdefault(bus_id, value)
+        channel.setdefault("output_bus", DEFAULT_OUTPUT_BUS)
+
+    for order, bus in enumerate(raw.get("buses") or []):
+        if not isinstance(bus, dict):
+            continue
+        bus.setdefault("kind", "stream" if bus.get("id") == STREAM_BUS else "output")
+        bus.setdefault("order", order)
     return raw
 
 
