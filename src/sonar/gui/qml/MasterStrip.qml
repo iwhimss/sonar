@@ -16,6 +16,37 @@ Item {
     readonly property var masters: bridge ? bridge.masters : ({})
     readonly property var outputs: bridge ? bridge.outputs : []
 
+    // Smart Volume. `bridge.revision` okunuyor ki ayar değişince tazelensin.
+    readonly property var ducking: bridge ? (bridge.revision, bridge.ducking()) : ({})
+    // Durum daha gelmemişken `ducking.enabled` tanımsız; `bool`a atanamıyor.
+    readonly property bool duckOn: ducking.enabled === true
+    readonly property string duckTrigger: {
+        const list = ducking.trigger_channels || []
+        return list.length > 0 ? list[0] : ""
+    }
+    readonly property string duckDescription:
+        duckTrigger.length > 0
+            ? root.nameOf(duckTrigger) + " kanalında ses olunca diğer kanallar kısılır."
+            : "Hangi kanalı dinleyeceğini seçin."
+
+    readonly property var channelOptions: {
+        const _ = bridge ? bridge.revision : 0
+        const out = []
+        const model = bridge ? bridge.channels : null
+        if (!model) return out
+        for (let i = 0; i < model.rowCount(); ++i) {
+            const row = model.get(i)
+            if (row.kind === "channel") out.push({ value: row.id, label: row.name })
+        }
+        return out
+    }
+
+    function nameOf(channelId) {
+        for (const option of channelOptions)
+            if (option.value === channelId) return option.label
+        return channelId
+    }
+
     /* Master fader'lar: her çıkış bus'ı, sonra yayın. Bus sayısı sabit değil. */
     readonly property var faderKeys: {
         const out = []
@@ -152,6 +183,80 @@ Item {
                         font.pixelSize: Theme.fontSmall
                         renderType: Text.NativeRendering
                     }
+                }
+            }
+        }
+
+        /* Smart Volume kanal profilinin değil **ayarların** parçası: bir kanalı
+           kısarken başka bir kanalı dinliyor, yani tek bir kanala ait değil. */
+        SonarPanel {
+            Layout.fillWidth: true
+            Layout.preferredHeight: smart.implicitHeight + Theme.s3 * 2
+
+            Column {
+                id: smart
+                anchors.fill: parent
+                anchors.margins: Theme.s3
+                spacing: Theme.s2
+
+                Row {
+                    spacing: Theme.s2
+                    width: parent.width
+                    Rectangle {
+                        width: 30; height: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: root.duckOn ? Theme.master : Theme.sunken
+                        border.width: 1
+                        border.color: root.duckOn ? Theme.master : Theme.border
+                        Rectangle {
+                            width: 12; height: 12
+                            x: root.duckOn ? 16 : 2
+                            y: 2
+                            color: root.duckOn ? "#0E1116" : Theme.textFaint
+                            Behavior on x { NumberAnimation { duration: 90 } }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.bridge.setDucking({ "enabled": !root.duckOn })
+                        }
+                    }
+                    SonarSectionLabel {
+                        text: "Smart Volume"
+                        color: root.duckOn ? Theme.master : Theme.textDim
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: root.duckDescription
+                    color: Theme.textFaint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    renderType: Text.NativeRendering
+                }
+
+                SonarComboBox {
+                    width: parent.width
+                    accent: Theme.master
+                    enabled: root.duckOn
+                    model: root.channelOptions
+                    currentValue: root.duckTrigger
+                    onActivated: (value) => root.bridge.setDucking(
+                        { "trigger_channels": [value] })
+                }
+
+                SonarParamRow {
+                    width: parent.width
+                    label: "İndirim"
+                    from: -40; to: 0; unit: "dB"
+                    accent: Theme.master
+                    enabled: root.duckOn
+                    value: root.ducking.reduction_db !== undefined
+                           ? root.ducking.reduction_db : -12
+                    onMoved: (v) => root.bridge.setDucking({ "reduction_db": v })
                 }
             }
         }

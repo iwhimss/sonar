@@ -508,3 +508,15 @@ def test_a_deleted_output_falls_back_to_the_default():
     config.channel("game").output_bus = "yok_boyle_bir_sey"
     volumes = live_volumes(config)
     assert volumes["sonar_game_to_personal"][1] is False
+
+
+# --------------------------------------------------------------------------- Smart Volume
+
+
+def test_ducking_gain_multiplies_the_output_send():
+    """ChatMix ile **çarpılarak** birleşiyor; ikisi de aynı gönderiye uygulanıyor."""
+    config = default_config()
+    volumes = live_volumes(config, {"media": 0.25})
+    assert volumes["sonar_media_to_personal"][0] == pytest.approx(0.25)
+    # Yayın miksi ducking'den etkilenmez: dinleyici sohbeti zaten ayrı duyuyor.
+    assert volumes["sonar_media_to_stream"][0] == pytest.approx(1.0)

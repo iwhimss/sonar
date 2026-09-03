@@ -27,10 +27,12 @@ from sonar.core.model import (
 
 __all__ = [
     "BAND_TYPE_TO_LSP",
+    "MULTI_NODE_STAGES",
     "SILENCE_DB",
     "db_to_linear",
     "eq_bypass_ports",
     "linear_to_db",
+    "multi_stage_params",
     "param_key",
     "profile_to_params",
     "stage_bypass_ports",
@@ -185,6 +187,78 @@ _STAGE_FIXED: dict[FilterStage, dict[str, float]] = {
 }
 
 
+#: Kanal başına (ya da alt graf hâlinde) birden çok node'a yayılan aşamalar.
+#: Bunların parametreleri `"<aşama>:<port>"` kalıbına girmiyor; her node'un kendi adı var,
+#: bu yüzden ayrı bir üretici kullanıyorlar (`multi_stage_params`).
+MULTI_NODE_STAGES: tuple[FilterStage, ...] = (FilterStage.SPATIAL, FilterStage.BOOST)
+
+#: Volume Boost'un üst sınırı. Limiter'dan önce durduğu için kırpma üretmiyor ama
+#: sınırsız bırakmak kullanıcıya kendini sağır etme imkânı verirdi.
+MAX_BOOST_DB = 12.0
+
+#: Spatial Audio'nun sanal hoparlör açısı sınırı. 0 = iki hoparlör de tam önde,
+#: 30° klasik stereo üçgeni, 60° çok geniş.
+MAX_SPATIAL_WIDTH_DEG = 60.0
+
+
+def multi_stage_params(
+    stage: FilterStage, state: FilterState, channels: int = 2
+) -> dict[str, float]:
+    """Çok node'lu aşamaların port değerleri; anahtarlar tam nitelikli (`"boost_l:Mult"`)."""
+    if stage is FilterStage.BOOST:
+        return _boost_params(state, channels)
+    if stage is FilterStage.SPATIAL:
+        return _spatial_params(state)
+    raise ValueError(f"{stage} çok node'lu bir aşama değil")
+
+
+def _boost_names(channels: int) -> tuple[str, ...]:
+    return ("boost",) if channels == 1 else ("boost_l", "boost_r")
+
+
+def _boost_params(state: FilterState, channels: int) -> dict[str, float]:
+    """PipeWire `linear`: `Out = In * Mult + Add`. Bypass `Mult = 1.0`."""
+    defaults = _default_params(FilterStage.BOOST)
+    gain_db = state.params.get("gain_db", defaults["gain_db"]) if state.enabled else 0.0
+    gain_db = min(max(float(gain_db), 0.0), MAX_BOOST_DB)
+    mult = db_to_linear(gain_db)
+    out: dict[str, float] = {}
+    for name in _boost_names(channels):
+        out[f"{name}:Mult"] = mult
+        out[f"{name}:Add"] = 0.0
+    return out
+
+
+def _spatial_params(state: FilterState) -> dict[str, float]:
+    """HRTF açıları. Aşama grafta varsa açıktır; ayrı bir bypass yok.
+
+    Azimut yönü **ölçülerek** bulundu: `Azimuth = 330` verilen sol kanal sağ kulakta
+    daha yüksek çıktı, yani PipeWire'ın konvansiyonu "0 = ön, artan derece = **sola**".
+    Bu yüzden sol hoparlör `+genişlik`, sağ hoparlör `360 - genişlik`.
+
+    Aşamanın kendisi yapısal (bkz. `chain._spatial_block`): kapalıyken bu node'lar
+    grafta hiç bulunmuyor, dolayısıyla buraya yalnızca açıkken geliniyor.
+    """
+    defaults = _default_params(FilterStage.SPATIAL)
+    width = min(
+        max(float(state.params.get("width_deg", defaults["width_deg"])), 0.0),
+        MAX_SPATIAL_WIDTH_DEG,
+    )
+    elevation = min(
+        max(float(state.params.get("elevation_deg", defaults["elevation_deg"])), -40.0), 40.0
+    )
+    radius = min(max(float(state.params.get("distance_m", defaults["distance_m"])), 0.1), 10.0)
+
+    return {
+        "spatial_l:Azimuth": width,
+        "spatial_r:Azimuth": (360.0 - width) % 360.0,
+        "spatial_l:Elevation": elevation,
+        "spatial_r:Elevation": elevation,
+        "spatial_l:Radius": radius,
+        "spatial_r:Radius": radius,
+    }
+
+
 def stage_bypass_ports(stage: FilterStage) -> dict[str, float]:
     """Aşamayı fiilen devre dışı bırakan port değerleri (anahtarlar önekSİZ).
 
@@ -263,6 +337,8 @@ def profile_to_params(
         if stage is FilterStage.EQ:
             capacity = registry.eq_plugin_for(profile.eq.band_count, channels).band_capacity
             out.update(eq_params(profile.eq, capacity))
+        elif stage in MULTI_NODE_STAGES:
+            out.update(multi_stage_params(stage, profile.filter(stage), channels))
         else:
             spec = _dynamic_spec(stage, channels)
             out.update(stage_params(stage, profile.filter(stage), spec))
@@ -276,5 +352,5 @@ def _dynamic_spec(stage: FilterStage, channels: int) -> registry.PluginSpec | No
         FilterStage.COMP: f"lsp_compressor_{suffix}",
         FilterStage.LIMITER: f"lsp_limiter_{suffix}",
         FilterStage.DEEPFILTER: f"deepfilter_{suffix}",
-    }[stage]
-    return registry.PLUGINS.get(key)
+    }.get(stage)
+    return registry.PLUGINS.get(key) if key else None

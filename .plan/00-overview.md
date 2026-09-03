@@ -7,7 +7,7 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 22 — Spatial Audio, Volume Boost, Smart Volume
+**Aktif faz:** Faz 23 — ChatMix donanım tekeri
 **Son güncelleme:** 2026-09-03
 **Sonraki adım:** Faz 18 → 19 → 20 → 21 → 22 → 23 → 24. Sonra kullanıcı üçüncü test
 turunu yapar; Faz 11 (Paketleme) ondan sonra.
@@ -44,8 +44,8 @@ turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 19 | [Arayüzün canlılığı ve yerleşimi](19-ui-live.md) | 🟢 Tamamlandı |
 | 20 | [Çoklu çıkış bus'ı](20-outputs.md) | 🟢 Tamamlandı |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | 🟢 Tamamlandı |
-| 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟡 Sıradaki |
-| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | ⚪ Bekliyor |
+| 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟢 Tamamlandı |
+| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟡 Sıradaki |
 | 24 | [Doğrulama ve dokümantasyon](24-verify.md) | ⚪ Bekliyor |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |

@@ -70,6 +70,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -99,10 +117,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -166,6 +192,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -195,10 +239,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -262,6 +314,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -291,10 +361,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -358,6 +436,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -387,10 +483,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -454,6 +558,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -483,10 +605,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -549,6 +679,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -578,10 +726,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -849,6 +1005,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -886,10 +1060,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]
@@ -1011,6 +1193,24 @@ context.modules = [
                         }
                     }
                     {
+                        type = "builtin"
+                        name = "boost_l"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
+                        type = "builtin"
+                        name = "boost_r"
+                        label = "linear"
+                        control = {
+                            Mult = 1.0
+                            Add = 0.0
+                        }
+                    }
+                    {
                         type = "lv2"
                         name = "lim"
                         plugin = "http://lsp-plug.in/plugins/lv2/limiter_stereo"
@@ -1048,10 +1248,18 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "lim:in_l"
+                        input = "boost_l:In"
                     }
                     {
                         output = "comp:out_r"
+                        input = "boost_r:In"
+                    }
+                    {
+                        output = "boost_l:Out"
+                        input = "lim:in_l"
+                    }
+                    {
+                        output = "boost_r:Out"
                         input = "lim:in_r"
                     }
                 ]

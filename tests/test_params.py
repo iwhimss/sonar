@@ -187,7 +187,24 @@ def test_eq_via_stage_params_is_rejected():
 def test_profile_to_params_covers_the_whole_chain():
     out = params.profile_to_params(default_profile())
     prefixes = {key.split(":", 1)[0] for key in out}
-    assert prefixes == {stage.value for stage in CHAIN_ORDER}
+    # Spatial ve Boost kanal başına ayrı node'lara yayılıyor; anahtar öneki node adı.
+    assert prefixes == {
+        "df", "gate", "eq", "comp", "lim",
+        "boost_l", "boost_r", "spatial_l", "spatial_r",
+    }  # fmt: skip
+
+
+def test_spatial_params_are_skipped_when_the_stage_is_not_in_the_chain():
+    """Spatial yapısal; kapalıyken node'lar grafta yok, onlara yazmak kayıp olurdu."""
+    stages = tuple(s for s in CHAIN_ORDER if s is not FilterStage.SPATIAL)
+    out = params.profile_to_params(default_profile(), stages=stages)
+    assert not any(key.startswith("spatial_") for key in out)
+
+
+def test_spatial_params_appear_when_the_stage_is_in_the_chain():
+    out = params.profile_to_params(default_profile(), stages=CHAIN_ORDER)
+    assert out["spatial_l:Azimuth"] == pytest.approx(30.0)
+    assert out["spatial_r:Azimuth"] == pytest.approx(330.0), "sağ hoparlör -30°"
 
 
 def test_profile_to_params_honours_a_shorter_chain():

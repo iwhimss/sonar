@@ -17,13 +17,17 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 __all__ = [
+    "CHAIN_ORDER",
     "DEFAULT_OUTPUT_BUS",
+    "DYNAMIC_STAGES",
+    "PLAYBACK_ONLY_STAGES",
     "SCHEMA_VERSION",
     "STREAM_BUS",
     "BusKind",
     "BusSend",
     "Channel",
     "ChatMixConfig",
+    "DuckingConfig",
     "EqBand",
     "EqBandType",
     "EqState",
@@ -66,15 +70,23 @@ class FilterStage(StrEnum):
     GATE = "gate"
     EQ = "eq"
     COMP = "comp"
+    SPATIAL = "spatial"
+    BOOST = "boost"
     LIMITER = "lim"
 
 
 #: Zincirdeki sıralama — sinyal bu sırayla akar.
+#:
+#: Spatial ve Boost, limiter'ın **öncesinde**: ikisi de sinyali büyütebiliyor ve
+#: limiter son savunma hattı olarak kalmalı. Spatial'ın boost'tan önce olması da
+#: bilinçli — HRTF'in kendi kazanç kaybını boost telafi edebilsin.
 CHAIN_ORDER: tuple[FilterStage, ...] = (
     FilterStage.DEEPFILTER,
     FilterStage.GATE,
     FilterStage.EQ,
     FilterStage.COMP,
+    FilterStage.SPATIAL,
+    FilterStage.BOOST,
     FilterStage.LIMITER,
 )
 
@@ -83,8 +95,14 @@ DYNAMIC_STAGES: tuple[FilterStage, ...] = (
     FilterStage.DEEPFILTER,
     FilterStage.GATE,
     FilterStage.COMP,
+    FilterStage.SPATIAL,
+    FilterStage.BOOST,
     FilterStage.LIMITER,
 )
+
+#: Yalnızca oynatma zincirlerinde anlamlı aşamalar. Mikrofonda kulaklık simülasyonu
+#: yapmanın karşılığı yok.
+PLAYBACK_ONLY_STAGES: tuple[FilterStage, ...] = (FilterStage.SPATIAL,)
 
 
 class BusKind(StrEnum):
@@ -252,6 +270,11 @@ class Channel:
     #: mikrofon listesinde görünür ve "Media neden mikrofon?" sorusuna yol açar.
     #: SteelSeries GG'de de yalnızca birleşik Stream Mix vardı.
     stream_source: bool = False
+    #: Spatial Audio (HRTF ile sanal hoparlörler). **Yapısal**: açık olduğunda zincire
+    #: iki konvolver giriyor. Profilde değil burada duruyor, çünkü bir konvolveri
+    #: bypass etmek onu ucuzlatmıyor (ölçüldü: boşta CPU %0.0 → %14.4) ve profilin
+    #: grafı yeniden kurması Faz 2'nin değişmez kuralını bozardı.
+    spatial: bool = False
 
     def send(self, bus_id: str) -> BusSend:
         """Bu kanalın bir bus'a gönderisi. Yoksa nötr bir tane üretilip saklanır."""
@@ -298,6 +321,8 @@ class MasterBus:
     muted: bool = False
     active_profile: str = "Default"
     order: int = 0
+    #: Spatial Audio — bkz. `Channel.spatial`.
+    spatial: bool = False
 
     @property
     def sink_node(self) -> str:
@@ -376,6 +401,29 @@ class RoutingRule:
 
 
 @dataclass(slots=True)
+class DuckingConfig:
+    """Smart Volume: bir kanal konuşurken diğerlerini kıs.
+
+    SteelSeries GG'deki "Smart Volume". Bir DSP aşaması değil, daemon tarafında bir
+    zarf takipçisi — nedeni `engine.ducking` başlığında.
+    """
+
+    enabled: bool = False
+    #: Sesi izlenen kanallar. Varsayılan: sohbet.
+    trigger_channels: list[str] = field(default_factory=lambda: ["chat"])
+    #: Kısılacak kanallar. **Boş = tetikleyici olmayan her kanal.**
+    target_channels: list[str] = field(default_factory=list)
+    #: Tam indirim miktarı (negatif dB).
+    reduction_db: float = -12.0
+    #: Tetikleyicinin "konuşuyor" sayılması için gereken tepe seviye.
+    threshold_db: float = -40.0
+    attack_ms: float = 80.0
+    #: Sustuktan sonra inik kalınan süre. Olmazsa cümle aralarında ses pompalıyor.
+    hold_ms: float = 400.0
+    release_ms: float = 800.0
+
+
+@dataclass(slots=True)
 class ChatMixConfig:
     """Tek slider ile iki kanal arasında denge kurar. Yalnızca kişisel miksi etkiler."""
 
@@ -426,6 +474,7 @@ class SonarConfig:
     mic_chains: list[MicChain] = field(default_factory=list)
     rules: list[RoutingRule] = field(default_factory=list)
     chatmix: ChatMixConfig = field(default_factory=ChatMixConfig)
+    ducking: DuckingConfig = field(default_factory=DuckingConfig)
     settings: Settings = field(default_factory=Settings)
     #: Hedef → sıralı favori profil adları. Sıra listenin kendisi; sayı sınırı yok.
     #: Şema 1'de bu bilgi profil dosyalarındaki `favorite_slot` alanında (9 slot) duruyordu.
@@ -532,6 +581,16 @@ def default_band_q(count: int) -> float:
 
 #: Her dinamik aşamanın insan birimli varsayılan parametreleri.
 DEFAULT_FILTER_PARAMS: dict[FilterStage, dict[str, float]] = {
+    #: Spatial Audio: stereo içeriği iki sanal hoparlöre (±genişlik) HRTF ile yerleştirir.
+    #: `width_deg = 0` iki hoparlörü de tam öne koyar (mono'ya yakın); 30° klasik
+    #: stereo üçgeni, 60° geniş. Ölçüldü: ±30°'de kulaklar arası gecikme 0.38 ms.
+    FilterStage.SPATIAL: {
+        "width_deg": 30.0,
+        "elevation_deg": 0.0,
+        "distance_m": 1.0,
+    },
+    #: Volume Boost: limiter'dan önce uygulanan düz kazanç.
+    FilterStage.BOOST: {"gain_db": 6.0},
     FilterStage.DEEPFILTER: {
         "attenuation_db": 40.0,  # 0 = etkisiz, 100 = azami temizlik
         "post_filter_beta": 0.02,

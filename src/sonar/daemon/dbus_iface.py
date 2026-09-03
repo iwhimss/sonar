@@ -149,6 +149,35 @@ class SonarDBusInterface(QObject):
         """Kanalın hangi çıkış cihazına gideceği. Canlı — ses kesilmez."""
         return reply(lambda: self.api.set_channel_output(channel, bus))
 
+    @Slot(str, result=str)
+    def SetDucking(self, fields_json: str) -> str:
+        """Smart Volume ayarları. JSON sözlük; verilmeyen alanlar değişmez.
+
+        Alan sayısı D-Bus imzasında sabitlenemeyecek kadar çok ve ileride büyüyecek;
+        tek bir JSON argümanı imzayı sabit tutuyor.
+        """
+        import json as _json
+
+        def apply() -> dict:
+            try:
+                fields = _json.loads(fields_json or "{}")
+            except _json.JSONDecodeError as error:
+                raise ApiError("invalid_json", f"geçersiz JSON: {error}") from error
+            if not isinstance(fields, dict):
+                raise ApiError("invalid_json", "Smart Volume ayarları bir sözlük olmalı")
+            return self.api.set_ducking(**fields)
+
+        return reply(apply)
+
+    @Slot(str, bool, result=str)
+    def SetSpatial(self, target: str, enabled: bool) -> str:
+        """Spatial Audio (HRTF ile sanal hoparlörler). **Yapısal** — graf yeniden kurulur.
+
+        Bir konvolveri bypass etmek onu ucuzlatmıyor (ölçüldü: boştaki CPU %0.0 → %14.4),
+        bu yüzden kapalıyken node'lar grafta hiç bulunmuyor.
+        """
+        return reply(lambda: self.api.set_spatial(target, enabled))
+
     @Slot(result=str)
     def Diagnose(self) -> str:
         """Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar."""

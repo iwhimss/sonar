@@ -228,14 +228,20 @@ Item {
         }
 
         // --- dinamikler ----------------------------------------------------
+        //
+        // Mikrofonda Spatial yok (kulaklık simülasyonunun karşılığı yok), bu yüzden
+        // panel sayısı hedefe göre değişiyor.
         Row {
             id: dynamics
             width: parent.width
             height: 168
             spacing: Theme.s2
+            readonly property int panelCount: root.isMic ? 3 : 4
+            readonly property real panelWidth:
+                (width - Theme.s2 * (panelCount - 1)) / panelCount
 
             SonarFilterPanel {
-                width: (parent.width - Theme.s2 * 2) / 3
+                width: dynamics.panelWidth
                 height: parent.height
                 title: root.isMic ? "AI Gürültü Engelleme" : "Noise Gate"
                 accent: root.accent
@@ -265,7 +271,7 @@ Item {
             }
 
             SonarFilterPanel {
-                width: (parent.width - Theme.s2 * 2) / 3
+                width: dynamics.panelWidth
                 height: parent.height
                 title: root.isMic ? "Noise Gate" : "Compressor"
                 accent: root.accent
@@ -297,7 +303,7 @@ Item {
             }
 
             SonarFilterPanel {
-                width: (parent.width - Theme.s2 * 2) / 3
+                width: dynamics.panelWidth
                 height: parent.height
                 title: root.isMic ? "Compressor + Limiter" : "Limiter"
                 accent: root.accent
@@ -321,6 +327,114 @@ Item {
                             onMoved: (v) => root.bridge.setFilterParam(
                                 root.target, modelData.stage, modelData.key, v)
                         }
+                    }
+                }
+            }
+
+            /* Spatial + Boost tek kutuda: ikisi de "sesi nasıl duyduğun" ayarı ve
+               ikisi de limiter'ın öncesinde duruyor. Mikrofonda yalnızca Boost var. */
+            SonarFilterPanel {
+                width: dynamics.panelWidth
+                height: parent.height
+                visible: !root.isMic
+                title: "Spatial Audio"
+                accent: root.accent
+                active: root.spatialOn
+                note: root.spatialAvailable ? "graf yeniden kurulur" : "HRTF dosyası yok"
+                onToggled: (v) => root.bridge.setFilterEnabled(root.target, "spatial", v)
+                Column {
+                    anchors.fill: parent
+                    spacing: 2
+                    Repeater {
+                        model: root.spatialParams
+                        SonarParamRow {
+                            required property var modelData
+                            width: parent.width
+                            label: modelData.label
+                            from: modelData.from; to: modelData.to
+                            unit: modelData.unit
+                            decimals: modelData.digits !== undefined ? modelData.digits : 1
+                            accent: root.accent
+                            enabled: root.spatialOn
+                            value: root.paramOf(modelData.stage, modelData.key, modelData.fallback)
+                            onMoved: (v) => root.bridge.setFilterParam(
+                                root.target, modelData.stage, modelData.key, v)
+                        }
+                    }
+                    Item { width: 1; height: Theme.s2 }
+                    /* Boost ayrı bir aşama ama kendi paneline değmeyecek kadar küçük;
+                       Spatial'ın HRTF kaybını (ölçüldü: -7.8 dB) telafi eden yer de
+                       burası olduğu için yan yana duruyorlar. */
+                    Row {
+                        width: parent.width
+                        spacing: Theme.s2
+                        Rectangle {
+                            width: 30; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: root.stageOn("boost") ? root.accent : Theme.sunken
+                            border.width: 1
+                            border.color: root.stageOn("boost") ? root.accent : Theme.border
+                            Rectangle {
+                                width: 12; height: 12
+                                x: root.stageOn("boost") ? 16 : 2
+                                y: 2
+                                color: root.stageOn("boost") ? "#0E1116" : Theme.textFaint
+                                Behavior on x { NumberAnimation { duration: 90 } }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.bridge.setFilterEnabled(
+                                    root.target, "boost", !root.stageOn("boost"))
+                            }
+                        }
+                        SonarSectionLabel {
+                            text: "Volume Boost"
+                            color: root.stageOn("boost") ? root.accent : Theme.textDim
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    SonarParamRow {
+                        width: parent.width
+                        label: "Kazanç"
+                        from: 0; to: 12; unit: "dB"
+                        accent: root.accent
+                        enabled: root.stageOn("boost")
+                        value: root.paramOf("boost", "gain_db", 6)
+                        onMoved: (v) => root.bridge.setFilterParam(root.target, "boost", "gain_db", v)
+                    }
+                }
+            }
+
+            /* Mikrofonda Spatial yok; Boost tek başına küçük bir panelde. */
+            SonarFilterPanel {
+                width: dynamics.panelWidth
+                height: parent.height
+                visible: root.isMic
+                title: "Volume Boost"
+                accent: root.accent
+                active: root.stageOn("boost")
+                onToggled: (v) => root.bridge.setFilterEnabled(root.target, "boost", v)
+                Column {
+                    anchors.fill: parent
+                    spacing: 2
+                    SonarParamRow {
+                        width: parent.width
+                        label: "Kazanç"
+                        from: 0; to: 12; unit: "dB"
+                        accent: root.accent
+                        enabled: root.stageOn("boost")
+                        value: root.paramOf("boost", "gain_db", 6)
+                        onMoved: (v) => root.bridge.setFilterParam(root.target, "boost", "gain_db", v)
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Limiter'ın öncesinde uygulanır; kırpma üretmez."
+                        color: Theme.textFaint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        renderType: Text.NativeRendering
                     }
                 }
             }
@@ -416,6 +530,18 @@ Item {
     }
 
     // --- parametre tanımları -------------------------------------------------
+    /* Spatial Audio: iki sanal hoparlörün açısı, yüksekliği ve mesafesi. Ölçüldü —
+       ±30°'de kulaklar arası gecikme 0.38 ms, HRTF'in kendi kazanç kaybı -7.8 dB. */
+    readonly property var spatialParams: [
+        { stage:"spatial", key:"width_deg",     label:"Genişlik", from:0,   to:60, unit:"°", fallback:30 },
+        { stage:"spatial", key:"elevation_deg", label:"Yükseklik",from:-40, to:40, unit:"°", fallback:0 },
+        { stage:"spatial", key:"distance_m",    label:"Mesafe",   from:0.1, to:5,  unit:"m", fallback:1, digits:1 }
+    ]
+    readonly property bool spatialAvailable: bridge ? (tick, bridge.spatialAvailable()) : true
+    /* Spatial profilde değil hedefin kendi ayarında: bir konvolveri bypass etmek onu
+       ucuzlatmıyor, bu yüzden kapalıyken grafta hiç bulunmuyor. */
+    readonly property bool spatialOn: bridge ? (tick, bridge.spatialEnabled(target)) : false
+
     readonly property var gateParams: [
         { stage:"gate", key:"threshold_db", label:"Eşik",    from:-80, to:0,   unit:"dB", fallback:-40 },
         { stage:"gate", key:"attack_ms",    label:"Atak",    from:0,   to:200, unit:"ms", fallback:10 },

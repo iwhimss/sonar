@@ -51,6 +51,10 @@ HEALTH_INTERVAL = 2.0
 #: verilir. Sessizce susan bir kanal, kullanıcının bulabileceği en zor hata.
 LINK_FAILURE_LIMIT = 3
 
+#: Yeniden inşadan hemen sonraki uzlaştırma denemesi. Node'lar doğmuş görünse de
+#: portları biraz sonra beliriyor; ilk turda `pw-link` 255 dönebiliyor.
+REBUILD_LINK_ATTEMPTS = 5
+
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
@@ -93,7 +97,6 @@ def live_params(
 ) -> dict[str, dict[str, float]]:
     """Her DSP node'una yazılacak port değerleri: `{node adı: {port: değer}}`."""
     nodes = confgen.dsp_nodes(cfg)
-    stages = _stages_for(mic=False)
     mic_stages = _stages_for(mic=True)
     mic_ids = {mic.id for mic in cfg.mic_chains}
     shared = {mic.id for mic in cfg.mic_chains if mic.share_chain_with_mic}
@@ -105,15 +108,28 @@ def live_params(
             # Zinciri paylaşan mikrofonun kendi DSP'si yok; birincilinki geçerli.
             continue
         profile = load_profile(target, _active_profile(cfg, target))
-        out[node] = profile_to_params(
-            profile, stages=mic_stages if target in mic_ids else stages, channels=2
+        # Spatial yapısal: yalnızca hedefin kendi ayarında açıksa grafta var. Olmayan
+        # bir node'a parametre yazmak sessizce kaybolurdu.
+        stages = (
+            mic_stages
+            if target in mic_ids
+            else _stages_for(mic=False, spatial=_spatial_on(cfg, target))
         )
+        out[node] = profile_to_params(profile, stages=stages, channels=2)
     return out
 
 
-def live_volumes(cfg: SonarConfig) -> dict[str, tuple[float, bool]]:
-    """Her fader node'una yazılacak `(lineer seviye, sustur)` değerleri."""
+def live_volumes(
+    cfg: SonarConfig, duck: dict[str, float] | None = None
+) -> dict[str, tuple[float, bool]]:
+    """Her fader node'una yazılacak `(lineer seviye, sustur)` değerleri.
+
+    `duck` Smart Volume'un anlık kazançları (`engine.ducking`). ChatMix'le **çarpılarak**
+    birleşiyor: ikisi de kanalın çıkış gönderisine uygulanıyor ve tek toplanma noktası
+    burası olduğu için çakışmıyorlar.
+    """
     gains = chatmix_gains(cfg)
+    duck = duck or {}
     out: dict[str, tuple[float, bool]] = {}
 
     for channel in cfg.channels:
@@ -131,7 +147,7 @@ def live_volumes(cfg: SonarConfig) -> dict[str, tuple[float, bool]]:
                 continue
             # ChatMix yalnızca kulaklık miksini etkiler; yayın miksine dokunmaz.
             out[channel.loopback_node(bus.id)] = (
-                send.volume * gains.get(channel.id, 1.0),
+                send.volume * gains.get(channel.id, 1.0) * duck.get(channel.id, 1.0),
                 send.muted,
             )
 
@@ -159,12 +175,20 @@ def _active_profile(cfg: SonarConfig, target: str) -> str:
     return bus.active_profile if bus is not None else "Default"
 
 
-def _stages_for(*, mic: bool) -> tuple[FilterStage, ...]:
+def _spatial_on(cfg: SonarConfig, target: str) -> bool:
+    channel = cfg.channel(target)
+    if channel is not None:
+        return channel.spatial
+    bus = cfg.bus(target)
+    return bus.spatial if bus is not None else False
+
+
+def _stages_for(*, mic: bool, spatial: bool = False) -> tuple[FilterStage, ...]:
     """Zincirde gerçekten kurulmuş aşamalar — kurulu olmayan eklentiye yazmayalım."""
     wanted = CHAIN_ORDER
     if not mic:
         wanted = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
-    return plan_chain(wanted, channels=2).stages
+    return plan_chain(wanted, channels=2, spatial=spatial).stages
 
 
 # --------------------------------------------------------------------------- süpervizör
@@ -248,14 +272,20 @@ class Supervisor:
         self.control.flush()
         self.apply_targets(cfg)
 
-    def apply_volumes(self, cfg: SonarConfig, *, flush: bool = True) -> None:
+    def apply_volumes(
+        self,
+        cfg: SonarConfig,
+        *,
+        flush: bool = True,
+        duck: dict[str, float] | None = None,
+    ) -> None:
         """Tüm fader'ları yazar.
 
         Tek bir fader değişse bile hepsini yazıyoruz: kalıcı `pw-cli` oturumunda yazım
         maliyeti ölçülemeyecek kadar küçük (0.003 ms) ve böylece ChatMix'in iki kanalı
         birden sürmesi gibi bağlı etkiler kendiliğinden doğru çıkıyor.
         """
-        for node, (volume, muted) in live_volumes(cfg).items():
+        for node, (volume, muted) in live_volumes(cfg, duck).items():
             self.control.set_volume(node, volume)
             self.control.set_mute(node, muted)
         if flush:
@@ -339,7 +369,7 @@ class Supervisor:
         self._start_watchdog()
 
         self._wait_for_graph(cfg, stale)
-        self.reconcile_links(cfg)
+        self.reconcile_links(cfg, attempts=REBUILD_LINK_ATTEMPTS)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()
@@ -351,7 +381,9 @@ class Supervisor:
             nodes.add(target)
         return nodes
 
-    def reconcile_links(self, cfg: SonarConfig | None = None) -> list[tuple[str, str]]:
+    def reconcile_links(
+        self, cfg: SonarConfig | None = None, *, attempts: int = 1
+    ) -> list[tuple[str, str]]:
         """Kanal çıkışlarını bus gönderilerine bağlar. Eksik kalanları döndürür.
 
         Bu bağlantılar conf'ta `target.object` ile ifade edilemiyor: `_fx` node'u
@@ -378,13 +410,24 @@ class Supervisor:
             self._note_links([])
             return []
 
-        existing = self.control.node_links()
-        missing = [pair for pair in wanted if pair not in existing]
-        if missing:
+        # `attempts` yalnızca yeniden inşadan sonra 1'den büyük veriliyor: node'lar
+        # doğmuş görünse de portları birkaç yüz milisaniye sonra beliriyor ve `pw-link`
+        # o aralıkta 255 dönüyor. Ölçüldü (Faz 22): zincire altı node eklenince
+        # açılışta üç uzlaştırma turu üst üste başarısız oldu ve kullanıcıya gereksiz
+        # "ses yolu koptu" uyarısı gitti — oysa bekçi saniyeler içinde onarıyordu.
+        missing: list[tuple[str, str]] = []
+        for attempt in range(max(attempts, 1)):
+            existing = self.control.node_links()
+            missing = [pair for pair in wanted if pair not in existing]
+            if not missing:
+                break
             for output, target in missing:
                 self.control.link_nodes(output, target)
             time.sleep(0.1)
             missing = [pair for pair in wanted if pair not in self.control.node_links()]
+            if not missing or attempt + 1 >= max(attempts, 1):
+                break
+            time.sleep(0.2)
 
         self._note_links(missing)
         return missing
@@ -599,7 +642,7 @@ class Supervisor:
         if cfg is None:  # pragma: no cover - reconcile'dan önce çökme
             return
         self._wait_for_graph(cfg, stale)
-        self.reconcile_links(cfg)
+        self.reconcile_links(cfg, attempts=REBUILD_LINK_ATTEMPTS)
         self.apply_live(cfg)
         for callback in list(self.on_rebuild):
             callback()

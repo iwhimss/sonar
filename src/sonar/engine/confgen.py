@@ -179,7 +179,7 @@ def _channel_chain(channel: Channel, rate: int, bands: int) -> dict:
 
     return _filter_chain(
         description=f"Sonar {channel.name}",
-        graph=_graph(rate, bands, channels=2),
+        graph=_graph(rate, bands, channels=2, spatial=channel.spatial),
         capture={
             "node.name": channel.sink_node,
             "node.description": f"Sonar {channel.name} — Virtual Output",
@@ -292,7 +292,7 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
 
     return _filter_chain(
         description=f"Sonar {bus.name}",
-        graph=_graph(rate, bands, channels=2),
+        graph=_graph(rate, bands, channels=2, spatial=bus.spatial),
         capture={
             "node.name": bus.sink_node,
             "node.description": f"Sonar {bus.name} — Virtual Output",
@@ -424,15 +424,23 @@ def _filter_chain(*, description: str, graph: dict, capture: dict, playback: dic
     }
 
 
-def _graph(rate: int, bands: int, *, channels: int, mic: bool = False) -> dict:
-    """DeepFilterNet yalnızca mikrofon zincirinde; oynatma zincirinde anlamı yok."""
+def _graph(
+    rate: int, bands: int, *, channels: int, mic: bool = False, spatial: bool = False
+) -> dict:
+    """DeepFilterNet yalnızca mikrofon zincirinde; oynatma zincirinde anlamı yok.
+
+    `spatial` yapısal: açıkken zincire iki HRTF konvolveri giriyor. Kapalıyken node'lar
+    grafta **hiç** bulunmuyor — bypass etmek onları ucuzlatmıyordu.
+    """
     from sonar.core.model import CHAIN_ORDER, FilterStage
 
     stages = CHAIN_ORDER
     if not mic:
         stages = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
     del rate  # örnekleme hızı zincire değil, node özelliklerine yazılır
-    return build_chain(plan_chain(stages, channels=channels, band_count=bands))
+    return build_chain(
+        plan_chain(stages, channels=channels, band_count=bands, spatial=spatial)
+    )
 
 
 def _stereo(rate: int) -> dict:

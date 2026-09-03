@@ -53,6 +53,11 @@ class _ThreadBridge(QObject):
 
     streams_changed = Signal()
     levels_ready = Signal(str)
+    #: API deltası. `_queue_delta` bir `QTimer` başlatıyor ve bu yalnızca Qt'nin kendi
+    #: iş parçacığında yasal; bağlantı bekçisi (`supervisor`) ise kendi iş parçacığından
+    #: delta yayınlıyor. Ölçüldü: "QObject::startTimer: Timers cannot be started from
+    #: another thread" — yani `path_broken` uyarısı arayüze hiç ulaşmıyordu.
+    delta_ready = Signal(object)
 
 
 class SonarDaemon:
@@ -85,6 +90,7 @@ class SonarDaemon:
         self._bridge = _ThreadBridge()
         self._bridge.streams_changed.connect(self._streams_event)
         self._bridge.levels_ready.connect(self._emit_levels)
+        self._bridge.delta_ready.connect(self._on_delta)
         self.supervisor.on_failure.append(self._graph_failed)
 
     # ------------------------------------------------------------------ açılış
@@ -137,7 +143,15 @@ class SonarDaemon:
     # ------------------------------------------------------------------ sinyaller
 
     def _queue_delta(self, delta: dict) -> None:
-        """API'den gelen değişiklik. `kind` başına teklenir, 50 ms'de bir yayılır."""
+        """API'den gelen değişiklik — **herhangi bir iş parçacığından** çağrılabilir.
+
+        Qt sinyali üzerinden geçiyor ki `QTimer` her zaman Qt'nin iş parçacığında
+        başlatılsın (bkz. `_ThreadBridge.delta_ready`).
+        """
+        self._bridge.delta_ready.emit(delta)
+
+    def _on_delta(self, delta: dict) -> None:
+        """`kind` başına teklenir, 50 ms'de bir yayılır."""
         self._pending[self._delta_key(delta)] = delta
         if not self._timer.isActive():
             self._timer.start()

@@ -14,13 +14,30 @@ Node adları `FilterStage` değerleriyle birebir aynıdır (`df`, `gate`, `eq`, 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import pairwise
 
 from sonar.core.dsp import registry
 from sonar.core.dsp.params import eq_bypass_ports, stage_bypass_ports
 from sonar.core.model import CHAIN_ORDER, FilterStage
 
-__all__ = ["ChainPlan", "build_chain", "plan_chain"]
+__all__ = ["ChainPlan", "StageBlock", "build_chain", "plan_chain", "stage_block"]
+
+
+@dataclass(frozen=True, slots=True)
+class StageBlock:
+    """Bir aşamanın graf karşılığı: bir ya da **birden çok** node.
+
+    Aşamaların çoğu tek bir eklenti node'u (`gate`, `eq`, …) ve bu sınıf onların da
+    kapsayıcısı. Ama Spatial Audio altı node'dan oluşan bir alt graf, Volume Boost ise
+    kanal başına bir node — PipeWire'ın `linear` ve `spatializer` eklentileri **mono**.
+
+    `audio_in` / `audio_out` dışarıya açılan portlar, kanal sırasıyla ve
+    `"node:port"` biçiminde tam nitelikli.
+    """
+
+    nodes: tuple[dict, ...]
+    audio_in: tuple[str, ...]
+    audio_out: tuple[str, ...]
+    links: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +62,7 @@ def plan_chain(
     channels: int = 2,
     band_count: int = 10,
     require_installed: bool = True,
+    spatial: bool = False,
 ) -> ChainPlan:
     """İstenen aşamalardan kurulabilir olanları seçer.
 
@@ -60,6 +78,23 @@ def plan_chain(
 
     for stage in CHAIN_ORDER:
         if stage not in stages:
+            continue
+        # Boost ve Spatial bir LV2/LADSPA eklentisine dayanmıyor; katalogda yoklar.
+        if stage is FilterStage.BOOST:
+            kept.append(stage)
+            continue
+        if stage is FilterStage.SPATIAL:
+            # Yapısal: yalnızca hedef açıkça istediğinde kuruluyor. Konvolver bypass'ta
+            # da CPU yiyor (ölçüldü: boşta %0.0 → %14.4), bu yüzden kapalıyken grafta
+            # hiç bulunmuyor. Mono zincirde (mikrofon) anlamsız; SOFA yoksa kurulamaz.
+            if (
+                not spatial
+                or channels != 2
+                or (require_installed and not registry.sofa_available())
+            ):
+                skipped.append(stage)
+            else:
+                kept.append(stage)
             continue
         key = _plugin_key(stage, channels, band_count)
         if require_installed and not registry.is_available(key):
@@ -81,29 +116,152 @@ def build_chain(plan: ChainPlan) -> dict:
     if not plan.stages:
         raise ValueError("zincirde hiç aşama yok; filter-chain yerine loopback kullanın")
 
-    nodes = [_node(stage, plan.plugins[stage]) for stage in plan.stages]
-    links = []
-    for upstream, downstream in pairwise(plan.stages):
-        out_spec, in_spec = plan.plugins[upstream], plan.plugins[downstream]
-        for index in range(plan.channels):
-            links.append(
-                {
-                    "output": f"{upstream.value}:{out_spec.audio_out[index]}",
-                    "input": f"{downstream.value}:{in_spec.audio_in[index]}",
-                }
-            )
+    blocks = [stage_block(stage, plan, plan.channels) for stage in plan.stages]
 
-    first, last = plan.stages[0], plan.stages[-1]
-    first_spec, last_spec = plan.plugins[first], plan.plugins[last]
+    nodes: list[dict] = []
+    links: list[dict] = []
+    for block in blocks:
+        nodes.extend(block.nodes)
+    # Link sırası: her bloğun kendi iç linkleri, sonra bir sonrakine geçiş. Tek node'lu
+    # aşamalarda iç link yok, yani bu sıra eski `pairwise` düzeniyle birebir aynı —
+    # mevcut altın conf byte olarak değişmiyor.
+    for index, block in enumerate(blocks):
+        links.extend(block.links)
+        if index + 1 < len(blocks):
+            nxt = blocks[index + 1]
+            for channel in range(plan.channels):
+                links.append({"output": block.audio_out[channel], "input": nxt.audio_in[channel]})
 
     graph: dict = {
         "nodes": nodes,
-        "inputs": [f"{first.value}:{p}" for p in first_spec.audio_in[: plan.channels]],
-        "outputs": [f"{last.value}:{p}" for p in last_spec.audio_out[: plan.channels]],
+        "inputs": list(blocks[0].audio_in),
+        "outputs": list(blocks[-1].audio_out),
     }
     if links:
         graph["links"] = links
     return graph
+
+
+def stage_block(stage: FilterStage, plan: ChainPlan, channels: int) -> StageBlock:
+    """Bir aşamanın node'ları, iç linkleri ve dışarı açılan portları."""
+    if stage is FilterStage.SPATIAL:
+        return _spatial_block(channels)
+    if stage is FilterStage.BOOST:
+        return _boost_block(channels)
+    spec = plan.plugins[stage]
+    return StageBlock(
+        nodes=(_node(stage, spec),),
+        audio_in=tuple(f"{stage.value}:{p}" for p in spec.audio_in[:channels]),
+        audio_out=tuple(f"{stage.value}:{p}" for p in spec.audio_out[:channels]),
+    )
+
+
+# --------------------------------------------------------------------------- Volume Boost
+
+
+def _boost_block(channels: int) -> StageBlock:
+    """Kanal başına bir PipeWire `linear` node'u.
+
+    `linear` mono: `Out = In * Mult + Add`. Bypass `Mult = 1.0`, yani conf bypass'ta
+    doğuyor ve boost'u açıp kapatmak grafı değiştirmiyor.
+    """
+    names = _channel_names(FilterStage.BOOST, channels)
+    nodes = tuple(
+        {
+            "type": registry.PluginKind.BUILTIN.value,
+            "name": name,
+            "label": "linear",
+            "control": {"Mult": 1.0, "Add": 0.0},
+        }
+        for name in names
+    )
+    return StageBlock(
+        nodes=nodes,
+        audio_in=tuple(f"{name}:In" for name in names),
+        audio_out=tuple(f"{name}:Out" for name in names),
+    )
+
+
+# --------------------------------------------------------------------------- Spatial Audio
+
+
+def _spatial_block(channels: int) -> StageBlock:
+    """HRTF ile iki sanal hoparlör.
+
+    Alt graf (stereo):
+
+    ```
+    spatial_l ─┬─ "Out L" ─► spatial_mix_l:"In 1"
+               └─ "Out R" ─► spatial_mix_r:"In 1"
+    spatial_r ─┬─ "Out L" ─► spatial_mix_l:"In 2"
+               └─ "Out R" ─► spatial_mix_r:"In 2"
+    ```
+
+    `spatializer` mono girip stereo çıkıyor, yani iki sanal hoparlörün binaural
+    çıktısını **toplamak** gerekiyor; mikserler bunun için.
+
+    ## Neden bu blok yapısal (conf'a girip çıkıyor)
+
+    İlk sürümde blokta ayrıca bir kuru yol ve karışım kazançları vardı; aşama
+    "bypass"ta bile konvolverler çalışıyordu. Ölçüldü: altı zincirde **boştaki CPU
+    %0.0 → %14.4**. Bir konvolveri bypass etmek onu ucuzlatmıyor.
+
+    Bu yüzden Spatial Audio, projedeki tek "aşamayı aç/kapa = grafı yeniden kur"
+    istisnası. Açma/kapama profilde değil, hedefin kendi ayarında (`Channel.spatial`,
+    `MasterBus.spatial`) — böylece profil değiştirmek asla grafı yeniden kurmuyor,
+    Faz 2'nin değişmez kuralı bozulmuyor.
+    """
+    if channels != 2:  # pragma: no cover - plan_chain buraya izin vermez
+        raise ValueError("Spatial Audio yalnızca stereo zincirde kurulabilir")
+
+    config = {"filename": registry.hrtf_file()}
+    nodes = (
+        _sofa("spatial_l", config),
+        _sofa("spatial_r", config),
+        _mixer("spatial_mix_l"),
+        _mixer("spatial_mix_r"),
+    )
+    links = (
+        {"output": "spatial_l:Out L", "input": "spatial_mix_l:In 1"},
+        {"output": "spatial_r:Out L", "input": "spatial_mix_l:In 2"},
+        {"output": "spatial_l:Out R", "input": "spatial_mix_r:In 1"},
+        {"output": "spatial_r:Out R", "input": "spatial_mix_r:In 2"},
+    )
+    return StageBlock(
+        nodes=nodes,
+        audio_in=("spatial_l:In", "spatial_r:In"),
+        audio_out=("spatial_mix_l:Out", "spatial_mix_r:Out"),
+        links=links,
+    )
+
+
+def _builtin(name: str, label: str, control: dict | None = None) -> dict:
+    node = {"type": registry.PluginKind.BUILTIN.value, "name": name, "label": label}
+    if control:
+        node["control"] = control
+    return node
+
+
+def _mixer(name: str) -> dict:
+    """İki sanal hoparlörün aynı kulağa düşen katkılarını toplar."""
+    return _builtin(name, "mixer", {"Gain 1": 1.0, "Gain 2": 1.0})
+
+
+def _sofa(name: str, config: dict) -> dict:
+    return {
+        "type": registry.PluginKind.SOFA.value,
+        "name": name,
+        "label": "spatializer",
+        "config": config,
+        "control": {"Azimuth": 0.0, "Elevation": 0.0, "Radius": 1.0},
+    }
+
+
+def _channel_names(stage: FilterStage, channels: int) -> tuple[str, ...]:
+    """Kanal başına node adı. Mono zincirde sonek yok, stereo'da `_l` / `_r`."""
+    if channels == 1:
+        return (stage.value,)
+    return (f"{stage.value}_l", f"{stage.value}_r")
 
 
 def _node(stage: FilterStage, spec: registry.PluginSpec) -> dict:

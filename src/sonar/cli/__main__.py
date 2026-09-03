@@ -368,6 +368,42 @@ def _cmd_route_output(client: Client, args) -> int:
     return 0
 
 
+def _cmd_spatial(client: Client, args) -> int:
+    client.call("SetSpatial", args.target, args.state == "on")
+    print(f"{args.target} Spatial Audio: {args.state}  (graf yeniden kuruluyor)")
+    return 0
+
+
+def _cmd_smart(client: Client, args) -> int:
+    """Smart Volume: bir kanal konuşurken diğerlerini kıs."""
+    fields: dict = {}
+    if args.state:
+        fields["enabled"] = args.state == "on"
+    if args.trigger:
+        fields["trigger_channels"] = args.trigger
+    if args.targets is not None:
+        fields["target_channels"] = args.targets
+    for name in ("reduction_db", "threshold_db", "attack_ms", "hold_ms", "release_ms"):
+        value = getattr(args, name)
+        if value is not None:
+            fields[name] = value
+
+    if fields:
+        duck = client.call("SetDucking", json.dumps(fields))
+    else:
+        duck = (client.call("GetState")["config"] or {}).get("ducking") or {}
+
+    targets = duck.get("target_channels") or ["(tetikleyici olmayan hepsi)"]
+    print(f"Smart Volume : {'açık' if duck.get('enabled') else 'kapalı'}")
+    print(f"tetikleyici  : {', '.join(duck.get('trigger_channels') or []) or '(yok)'}")
+    print(f"hedef        : {', '.join(targets)}")
+    print(f"indirim      : {duck.get('reduction_db', 0):.1f} dB  "
+          f"(eşik {duck.get('threshold_db', 0):.1f} dB)")
+    print(f"zarf         : atak {duck.get('attack_ms', 0):.0f} ms · "
+          f"tut {duck.get('hold_ms', 0):.0f} ms · bırakma {duck.get('release_ms', 0):.0f} ms")
+    return 0
+
+
 def _cmd_obs(client: Client, args) -> int:
     """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlaması."""
     enabled = args.state == "on"
@@ -550,6 +586,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("channel")
     p.add_argument("bus", help="çıkış bus'ının kimliği")
 
+    p = sub.add_parser("spatial", help="Spatial Audio (HRTF) aç/kapa — yapısal")
+    p.add_argument("target", help="kanal veya çıkış bus'ı")
+    p.add_argument("state", choices=("on", "off"))
+
+    p = sub.add_parser("smart", help="Smart Volume (bir kanal konuşurken diğerlerini kıs)")
+    p.add_argument("state", nargs="?", choices=("on", "off"), help="verilmezse yalnızca gösterir")
+    p.add_argument("--trigger", nargs="+", metavar="KANAL", help="sesi izlenen kanal(lar)")
+    p.add_argument("--targets", nargs="*", metavar="KANAL",
+                   help="kısılacak kanallar; boş verilirse tetikleyici olmayan hepsi")
+    p.add_argument("--reduction-db", type=float, dest="reduction_db")
+    p.add_argument("--threshold-db", type=float, dest="threshold_db")
+    p.add_argument("--attack-ms", type=float, dest="attack_ms")
+    p.add_argument("--hold-ms", type=float, dest="hold_ms")
+    p.add_argument("--release-ms", type=float, dest="release_ms")
+
     p = sub.add_parser("obs", help="kanal için OBS'e ayrı sanal giriş cihazı ver")
     p.add_argument("channel")
     p.add_argument("state", choices=("on", "off"))
@@ -593,6 +644,8 @@ _COMMANDS = {
     "devices": _cmd_devices,
     "device": _cmd_device,
     "obs": _cmd_obs,
+    "smart": _cmd_smart,
+    "spatial": _cmd_spatial,
     "channel": _cmd_channel,
     "output": _cmd_output,
     "send": _cmd_route_output,

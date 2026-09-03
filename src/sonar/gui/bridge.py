@@ -627,6 +627,37 @@ class SonarBridge(QObject):
         ]
 
     @Slot(str, result=bool)
+    def spatialEnabled(self, target: str) -> bool:
+        """Hedefte Spatial Audio açık mı? Profilde değil, hedefin kendi ayarında."""
+        config = self._state.get("config") or {}
+        for group in ("channels", "buses"):
+            for row in config.get(group, []):
+                if row.get("id") == target:
+                    return bool(row.get("spatial"))
+        return False
+
+    @Slot(result=bool)
+    def spatialAvailable(self) -> bool:
+        """SOFA eklentisi ve HRTF dosyası var mı? Yoksa aşama zincire hiç girmiyor."""
+        from sonar.core.dsp import registry
+
+        return registry.sofa_available()
+
+    @Slot(result="QVariant")
+    def ducking(self) -> dict:
+        """Smart Volume ayarları."""
+        return dict((self._state.get("config") or {}).get("ducking") or {})
+
+    @Slot("QVariant")
+    def setDucking(self, fields: Any) -> None:
+        """Smart Volume ayarlarını değiştirir. Yalnızca verilen alanlar yazılır."""
+        import json as _json
+
+        payload = dict(fields) if fields else {}
+        self._call("SetDucking", _json.dumps(payload))
+        self.refresh()
+
+    @Slot(str, result=bool)
     def isInputChannel(self, target: str) -> bool:
         """Hedef bir giriş kanalı mı? Sabit `"mic"`/`"stream_mic"` listesi yetmiyor —
         kullanıcı kendi giriş kanalını ekleyebiliyor (Faz 13)."""

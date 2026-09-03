@@ -20,19 +20,45 @@ def all_installed(monkeypatch):
 
 def test_plan_keeps_chain_order_regardless_of_input_order(all_installed):
     plan = plan_chain((S.LIMITER, S.EQ, S.DEEPFILTER, S.COMP, S.GATE))
-    assert plan.stages == CHAIN_ORDER
+    assert plan.stages == tuple(
+        s for s in CHAIN_ORDER if s not in (S.SPATIAL, S.BOOST)
+    ), "istenmeyen aşama zincire girmemeli"
+
+
+def test_boost_is_always_in_the_chain(all_installed):
+    """Boost bypass'ta bedava (`Mult = 1`), bu yüzden her zaman kurulu."""
+    assert S.BOOST in plan_chain().stages
+
+
+def test_spatial_is_structural_and_off_by_default(all_installed):
+    """Konvolver bypass'ta da CPU yiyor (ölçüldü: boşta %0.0 → %14.4)."""
+    assert S.SPATIAL not in plan_chain().stages
+    assert plan_chain(spatial=True).stages == CHAIN_ORDER
+
+
+def test_spatial_is_dropped_from_a_mono_chain(all_installed):
+    """Kulaklık simülasyonunun mikrofon zincirinde karşılığı yok."""
+    plan = plan_chain(channels=1, spatial=True)
+    assert S.SPATIAL not in plan.stages
+    assert S.SPATIAL in plan.skipped
+    assert S.BOOST in plan.stages
+
+
+def test_spatial_is_dropped_without_a_sofa_plugin(monkeypatch, all_installed):
+    monkeypatch.setattr(registry, "sofa_available", lambda: False)
+    assert S.SPATIAL in plan_chain(spatial=True).skipped
 
 
 def test_plan_skips_missing_plugins(monkeypatch):
     monkeypatch.setattr(registry, "is_available", lambda key: not key.startswith("deepfilter"))
     plan = plan_chain()
     assert S.DEEPFILTER not in plan.stages
-    assert plan.skipped == (S.DEEPFILTER,)
+    assert plan.skipped == (S.DEEPFILTER, S.SPATIAL), "spatial zaten varsayılan kapalı"
     assert plan.stages[0] is S.GATE
 
 
 def test_plan_ignores_availability_when_asked():
-    plan = plan_chain(require_installed=False)
+    plan = plan_chain(require_installed=False, spatial=True)
     assert plan.stages == CHAIN_ORDER
 
 
@@ -50,12 +76,32 @@ def test_plan_rejects_odd_channel_counts():
 
 
 def test_graph_wires_stages_in_order(all_installed):
-    graph = build_chain(plan_chain())
-    assert [node["name"] for node in graph["nodes"]] == [s.value for s in CHAIN_ORDER]
+    graph = build_chain(plan_chain((S.DEEPFILTER, S.GATE, S.EQ, S.COMP, S.LIMITER)))
+    assert [node["name"] for node in graph["nodes"]] == ["df", "gate", "eq", "comp", "lim"]
     assert graph["inputs"] == ["df:Audio In L", "df:Audio In R"]
     assert graph["outputs"] == ["lim:out_l", "lim:out_r"]
     # 5 aşama, 4 geçiş, kanal başına bir link
     assert len(graph["links"]) == 8
+
+
+def test_multi_node_stages_expose_a_single_pair_of_ports(all_installed):
+    """Spatial dört node, Boost iki node; zincir bunu bilmek zorunda değil."""
+    graph = build_chain(plan_chain(spatial=True))
+    names = [node["name"] for node in graph["nodes"]]
+    assert names == [
+        "df", "gate", "eq", "comp",
+        "spatial_l", "spatial_r", "spatial_mix_l", "spatial_mix_r",
+        "boost_l", "boost_r", "lim",
+    ]  # fmt: skip
+    assert graph["outputs"] == ["lim:out_l", "lim:out_r"]
+    # comp → spatial girişi, spatial çıkışı → boost, boost → lim
+    links = {(link["output"], link["input"]) for link in graph["links"]}
+    assert ("comp:out_l", "spatial_l:In") in links
+    assert ("spatial_mix_l:Out", "boost_l:In") in links
+    assert ("boost_l:Out", "lim:in_l") in links
+    # İki sanal hoparlörün aynı kulağa düşen katkıları toplanıyor.
+    assert ("spatial_l:Out L", "spatial_mix_l:In 1") in links
+    assert ("spatial_r:Out L", "spatial_mix_l:In 2") in links
 
 
 def test_missing_stage_is_relinked_not_left_dangling(monkeypatch):
@@ -80,10 +126,24 @@ def test_mono_chain_uses_mono_ports(all_installed):
     assert len(graph["links"]) == 1
 
 
-def test_empty_chain_is_an_error(monkeypatch):
-    monkeypatch.setattr(registry, "is_available", lambda _key: False)
+def test_empty_chain_is_an_error():
+    """Aşamasız bir filter-chain anlamsız; çağıran taraf loopback kurmalı."""
     with pytest.raises(ValueError, match="loopback"):
-        build_chain(plan_chain())
+        build_chain(plan_chain((), require_installed=False))
+
+
+def test_boost_survives_even_when_no_plugin_is_installed(monkeypatch):
+    """Volume Boost PipeWire'ın kendi `linear` eklentisi; kurulum gerektirmiyor.
+
+    Yani hiçbir LV2/LADSPA eklentisi olmayan bir sistemde bile zincir kurulabiliyor
+    ve ses düz geçiyor.
+    """
+    monkeypatch.setattr(registry, "is_available", lambda _key: False)
+    monkeypatch.setattr(registry, "sofa_available", lambda: False)
+    plan = plan_chain()
+    assert plan.stages == (S.BOOST,)
+    graph = build_chain(plan)
+    assert graph["inputs"] == ["boost_l:In", "boost_r:In"]
 
 
 # --------------------------------------------------------------------------- başlangıç değerleri
@@ -92,7 +152,10 @@ def test_empty_chain_is_an_error(monkeypatch):
 def test_every_stage_starts_bypassed(all_installed):
     """Conf nötr doğar; gerçek profil canlı yazımla gelir. Bu kuralın testi."""
     graph = build_chain(plan_chain())
-    controls = {node["name"]: node["control"] for node in graph["nodes"]}
+    controls = {node["name"]: node.get("control", {}) for node in graph["nodes"]}
+    # Boost bypass'ı: çarpan 1. Spatial kapalıyken grafta hiç yok.
+    assert controls["boost_l"]["Mult"] == 1.0
+    assert "spatial_l" not in controls
     assert controls["gate"]["enabled"] == 0.0
     assert controls["eq"]["enabled"] == 0.0
     assert controls["comp"]["enabled"] == 0.0
