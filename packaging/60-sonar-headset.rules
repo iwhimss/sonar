@@ -1,0 +1,18 @@
+# Sonar — kulaklığın ChatMix tekerini okuyabilmek için HID erişimi.
+#
+# Kurulum:
+#   sudo cp packaging/60-sonar-headset.rules /etc/udev/rules.d/
+#   sudo rm -f /etc/udev/rules.d/99-sonar-headset.rules    # varsa eski kopyayı sil
+#   sudo udevadm control --reload && sudo udevadm trigger
+#
+# ## Dosya adındaki 60 neden önemli
+#
+# `uaccess` etiketini gören ACL'i systemd'nin `73-seat-late.rules` dosyası uyguluyor
+# (`TAG=="uaccess" ... RUN{builtin}+="uaccess"`). udev kuralları **ad sırasına göre**
+# çalıştığı için etiketi 73'ten sonra eklemek hiçbir işe yaramıyor: bu dosya bir dönem
+# `99-` adıyla duruyordu ve kural kurulmasına rağmen `/dev/hidraw*` erişilemez kalıyordu
+# (ölçüldü). 60, systemd'nin `70-uaccess.rules`'ından da önce.
+#
+# `uaccess` erişimi o an oturum açmış kullanıcıya verir; sabit bir gruba yazmaktan daha
+# dar bir yetki.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", TAG+="uaccess"

@@ -235,3 +235,69 @@ Media'nın yayın fader'ı kapalıyken müzik çalıyor:
 |---|---|
 | kulaklıkta | **-23.0 dBFS** |
 | yayında | **-240.0 dBFS** |
+
+---
+
+## Test turu 3 ölçümleri (2026-09-04)
+
+Faz 25–32. Hepsi canlı graf üzerinde, ton enjeksiyonu + numpy analiziyle.
+
+> **Ölçüm yöntemi hakkında bir uyarı.** Bu turda CPU ölçümlerinin bir kısmı
+> `pgrep -f "pipewire -c <conf>"` ile PID buluyordu ve bu `timeout` sarmalayıcısını
+> yakalıyordu — her şey %0.0 okunuyordu. Aşağıdaki sayılar `pipewire` sürecinin kendi
+> PID'iyle yeniden ölçüldü.
+
+### Master ve fader
+
+| ölçüm | sonuç |
+|---|---|
+| Master yayın fader'ı %50, OBS "Ses Çıkışı Yakalama" (monitör) | -23.0 → **-29.1 dBFS** |
+| Aynı ayarla OBS "Ses Girişi Yakalama" (sanal kaynak) | -23.0 → **-29.1 dBFS** |
+| Fader %200 | `channelVolumes = 2.0` = **+6.02 dB** |
+| Fader %300 | `channelVolumes = 3.0` = **+9.54 dB** |
+
+Düzeltmeden önce monitör master fader'ını hiç duymuyordu (`monitor.channel-volumes`
+varsayılan `false`); OBS'e iki kaynak ekleyen kullanıcı aynı miksi iki farklı seviyede
+alıyordu.
+
+### Spatial Audio: HRTF → crossfeed
+
+| | HRTF (eski) | crossfeed (yeni) |
+|---|---|---|
+| Kapalıyken çıkış | grafta yok | **bit-eş** (R = -240 dBFS) |
+| Boştaki CPU bedeli | **+%14.4** | +%0.4 |
+| Ses akarkenki CPU bedeli | ~%17 (tek kanal) | **+%1.8** (altı zincir) |
+| Açıp kapatmak | grafı yeniden kurar | **kesintisiz** |
+
+Crossfeed'in ölçülen davranışı:
+
+| ayar | karşı kulaktaki sızıntı | kulaklar arası gecikme |
+|---|---|---|
+| Performans ucu (0/0) | -18.4 dB | 0.29 ms |
+| Varsayılan (50/40) | -9.0 dB | 0.60 ms |
+| Sürükleyicilik ucu (100/100) | -5.1 dB | 1.15 ms |
+
+### EQ kapasitesi
+
+Band ekleme/silmenin canlı olabilmesi için zincir her zaman 32 bandlık eklentiyle
+kuruluyor. Bedeli (altı zincir, ses akarken): x16 **%11.6** → x32 **%12.0**.
+
+| ölçüm | sonuç |
+|---|---|
+| Band eklemek grafı kuruyor mu | `sonar_game` id 112 → 112 — **hayır** |
+| Eklenen bandın yanıtı (3 kHz, -18 dB) | -26.03 → **-44.03 dBFS** (tam -18.00) |
+| Band silince | **-26.03 dBFS** — birebir geri |
+
+### Smart Volume (profilde)
+
+| ölçüm | sonuç |
+|---|---|
+| İndirim | ayar -12.0 dB → ölçüm **-12.3 dB** |
+| Zarf | atak ~200 ms, bırakma ~600 ms (ayar 100/600 ms + 50 ms ölçüm çözünürlüğü) |
+
+### Metreler ve giriş kanalları
+
+| ölçüm | sonuç |
+|---|---|
+| Yeniden inşadan sonra metre sayacı | 31 → **166** (akmaya devam ediyor) |
+| İkinci giriş kanalının mute'u | `sonar_test mute=True`, `sonar_mic mute=False` |

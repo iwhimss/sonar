@@ -23,7 +23,31 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from sonar.engine.headset import detect_headsets  # noqa: E402
+from sonar.engine.headset import UDEV_RULE_NAME, detect_headsets
+
+
+def _explain_permissions() -> None:
+    """Erişim reddedildiğinde ne yapılacağını söyler — kurulu kuralı da kontrol ederek."""
+    rules = Path("/etc/udev/rules.d")
+    installed = rules / UDEV_RULE_NAME
+    stale = rules / "99-sonar-headset.rules"
+
+    print("  udev kuralı gerekiyor:", file=sys.stderr)
+    print(f"    sudo cp packaging/{UDEV_RULE_NAME} /etc/udev/rules.d/", file=sys.stderr)
+    if stale.exists():
+        print(
+            "    sudo rm /etc/udev/rules.d/99-sonar-headset.rules"
+            "   # eski kopya; 99 çok geç çalışıyor",
+            file=sys.stderr,
+        )
+    print("    sudo udevadm control --reload && sudo udevadm trigger", file=sys.stderr)
+    if installed.exists():
+        print(
+            f"\n  Not: {installed} zaten kurulu ama erişim yok. Kulaklığı çıkarıp\n"
+            "  takmak veya oturumu yeniden açmak gerekebilir — ACL cihaz eklendiğinde\n"
+            "  uygulanıyor.",
+            file=sys.stderr,
+        )
 
 
 def main(argv: list[str]) -> int:
@@ -39,12 +63,7 @@ def main(argv: list[str]) -> int:
         except OSError as error:
             print(f"{path}: açılamadı ({error.strerror}).", file=sys.stderr)
             if error.errno == 13:  # EACCES
-                print(
-                    "  udev kuralı gerekiyor:\n"
-                    "    sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/\n"
-                    "    sudo udevadm control --reload && sudo udevadm trigger",
-                    file=sys.stderr,
-                )
+                _explain_permissions()
     if not handles:
         return 1
 

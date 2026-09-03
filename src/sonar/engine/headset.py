@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     "KNOWN_HEADSETS",
     "UDEV_RULE",
+    "UDEV_RULE_NAME",
     "ChatMixReader",
     "HeadsetInfo",
     "decode_chatmix",
@@ -53,11 +54,17 @@ KNOWN_HEADSETS: dict[tuple[int, int], str] = {
 
 _SYS_HIDRAW = Path("/sys/class/hidraw")
 
+#: Kural dosyasının adı. **60** olması şart: `uaccess` etiketini gören ACL'i systemd'nin
+#: `73-seat-late.rules` dosyası uyguluyor ve udev kuralları ad sırasına göre çalışıyor.
+#: Dosya bir dönem `99-` adıyla duruyordu; kural kurulmasına rağmen `/dev/hidraw*`
+#: erişilemez kalıyordu çünkü etiket ACL uygulandıktan **sonra** ekleniyordu (ölçüldü).
+UDEV_RULE_NAME = "60-sonar-headset.rules"
+
 UDEV_RULE = """\
 # Sonar — kulaklığın ChatMix tekerini okuyabilmek için HID erişimi.
-# Kurulum:  sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
+# Kurulum:  sudo cp packaging/60-sonar-headset.rules /etc/udev/rules.d/
 #           sudo udevadm control --reload && sudo udevadm trigger
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", TAG+="uaccess"
 """
 
 
@@ -81,7 +88,7 @@ class HeadsetInfo:
             )
         return (
             f"{self.name} bulundu ama {self.device} okunamıyor. Donanım ChatMix tekeri için "
-            f"udev kuralı gerekiyor: packaging/99-sonar-headset.rules"
+            f"udev kuralı gerekiyor: packaging/{UDEV_RULE_NAME}"
         )
 
 

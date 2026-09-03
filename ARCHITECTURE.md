@@ -74,9 +74,8 @@ uygulama yönlendirme.
        her kanaldan HER bus'a bir gönderi loopback'i         │
                      ┌────────────────────────────────────────┘
                      │
-                     ├──▶ [sonar_personal]  ─master DSP─▶ sonar_personal_out ─▶ kulaklık
-                     ├──▶ [sonar_<çıkış-2>] ─master DSP─▶ sonar_<çıkış-2>_out ─▶ hoparlör
-                     └──▶ [sonar_stream]    ─master DSP─▶ sonar_stream_out ────▶ OBS
+                     ├──▶ [sonar_personal] ─master DSP─▶ sonar_personal_out ─▶ kulaklık
+                     └──▶ [sonar_stream]   ─master DSP─▶ sonar_stream_out ───▶ OBS
 
      GİRİŞ KANALLARI
   fiziksel ─┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord vb.)
@@ -85,10 +84,12 @@ uygulama yönlendirme.
                       └── yayına ────▶ sonar_stream     (mute ile aç/kapa)
 ```
 
-**Kanal tek bir çıkışa gider.** Conf her kanaldan **her** bus'a gönderi kurar; kanalın
-seçtiği çıkışın gönderisi açık, diğer çıkışlarınki susturulur. Yayın gönderisi her zaman
-ayrıca açıktır. Böylece kanalı başka bir cihaza taşımak bir *mute yazımı* — graf yeniden
-kurulmuyor, ses kesilmiyor. Ölçüldü: iki ayrı cihazda karşılıklı sızıntı **-240 dBFS**.
+Conf her kanaldan **her** bus'a bir gönderi kurar; fader o gönderi node'una uygulanıyor.
+
+Bir dönem birden fazla **çıkış** bus'ı olabiliyordu (kanal başına ayrı fiziksel cihaz,
+Faz 20). Kullanıcı için karışıklık ürettiği ve SteelSeries'te de yalnızca yayın modu
+kapalıyken bulunduğu için geri alındı (Faz 27). `MasterBus.kind` duruyor — yayın bus'ını
+çıkıştan ayıran alan o — ama çıkış her zaman bir tane.
 
 ### Node isimleri
 
@@ -118,18 +119,13 @@ beliriyordu ("Media kanalı neden mikrofon?").
 olarak yakalanabilir hâle gelir. Faydası kayıt sonrası düzenlemede: oyun sesini kısıp
 Discord'u bırakmak. EQ ile ilgisi yok — EQ zaten kanal başına.
 
-### Çıkış bus'ları
+### Master fader monitörü de kısıyor
 
-`MasterBus.kind` iki değer alır: `output` ve `stream`. Çıkış bus'ı **birden çok** olabilir
-ve her biri bir fiziksel cihaza karşılık gelir; kendi master fader'ı, DSP zinciri ve
-profilleri vardır. Yayın bus'ı tektir.
-
-Bu, kullanıcının "game kanalı laptopun hoparlörünü kullanırken media kanalı kulaklığın
-çıkış cihazını kullanabilmeli" isteğinin karşılığı. Alternatif — kanalı doğrudan cihaza
-bağlamak — daha az iş olurdu ama master fader'ı, master EQ'yu ve ChatMix'i atlardı.
-
-`Channel.sends` bir `dict[bus_id → BusSend]`; `Channel.output_bus` hangi çıkışa gittiğini
-söyler. Şema 3'e geçerken eski `personal`/`stream` sabit alanları bu sözlüğe taşındı.
+Bus sink'lerinin `capture.props` bölümünde `monitor.channel-volumes = true` var.
+Varsayılan `false` ve o hâlde sink'in **monitör portları master fader'dan önce**
+dallanıyor. Bedeli ölçüldü: OBS "Ses Çıkışı Yakalama" ile yayın miksini dinlediğinde
+master fader'ı hiç duymuyordu, "Ses Girişi Yakalama" duyuyordu — aynı miks iki farklı
+seviyede. Master her şeyi kısmalı.
 
 ### Cihaz seçimi conf'a girmiyor
 
@@ -204,11 +200,9 @@ Topoloji **sabittir**; efektler açılıp kapanmaz, yalnızca bypass edilir. Bu 
 açıp kapatmak graf değişikliği değil, tek bir parametre yazımıdır — ses kesintisi olmaz.
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ [spatial] ─▶ boost ─▶ limiter ─▶ çıkış
+kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ spatial ─▶ boost ─▶ limiter ─▶ çıkış
 mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
 ```
-
-Köşeli parantez: **yapısal** aşama — açık olmadığında grafta hiç bulunmaz (aşağıya bakın).
 
 | Aşama | Eklenti | Bypass |
 |---|---|---|
@@ -216,7 +210,7 @@ Köşeli parantez: **yapısal** aşama — açık olmadığında grafta hiç bul
 | Gate | `http://lsp-plug.in/plugins/lv2/gate_stereo` | `enabled` = 0 |
 | EQ | `http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo` | `enabled` = 0 |
 | Compressor | `http://lsp-plug.in/plugins/lv2/compressor_stereo` | `enabled` = 0 |
-| Spatial | PipeWire `sofa` `spatializer` (HRTF) + `mixer` | — *(yapısal)* |
+| Spatial | PipeWire `builtin` `copy` + `delay` + `bq_lowpass` + `mixer` | sızıntı kazancı 0 |
 | Volume Boost | PipeWire `builtin` `linear` | `Mult` = 1.0 |
 | Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
 
@@ -234,32 +228,34 @@ olarak değişmedi.
 Spatial bloğu (stereo):
 
 ```
-spatial_l ─┬─ "Out L" ─▶ spatial_mix_l:"In 1"
-           └─ "Out R" ─▶ spatial_mix_r:"In 1"
-spatial_r ─┬─ "Out L" ─▶ spatial_mix_l:"In 2"
-           └─ "Out R" ─▶ spatial_mix_r:"In 2"
+cp_l ─┬───────────────────────────────► mix_l:"In 1"   (doğrudan)
+      └─► delay_l ─► lowpass_l ────────► mix_r:"In 2"   (karşı kulağa sızıntı)
+cp_r ─┬───────────────────────────────► mix_r:"In 1"
+      └─► delay_r ─► lowpass_r ────────► mix_l:"In 2"
 ```
 
-Sol hoparlör `Azimuth = +genişlik`, sağ hoparlör `360 - genişlik`. Yön **ölçülerek**
-bulundu: `Azimuth = 330` verilen sol kanal sağ kulakta daha yüksek çıktı, yani PipeWire'ın
-konvansiyonu "0 = ön, artan derece **sola**". Ölçüm: 30°'de kulaklar arası gecikme
-0.38 ms / seviye farkı 2.5 dB; 60°'de 0.65 ms / 4.1 dB.
+Gerçek hoparlörlerde sol hoparlörün sesi sağ kulağa da ulaşır: biraz geç ve kafanın
+gölgelediği tizler kısılmış hâlde. Kulaklıkta bu hiç olmaz, ses "kafanın içinde" kalır.
+Blok tam bunu geri koyuyor. Bypass mikserin sızıntı kazancını 0 yapmak, yani
+**bit-şeffaf** ve graf hiç değişmiyor.
 
-### Spatial Audio neden yapısal
+### Spatial Audio neden HRTF değil
 
-Projenin değişmez kuralı "efekti açıp kapatmak grafı değiştirmez". Spatial bunun **tek
-istisnası**, çünkü ölçüm başka bir şey söyledi: bir HRTF konvolverini bypass etmek onu
-ucuzlatmıyor.
+İlk sürüm PipeWire'ın `sofa` `spatializer`'ıyla iki sanal hoparlör kuruyordu. Ölçüm onu
+çürüttü:
 
 | | boştaki CPU |
 |---|---|
-| Spatial zincirde yok | **%0.0** |
-| Spatial zincirde, bypass'ta | **%14.4** |
+| HRTF zincirde yok | %0.0 |
+| HRTF zincirde, bypass'ta | **%14.4** |
 
-Bu yüzden Spatial kapalıyken node'lar grafta hiç bulunmuyor. Açma/kapama **profilde
-değil** hedefin kendi ayarında (`Channel.spatial`, `MasterBus.spatial`) — profilde olsaydı
-profil değiştirmek grafı yeniden kurardı ve asıl kural bozulurdu. Genişlik/yükseklik/
-mesafe profilde ve canlı.
+Bir konvolveri bypass etmek onu ucuzlatmıyor. Bu yüzden aşamayı açıp kapatmak grafı
+yeniden kurmayı gerektiriyordu — projenin "efekt açmak grafı değiştirmez" kuralını
+bozan tek yerdi. Kullanıcı bunun yerine ucuz bir çözüm istedi; crossfeed'in bedeli altı
+zincir için **%1.8** ve yeniden kurulum gerekmiyor.
+
+Gerçek 7.1 sanal surround sekiz konvolver ve çok kanallı bir zincir isterdi;
+`.plan/99-backlog.md`'de kayıtlı.
 
 ### Smart Volume neden DSP değil
 
@@ -273,6 +269,20 @@ Bedeli çözünürlük — 50 ms'lik karar aralığı, konuşma için fazlasıyl
 
 ChatMix ile **çarpılarak** birleşiyor; ikisi de `live_volumes()` içinde tek noktada
 toplandığı için çakışmıyorlar. Ölçüldü: ayarlanan -12.0 dB indirim çıkışta -12.1 dB.
+
+Ayar **profilin içinde** (şema 4): tetikleyici, Smart Volume'u açık olan profili taşıyan
+kanalın kendisi. Böylece "Chat'in oyun profilinde açık, müzik profilinde kapalı" mümkün.
+Tetikleyici başına ayrı zarf tutuluyor; bir hedef birden fazla tetikleyicinin
+kapsamındaysa **en derin** indirim uygulanıyor.
+
+### EQ kapasitesi sabit
+
+Zincir her zaman `para_equalizer_x32` kuruyor. Eskiden band sayısı kapasiteyi seçiyordu
+(8/16/32) ve kapasite değişimi **yapısaldı**. Kullanıcı band eklemeyi/silmeyi eğriye sağ
+tıkla yapmak isteyince bu kabul edilemez oldu: her nokta eklemede ses kesilirdi.
+
+Bedeli ölçüldü (altı zincir, ses akarken): x16 **%11.6**, x32 **%12.0**. Kullanılmayan
+bandlar `ft = 0` ile kapalı ve analizörler zaten kapalı olduğu için fark neredeyse yok.
 
 ### LSP `para_equalizer` port sembolleri
 
@@ -364,12 +374,12 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (54)
+### Metotlar (51)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
 | `AddChannel` | `s name, s direction, s color` | Yeni kanal ekler ve id'sini döndürür. **Yapısal**. |
-| `AddOutputBus` | `s name, s device` | Yeni bir çıkış bus'ı (fiziksel cihaz + kendi master'ı). Sonuç: yeni id. |
+| `AddEqBand` | `s target, d freq, d gain_db` | Verilen frekansa yeni bir EQ bandı ekler. Sonuç: bandın indeksi. **Canlı**. |
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
 | `Diagnose` | `—` | Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar. |
@@ -389,23 +399,20 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
 | `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
-| `RemoveOutputBus` | `s bus` | Bir çıkış bus'ını siler; ona bağlı kanallar varsayılana düşer. |
+| `RemoveEqBand` | `s target, i index` | Bir EQ bandını siler. **Canlı**. |
 | `RemoveRule` | `s match_key, s pattern, s direction` | Kuralı kaldırır. `direction` boşsa desenin her iki yönü de silinir. |
-| `RenameBus` | `s bus, s name` |  |
 | `RenameProfile` | `s target, s old, s new` | Kullanıcı profilini yeniden adlandırır. |
 | `ReorderFavorites` | `s target, ? names` | Favori sırasını yeniden yazar. |
 | `ResetProfile` | `s target` | Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı). |
 | `SaveProfile` | `s target, s name` | Çalışılan profili yeni adla kaydeder ('farklı kaydet'). |
-| `SetBandCount` | `s target, i count` | EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur. |
 | `SetBusDevice` | `s bus, s device` | Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur. |
 | `SetChannelMute` | `s channel, s bus, b muted` | Kanalın bir miks yolunu susturur. |
-| `SetChannelOutput` | `s channel, s bus` | Kanalın hangi çıkış cihazına gideceği. Canlı — ses kesilmez. |
 | `SetChannelStreamSource` | `s channel, b enabled` | Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**. |
 | `SetChannelVolume` | `s channel, s bus, d value` | Kanalın bir miks yolundaki seviyesi (lineer, 1.0 = birim kazanç). |
 | `SetChatMix` | `d value` | ChatMix konumu (0–100, 50 = nötr). Yalnızca kulaklık miksini etkiler. |
 | `SetChatMixConfig` | `b enabled, s left, s right` | ChatMix'in hangi kanalları sürdüğü; virgülle çoklu kanal. |
 | `SetDefaultChannel` | `s channel` | Kuralla eşleşmeyen uygulamaların düşeceği kanal. |
-| `SetDucking` | `s fields_json` | Smart Volume ayarları. JSON sözlük; verilmeyen alanlar değişmez. |
+| `SetDucking` | `s target, s fields_json` | Bir kanalın **profilindeki** Smart Volume ayarları (şema 4). |
 | `SetEqBand` | `s target, i band, s field, s value` | `value` string taşınır: `band_type` metin, diğerleri sayı. |
 | `SetEqPreamp` | `s target, d value_db` | Ekolayzer öncesi kazanç. |
 | `SetFilterEnabled` | `s target, s stage, b enabled` | Bir DSP aşamasını açar/kapatır (canlı bypass). |
@@ -414,12 +421,12 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `SetMasterVolume` | `s bus, d value` | Personal/Stream bus'ının master seviyesi. |
 | `SetMicDevice` | `s chain, s device` | Mikrofon zincirinin giriş cihazı. **Yapısal**. |
 | `SetMicMonitor` | `s chain, b enabled` | Yan ton (kendi sesini kulaklıktan duyma). **Yapısal**. |
+| `SetMicMonitorVolume` | `s chain, d value` | Sidetone seviyesi (0.0–4.0 lineer). |
 | `SetMicMute` | `s chain, b muted` | Mikrofonu susturur. |
 | `SetMicStreamSend` | `s chain, b enabled` | Mikrofonu yayın miksine de gönderir. **Yapısal**. |
 | `SetMicVolume` | `s chain, d value` | Mikrofon zincirinin çıkış seviyesi. |
 | `SetProfileFavorite` | `s target, s name, b favorite` | Profili favorilere ekler veya çıkarır. Sayı sınırı yok. |
 | `SetRule` | `s match_key, s pattern, s channel, b is_regex, s direction` | Uygulama → hedef kuralı ekler veya günceller. |
-| `SetSpatial` | `s target, b enabled` | Spatial Audio (HRTF ile sanal hoparlörler). **Yapısal** — graf yeniden kurulur. |
 | `SetTakeOverDefaultSink` | `b enabled` | Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı). |
 | `SubscribeMeters` | `b enabled` | Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı. |
 

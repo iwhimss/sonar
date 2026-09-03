@@ -1,9 +1,0 @@
-# Sonar — kulaklığın ChatMix tekerini okuyabilmek için HID erişimi.
-#
-# Kurulum:
-#   sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
-#   sudo udevadm control --reload && sudo udevadm trigger
-#
-# `uaccess` etiketi erişimi o an oturum açmış kullanıcıya verir; sabit bir gruba
-# yazmaktan daha dar bir yetki.
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", MODE="0660", TAG+="uaccess"

@@ -132,18 +132,13 @@ sonar-cli favorite list game
 sonar-cli obs game on                   # bu kanalı OBS'e ayrı bir kaynak olarak ver
 ```
 
-Çıkışlar, mikrofon yönlendirme ve yeni efektler:
+Mikrofon yönlendirme ve efektler:
 
 ```bash
-sonar-cli output add "Hoparlör" --device alsa_output.pci-0000_00_1f.3.analog-stereo
-sonar-cli output list                   # hangi kanal hangi cihaza gidiyor
-sonar-cli send game hoparlor            # Game'i hoparlöre taşı (canlı, ses kesilmez)
-
 sonar-cli route Discord mic --direction in   # Discord hangi mikrofonu kullansın
 sonar-cli move 142 stream_mic                # çalan bir mikrofon akışını taşı
 
-sonar-cli spatial game on               # HRTF ile sanal hoparlörler
-sonar-cli smart on --trigger chat       # biri konuşunca diğer kanalları kıs
+sonar-cli smart chat on --reduction-db -12   # Chat konuşunca diğerlerini kıs
 ```
 
 Kulaklığın için AutoEQ düzeltme eğrisi varsa doğrudan içe aktarabilirsin:
@@ -181,23 +176,6 @@ Kanal başına ayrı OBS kaynağı **varsayılan olarak kapalı**. Açık olsayd
 sistemin mikrofon listesinde de görünürdü ("Media neden mikrofon?"). Yayında kanal başına
 ayrı track istiyorsan `sonar-cli obs <kanal> on` ile açarsın.
 
-### Birden fazla çıkış cihazı
-
-Her fiziksel cihaz kendi **çıkış bus'ını** alır: kendi master fader'ı, kendi EQ'su, kendi
-profilleri. Kanal hangisine gideceğini seçer, yani oyun laptop hoparlöründen, müzik
-kulaklıktan çalabilir.
-
-```
-Game  ─┐
-Chat  ─┼─▶ Kişisel Miks (master EQ + fader) ─▶ Kulaklık
-Media ─┘
-Aux   ───▶ Hoparlör (kendi EQ + fader'ı)    ─▶ Laptop hoparlörü
-   hepsi ─▶ Yayın Miksi                      ─▶ OBS
-```
-
-Kanalın çıkışını değiştirmek **canlı** — graf yeniden kurulmaz, ses kesilmez. Yeni bir
-çıkış **eklemek** yapısaldır (~200 ms). ChatMix, kanalın bağlı olduğu çıkışta uygulanır.
-
 ### Mikrofon yönlendirme
 
 Uygulamalar hem çıkış kanallarında hem giriş kanallarında görünür: Discord'un sesi
@@ -216,14 +194,13 @@ Zincir: **gürültü engelleme → gate → EQ → kompresör → spatial → bo
 
 | | |
 |---|---|
-| **Spatial Audio** | HRTF ile iki sanal hoparlör. Genişlik 0–60°, yükseklik, mesafe. Ölçüldü: 30°'de kulaklar arası gecikme 0.38 ms, 60°'de 0.65 ms. |
-| **Volume Boost** | Limiter'dan **önce** 0–12 dB düz kazanç, yani kırpma üretmez. Spatial'ın HRTF kaybını (-7.8 dB) telafi etmenin yeri de burası. |
-| **Smart Volume** | Sohbet kanalında ses olunca diğer kanalları kısar, susunca geri verir. Atak/tut/bırakma ayarlanabilir. Bir DSP aşaması değil, daemon tarafında bir zarf takipçisi. |
+| **Spatial Audio** | Kulaklar arası sızıntı (crossfeed): sol kanalın sesi biraz geç ve tizleri kısılmış hâlde sağ kulağa da gider — gerçek hoparlörlerde olan, kulaklıkta hiç olmayan şey. Sahne kafanın dışına çıkar. **Gerçek surround değil**; rekabetçi FPS'te kapalı tutmak yön algısını keskin bırakır. İki ayar: *Sürükleyicilik* ve *Mesafe*. |
+| **Volume Boost** | Limiter'dan **önce** 0–12 dB düz kazanç, yani kırpma üretmez. |
+| **Smart Volume** | Bu kanalda ses olunca diğer kanalları kısar, susunca geri verir. Ayar **profilin içinde**: Chat'in oyun profilinde açık, müzik profilinde kapalı olabilir. Bir DSP aşaması değil, daemon tarafında bir zarf takipçisi. |
 
-**Spatial Audio, projedeki tek "aç/kapa = graf yeniden kurulur" istisnası.** Bir HRTF
-konvolverini bypass etmek onu ucuzlatmıyor (ölçüldü: boştaki CPU %0.0 → %14.4), bu
-yüzden kapalıyken node'lar grafta hiç bulunmuyor. Açıkken ses akan bir kanalda tek
-çekirdeğin ~%17'sini yiyor — bilerek aç.
+Hepsi kesintisiz: açıp kapatmak grafı yeniden kurmuyor. Ölçüldü — Spatial kapalıyken
+çıkış girişe bit-eş, açıkken karşı kulakta -18…-5 dB kopya ve 0.3–1.2 ms gecikme;
+maliyeti altı zincir için tek çekirdeğin **~%1.8'i**.
 
 ---
 
@@ -251,8 +228,8 @@ Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](doc
 | Ekolayzer doğruluğu | çizilen eğri ile gerçek yanıt arasında **0.01 dB** |
 | Profil geçişi | 12 geçişte **0 kesinti, 0 tık** |
 | Boştaki CPU | %5–7 (mikser açıkken %12–13) |
-| Kanal izolasyonu | iki ayrı çıkış cihazında sızıntı **-240 dBFS** (dijital sessizlik) |
-| Spatial Audio | ses akarken tek kanalda **+%17** CPU; kapalıyken **%0** |
+| Kanal izolasyonu | kanallar arası sızıntı **-240 dBFS** (dijital sessizlik) |
+| Spatial Audio | altı zincir için **+%1.8** CPU |
 | Bellek | ~180–200 MB |
 | DeepFilterNet açıkken | **+%43** — pahalı, bilerek kullan |
 
@@ -269,6 +246,36 @@ Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](doc
 
 Bir şey duyulmuyorsa ilk komut **`sonar-cli doctor`**: beklenen ve gerçek bağlantıları
 karşılaştırır, doğmamış node'ları ve çakışan ses işleyicilerini söyler.
+
+---
+
+## Sonar'ı bırakırken
+
+Projeyi bir süre kullanmayacaksan hiçbir şey silmene gerek yok — tek komut her şeyi
+eski hâline döndürür:
+
+```bash
+./scripts/sonar-dev reset
+```
+
+Ne yapar: daemon'ı durdurur, sanal cihazları söker, varsayılan çıkış/giriş cihazını
+geri verir ve geriye bir şey kalıp kalmadığını doğrular. Uygulamalar bundan sonra
+doğrudan fiziksel cihazlara çalar.
+
+**EasyEffects'i tekrar açabilirsin** — Sonar durduğu için çakışma kalmaz:
+
+```bash
+systemctl --user start easyeffects
+```
+
+Ayarların ve profillerin `~/.config/sonar/` altında durur; `./scripts/sonar-dev start`
+ile kaldığın yerden devam edersin. Tamamen silmek istersen o dizini kaldırman yeterli.
+
+Sistem servisi olarak kurduysan (`systemctl --user enable sonar-daemon`) bırakırken:
+
+```bash
+systemctl --user disable --now sonar-daemon
+```
 
 ---
 
@@ -289,9 +296,9 @@ karşılaştırır, doğmamış node'ları ve çakışan ses işleyicilerini sö
 
   Teker okunmaya başlayınca mikserdeki slider salt okunur olur; iki kaynağın birbirini
   ezmesi istenmiyordu.
-* Yeniden inşa gerektiren işlemler: kanal/çıkış ekleme-silme, band sayısı, OBS kaynağı
-  ve Spatial Audio (~200 ms sessizlik). **Cihaz değiştirmek, kanalı başka bir çıkışa
-  taşımak, sidetone, ses seviyesi, EQ, filtre ve profil değişimi kesintisizdir.**
+* Yeniden inşa gerektiren tek işlem **kanal ekleme/silme** ve kanal başına OBS kaynağı
+  (~200 ms sessizlik). Cihaz değiştirmek, sidetone, ses seviyesi, EQ bandı ekleme/silme,
+  filtre ve profil değişimi **kesintisizdir**.
 * Kanal seviye metreleri kanalın **girişini** ölçer (DSP ve fader öncesi) — uygulamanın
   ne kadar yüksek çaldığını gösterir, EQ'dan etkilenmez.
 

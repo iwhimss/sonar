@@ -7,9 +7,11 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 32 — ChatMix tekeri, doğrulama, dokümantasyon
-**Son güncelleme:** 2026-09-03
-**Sonraki adım:** Faz 25 → 27 → 28 → 29 → 30 → 31 → 26 → 32 (yerleşim, arayüz son hâlini aldıktan sonra). Sonra kullanıcı dördüncü
+**Aktif faz:** — (test turu 4 bekleniyor)
+**Son güncelleme:** 2026-09-04
+**Sonraki adım:** Kullanıcı dördüncü test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/32-verify.md` içinde işaretsiz duruyor; ChatMix tekeri tek seferlik bir
+`sudo` bekliyor. Sonra Faz 11 — Paketleme. Sonra kullanıcı dördüncü
 test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 
 > **Test turu 3 (2026-09-03).** Kullanıcı ekran görüntüleriyle (`görsel-bug/`) ve
@@ -52,7 +54,7 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 20 | [Çoklu çıkış bus'ı](20-outputs.md) | 🟢 Tamamlandı |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | 🟢 Tamamlandı |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟢 Tamamlandı |
-| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🔴 udev kuralı yanlış sırada — Faz 32 |
+| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟡 udev sırası düzeldi, protokol bekliyor |
 | 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟢 Tamamlandı |
 | 25 | [Kırık kontroller](25-broken-controls.md) | 🟢 Tamamlandı |
 | 26 | [Yerleşim onarımı](26-layout.md) | 🟢 Tamamlandı |
@@ -61,16 +63,17 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 29 | [Smart Volume profile taşınıyor](29-smart-volume.md) | 🟢 Tamamlandı |
 | 30 | [DSP: crossfeed, Boost, mikrofon zinciri](30-dsp.md) | 🟢 Tamamlandı |
 | 31 | [EQ nokta ekleme/silme](31-eq-points.md) | 🟢 Tamamlandı |
-| 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | 🟡 Sıradaki |
+| 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | 🟡 Ekran testleri ve udev kullanıcıda |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 805 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (54 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
-tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz; cihaz değişimi ve kanalın
-çıkış cihazını değiştirmek de artık kesintisiz.
+**Test durumu:** 829 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (51 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+tam kontrol çalışıyor. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
+başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi
+kesintisiz.
 
 ---
 
@@ -144,9 +147,8 @@ yeniden üretilip sürecin restart edilmesini gerektirir (~200 ms kesinti, nadir
   └───────────────┘                                          │
        her kanaldan HER bus'a bir gönderi loopback'i         │
                      ┌────────────────────────────────────────┘
-                     ├──▶ [sonar_personal]  ─master DSP─▶ ► Arctis 7
-                     ├──▶ [sonar_<çıkış-2>] ─master DSP─▶ ► başka bir cihaz
-                     └──▶ [sonar_stream]    ─master DSP─▶ ► sonar_stream_out → OBS
+                     ├──▶ [sonar_personal] ─master DSP─▶ ► Arctis 7
+                     └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
 
      GİRİŞ KANALLARI                        (uygulamalar buraya da yönlendirilir)
   Fifine ──┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord)
@@ -155,8 +157,8 @@ yeniden üretilip sürecin restart edilmesini gerektirir (~200 ms kesinti, nadir
                      └── yayına ────▶ sonar_stream     (mute ile aç/kapa)
 ```
 
-Kanal **tek bir** çıkışa gider; diğer çıkışlara giden gönderileri susturulur. Bu yüzden
-kanalı başka bir cihaza taşımak bir mute yazımı, yeniden inşa değil.
+Faz 20'de kanal başına ayrı çıkış cihazı eklenebiliyordu; kullanıcı için karışıklık
+ürettiği için Faz 27'de geri alındı. Çıkış her zaman bir tane.
 
 **OBS erişim noktaları** (Faz 12'de sadeleşti):
 
@@ -172,13 +174,9 @@ WirePlumber bağlamadığı için gönderiler `pw-link` ile daemon tarafından k
 ### DSP zinciri (sabit topoloji, bypass ile açma/kapama)
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ [spatial] ─▶ boost ─▶ limiter ─▶ çıkış
+kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ spatial ─▶ boost ─▶ limiter ─▶ çıkış
 mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
 ```
-
-Köşeli parantez = **yapısal** aşama: kapalıyken grafta hiç yok. Spatial bunun tek
-örneği; bir HRTF konvolverini bypass etmek onu ucuzlatmadığı için (ölçüldü: boştaki CPU
-%0.0 → %14.4).
 
 | Aşama | Eklenti | Bypass |
 |---|---|---|
@@ -186,7 +184,7 @@ Köşeli parantez = **yapısal** aşama: kapalıyken grafta hiç yok. Spatial bu
 | Gate | `http://lsp-plug.in/plugins/lv2/gate_stereo` | `enabled` = 0 |
 | EQ | `http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo` | `enabled` = 0 |
 | Compressor | `http://lsp-plug.in/plugins/lv2/compressor_stereo` | `enabled` = 0 |
-| Spatial | PipeWire `sofa` `spatializer` + `mixer` | *(yapısal)* |
+| Spatial | PipeWire `builtin` `copy`+`delay`+`bq_lowpass`+`mixer` | sızıntı kazancı 0 |
 | Volume Boost | PipeWire `builtin` `linear` | `Mult` = 1.0 |
 | Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
 

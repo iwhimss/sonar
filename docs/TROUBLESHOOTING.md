@@ -195,12 +195,19 @@ Birden çok kanalda birden açmayın; genelde yalnızca oyun kanalında anlamlı
 okuyamıyor. Erişim için tek seferlik:
 
 ```bash
-sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
+sudo cp packaging/60-sonar-headset.rules /etc/udev/rules.d/
+sudo rm -f /etc/udev/rules.d/99-sonar-headset.rules   # varsa eski kopya
 sudo udevadm control --reload && sudo udevadm trigger
 ```
 
+**Dosya adındaki `60` önemli.** `uaccess` etiketini gören ACL'i systemd'nin
+`73-seat-late.rules` dosyası uyguluyor ve udev kuralları ad sırasına göre çalışıyor;
+etiketi 73'ten sonra eklemek hiçbir işe yaramıyor. Kural bir dönem `99-` adıyla
+dağıtılıyordu ve kurulmasına rağmen `/dev/hidraw*` erişilemez kalıyordu.
+
 Kural `uaccess` etiketi kullanır: erişimi o an oturum açmış kullanıcıya verir, sabit bir
-gruba yazmaktan daha dardır.
+gruba yazmaktan daha dardır. Kurduktan sonra kulaklığı çıkarıp takmak gerekebilir —
+ACL cihaz eklendiğinde uygulanıyor.
 
 Kural kurulduktan sonra rapor biçiminin çözülmesi gerekiyor (cihaza özel):
 

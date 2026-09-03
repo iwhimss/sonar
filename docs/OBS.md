@@ -16,8 +16,21 @@ Daemon çalışırken OBS'in ses kaynağı listesinde şunlar görünür:
 | **Sonar Stream Mic — Virtual Input** | Mikrofonun yayına özel işlenmiş hâli |
 
 Sonar'ın mikser ekranında Master şeridindeki **Yayın Miksi** satırı da bu adı gösterir —
-oraya bir cihaz seçmeniz gerekmez, yayın miksinin fiziksel bir çıkışı yoktur. (Eskiden
-orada bir cihaz açılırı vardı ve hiçbir şey yapmıyordu.)
+oraya bir cihaz seçmeniz gerekmez, yayın miksinin fiziksel bir çıkışı yoktur.
+
+> ### Yalnızca "Virtual Input"u ekleyin
+>
+> OBS'in cihaz listesinde `Sonar Stream Mix — Virtual **Output**` da görünür. O, yayın
+> miksinin **sink**'i; onu "Ses Çıkışı Yakalama" ile eklemek aynı miksi **ikinci kez**
+> almak demektir. Belirtisi: Spotify hem giriş hem çıkış kaynağında çalıyor görünür,
+> mikrofon fader'ını kısmak hiçbir şeyi değiştirmez.
+>
+> Doğrusu tek kaynak: **Ses Girişi Yakalama → `Sonar Stream Mix — Virtual Input`**.
+> Mikrofonu ayrı bir track'e almak isterseniz ikinci kaynak `Sonar Stream Mic`.
+>
+> (Master yayın fader'ı artık her ikisini de aynı şekilde etkiliyor; eskiden sink'in
+> monitör portları fader'dan önce dallandığı için "Ses Çıkışı Yakalama" master'ı hiç
+> duymuyordu.)
 
 Çoğu kurulum için gereken bu ikisi. **Kanal başına ayrı kaynak varsayılan olarak
 kapalıdır**; açılırsa o kanal sistemin **mikrofon listesinde** de görünür, bu yüzden
