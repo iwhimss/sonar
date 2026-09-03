@@ -77,7 +77,7 @@ from sonar.core.model import (
 )
 from sonar.engine import confgen
 from sonar.engine.ducking import Ducker
-from sonar.engine.headset import detect_headsets
+from sonar.engine.headset import ChatMixReader, detect_headsets
 from sonar.engine.meters import Level, MeterManager, meter_sources
 from sonar.engine.router import Decision, Router, target_node_for
 from sonar.engine.supervisor import Supervisor, chatmix_gains
@@ -151,6 +151,9 @@ class SonarApi:
         # Ses yolu koptuğunda kullanıcıya haber ver: sessizce susan bir kanal,
         # bulunması en zor hata. `supervisor` bekçisi eşiği aşınca burayı çağırır.
         supervisor.on_links_changed.append(self._on_links_changed)
+        #: Kulaklığın fiziksel ChatMix tekeri. Okunamıyorsa sessizce boşta bekler ve
+        #: yazılım slider'ı bugünkü gibi çalışır.
+        self.chatmix_reader = ChatMixReader(self._chatmix_from_hardware)
         #: Smart Volume: ölçüm turlarında zarfı yürütür, kazançları fader'lara yazar.
         self.ducker = Ducker()
         self._duck_gains: dict[str, float] = {}
@@ -170,12 +173,15 @@ class SonarApi:
 
     def start(self) -> None:
         """Grafı kurar ve mevcut yapılandırmayı uygular."""
+        if self.config.settings.chatmix_source != "software":
+            self.chatmix_reader.start()
         self.supervisor.start_monitor()
         self.supervisor.monitor.wait_ready(timeout=5.0)
         self.supervisor.reconcile(self.config)
         self.supervisor.take_over_default_sink(self.config)
 
     def shutdown(self) -> None:
+        self.chatmix_reader.stop()
         self.flush_save()
         self.meters.stop()
         self.supervisor.stop()
@@ -208,6 +214,7 @@ class SonarApi:
             },
             "chatmix_gains": chatmix_gains(self.config),
             "headsets": self.headsets(),
+            "chatmix_hardware": self.chatmix_is_hardware(),
         }
 
     def diagnose(self) -> dict:
@@ -1169,6 +1176,26 @@ class SonarApi:
         self._emit({"kind": "ducking"})
         self._save_soon()
         return serde.to_jsonable(duck)
+
+    def _chatmix_from_hardware(self, value: float) -> None:
+        """Kulaklık tekeri döndü. Slider'ı sürer ve arayüze haber verir."""
+        if self.config.settings.chatmix_source == "software":
+            return
+        self.set_chatmix(value)
+        self._emit({"kind": "chatmix_source", "hardware": True})
+
+    def chatmix_is_hardware(self) -> bool:
+        """ChatMix'i şu an kulaklık tekeri mi sürüyor?
+
+        Arayüz slider'ı buna bakarak salt okunur yapıyor: iki kaynağın birbirini
+        ezmesi kullanıcının istemediği şeydi.
+        """
+        source = self.config.settings.chatmix_source
+        if source == "software":
+            return False
+        if source == "hardware":
+            return True
+        return self.chatmix_reader.active
 
     def _on_links_changed(self, missing: list[tuple[str, str]]) -> None:
         if not missing:

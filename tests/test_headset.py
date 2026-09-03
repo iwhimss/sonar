@@ -68,3 +68,45 @@ def test_catalogue_ids_are_plausible():
         assert 0 < vendor <= 0xFFFF
         assert 0 < product <= 0xFFFF
         assert name
+
+
+# --------------------------------------------------------------------------- teker okuma
+#
+# Bayt biçimi henüz çözülmedi (udev kuralı kurulmadan cihazdan tek rapor bile
+# okunamıyor). Buradaki testler sürücü iskeletini koruyor: cihaz yokken sessizce
+# beklemeli, çözülemeyen rapor hiçbir şey tetiklememeli.
+
+
+def test_an_unknown_report_produces_no_value():
+    from sonar.engine.headset import decode_chatmix
+
+    assert decode_chatmix(b"\x00\x45\x32", 0x220E) is None
+
+
+def test_the_reader_stays_quiet_without_a_readable_device():
+    from sonar.engine.headset import ChatMixReader
+
+    seen: list[float] = []
+    reader = ChatMixReader(seen.append, detect=list)
+    reader.start()
+    reader.stop()
+    assert seen == []
+    assert reader.active is False
+
+
+def test_repeated_values_are_swallowed():
+    """Teker gürültüsü saniyede onlarca D-Bus çağrısına dönüşmemeli."""
+    from sonar.engine import headset as mod
+    from sonar.engine.headset import ChatMixReader
+
+    seen: list[float] = []
+    reader = ChatMixReader(seen.append, epsilon=2.0, detect=list)
+    original = mod.decode_chatmix
+    try:
+        values = iter([50.0, 50.5, 51.0, 60.0])
+        mod.decode_chatmix = lambda _report, _product: next(values)
+        for _ in range(4):
+            reader._handle(b"\x00", 0x220E)
+    finally:
+        mod.decode_chatmix = original
+    assert seen == [50.0, 60.0]

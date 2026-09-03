@@ -7,6 +7,10 @@ Item {
     property var bridge
     signal openFx(string channelId)
 
+    /* Kulaklığın fiziksel tekeri ChatMix'i sürüyorsa slider salt okunur olur. */
+    readonly property bool chatmixByWheel:
+        bridge ? (bridge.revision, bridge.chatmixIsHardware()) : false
+
     Row {
         id: strips
         anchors.left: parent.left
@@ -72,6 +76,9 @@ Item {
                     accent: Theme.master
                     value: root.bridge ? root.bridge.chatmix / 100.0 : 0.5
                     onMoved: (v) => root.bridge.setChatMix(v * 100)
+                    // Teker yönetiyorken elle kaydırmak iki kaynağı çakıştırırdı.
+                    enabled: !root.chatmixByWheel
+                    opacity: root.chatmixByWheel ? 0.6 : 1.0
                     anchors.verticalCenter: parent.verticalCenter
                     // Çift tık zaten 50'ye döndürüyor (SonarSlider), ama keşfedilmiyordu;
                     // yanına görünür bir "Sıfırla" düğmesi kondu.
@@ -80,7 +87,8 @@ Item {
                 SonarButton {
                     text: "Sıfırla"
                     variant: "ghost"
-                    enabled: root.bridge ? Math.abs(root.bridge.chatmix - 50) > 0.5 : false
+                    enabled: !root.chatmixByWheel
+                             && (root.bridge ? Math.abs(root.bridge.chatmix - 50) > 0.5 : false)
                     anchors.verticalCenter: parent.verticalCenter
                     onClicked: root.bridge.setChatMix(50)
                 }

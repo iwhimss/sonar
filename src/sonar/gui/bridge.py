@@ -626,6 +626,11 @@ class SonarBridge(QObject):
             for name in (self._state.get("profile_names") or {}).get(target) or []
         ]
 
+    @Slot(result=bool)
+    def chatmixIsHardware(self) -> bool:
+        """ChatMix'i kulaklık tekeri sürüyorsa slider salt okunur olur."""
+        return bool(self._state.get("chatmix_hardware"))
+
     @Slot(str, result=bool)
     def spatialEnabled(self, target: str) -> bool:
         """Hedefte Spatial Audio açık mı? Profilde değil, hedefin kendi ayarında."""

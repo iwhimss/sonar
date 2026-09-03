@@ -21,14 +21,22 @@ Kural kurulduktan sonra rapor biçimini çözmek küçük bir iş; `.plan/99-bac
 
 from __future__ import annotations
 
+import logging
 import os
+import select
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "KNOWN_HEADSETS",
     "UDEV_RULE",
+    "ChatMixReader",
     "HeadsetInfo",
+    "decode_chatmix",
     "detect_headsets",
     "parse_hid_id",
 ]
@@ -124,3 +132,122 @@ def detect_headsets(root: Path | None = None) -> list[HeadsetInfo]:
             )
         )
     return found
+
+
+# --------------------------------------------------------------------------- teker okuma
+
+
+def decode_chatmix(report: bytes, product: int) -> float | None:
+    """Bir HID raporundan ChatMix konumunu (0–100) çıkarır; tanımadıysa `None`.
+
+    ## Durum: biçim henüz çözülmedi
+
+    `/dev/hidraw*` düğümleri varsayılan olarak `root`'a kapalı, yani cihazdan tek bir
+    rapor bile okunamıyor. Doğrulanmamış bir bayt düzeni yazmak, kullanıcının ChatMix'ini
+    rastgele bir bayta bağlamak olurdu — sessizce yanlış çalışan bir özellik, hiç
+    çalışmayandan kötüdür.
+
+    Yol açık: `packaging/99-sonar-headset.rules` kurulduktan sonra
+    `scripts/sonar-hid-capture` ile teker uçtan uca çevrilirken raporlar kaydediliyor,
+    hangi baytın nasıl değiştiği görülüyor ve bu fonksiyon o ölçüme göre yazılıyor.
+    Kaydedilen raporlar `tests/data/` altına konup testi onlarla yazılacak.
+
+    Faz 9'da da aynı karar verilmişti; Faz 23'te kural kuruluyor ve iş buraya geliyor.
+    """
+    del report, product
+    return None
+
+
+class ChatMixReader:
+    """Kulaklığın HID düğümünü dinleyen iş parçacığı.
+
+    Cihaz gidince sessizce durur, gelince kendiliğinden bağlanır — kulaklık kapatılıp
+    açıldığında kullanıcının hiçbir şey yapması gerekmesin diye.
+
+    Değer değişimini `on_value(0..100)` ile bildirir. Aynı değeri tekrar tekrar
+    yollamaz: teker gürültüsü saniyede onlarca D-Bus çağrısına dönüşmesin diye
+    `epsilon`dan küçük değişimler yutulur.
+    """
+
+    #: Cihaz yokken yeniden deneme aralığı.
+    RETRY_SECONDS = 3.0
+
+    def __init__(
+        self,
+        on_value: Callable[[float], None],
+        *,
+        epsilon: float = 1.0,
+        detect: Callable[[], list[HeadsetInfo]] | None = None,
+    ) -> None:
+        self.on_value = on_value
+        self.epsilon = epsilon
+        self._detect = detect if detect is not None else detect_headsets
+        self._thread: threading.Thread | None = None
+        self._stopping = threading.Event()
+        self._last: float | None = None
+        #: Son okuma denemesinin sonucu — arayüz "teker yönetiyor" rozetini buna bakarak
+        #: gösteriyor. Yalnızca gerçekten değer geldiğinde `True`.
+        self.active = False
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._stopping.clear()
+        self._thread = threading.Thread(target=self._run, name="sonar-chatmix", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stopping.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        self.active = False
+
+    # ------------------------------------------------------------------ iç kısım
+
+    def _run(self) -> None:
+        while not self._stopping.is_set():
+            headset = next((h for h in self._detect() if h.readable), None)
+            if headset is None:
+                self.active = False
+                if self._stopping.wait(self.RETRY_SECONDS):
+                    return
+                continue
+            self._listen(headset)
+
+    def _listen(self, headset: HeadsetInfo) -> None:
+        try:
+            fd = os.open(headset.device, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError as error:
+            log.debug("%s açılamadı: %s", headset.device, error)
+            self._stopping.wait(self.RETRY_SECONDS)
+            return
+        try:
+            while not self._stopping.is_set():
+                ready, _, _ = select.select([fd], [], [], 1.0)
+                if not ready:
+                    continue
+                try:
+                    report = os.read(fd, 64)
+                except OSError:
+                    return  # cihaz gitti; dış döngü yeniden arar
+                if not report:
+                    continue
+                self._handle(report, headset.product)
+        finally:
+            os.close(fd)
+            self.active = False
+
+    def _handle(self, report: bytes, product: int) -> None:
+        value = decode_chatmix(report, product)
+        if value is None:
+            return
+        value = min(max(value, 0.0), 100.0)
+        if self._last is not None and abs(value - self._last) < self.epsilon:
+            return
+        self._last = value
+        self.active = True
+        try:
+            self.on_value(value)
+        except Exception:  # pragma: no cover - dinleyici hatası okumayı durdurmasın
+            log.exception("ChatMix dinleyicisi hata verdi")

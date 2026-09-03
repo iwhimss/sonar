@@ -459,6 +459,10 @@ class Settings:
     default_mic_chain: str = "mic"
     default_band_count: int = 10
     start_minimized: bool = False
+    #: ChatMix'i ne sürüyor. `auto` = kulaklık tekeri okunabiliyorsa o, yoksa slider.
+    #: Teker yönetirken slider salt okunur olur; iki kaynağın birbirini ezmesi
+    #: kullanıcının istemediği şeydi.
+    chatmix_source: str = "auto"
 
 
 # --------------------------------------------------------------------------- kök
