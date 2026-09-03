@@ -438,9 +438,14 @@ Item {
         }
     }
 
+    /* Giriş kanalında iki fader başka şeyleri sürüyor: "output" sidetone (kulaklıkta
+       kendini duyma), "stream" mikrofonun kendi seviyesi. Zincir kimliği **her zaman**
+       şeridin kendi kimliği — eskiden köprü sabit `"mic"` yazdığı için ikinci giriş
+       kanalının düğmeleri birincisini sürüyordu (test turu 3). */
     function setVolume(bus, value) {
         if (root.isMic) {
-            if (bus === "stream") root.bridge.setMicVolume(value)
+            if (bus === "stream") root.bridge.setMicVolume(root.id, value)
+            else root.bridge.setMicMonitorVolume(root.id, value)
             return
         }
         root.bridge.setChannelVolume(root.id, bus, value)
@@ -448,8 +453,8 @@ Item {
 
     function toggleMute(bus, muted) {
         if (root.isMic) {
-            if (bus === "stream") root.bridge.setMicMute(muted)
-            else root.bridge.setMicMonitor(!muted)
+            if (bus === "stream") root.bridge.setMicMute(root.id, muted)
+            else root.bridge.setMicMonitor(root.id, !muted)
             return
         }
         root.bridge.setChannelMute(root.id, bus, muted)

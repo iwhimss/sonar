@@ -1,0 +1,123 @@
+❯ cd ~/Dosyalar/Yazilimsal/sonar
+
+~/Dosyalar/Yazilimsal/sonar main
+❯ ./scripts/sonar-dev gui
+qt.qpa.services: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: App info not found for 'io.github.iwhimss.Sonar'")
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+WARNING:sonar.gui.dbus_client:RemoveChannel reddedildi: en az bir giriş kanalı kalmalı
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+Traceback (most recent call last):
+  File "/home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/bridge.py", line 661, in setDucking
+    payload = dict(fields) if fields else {}
+              ~~~~^^^^^^^^
+TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/MasterStrip.qml:221: TypeError: 'PySide6.QtQml.QJSValue' object is not iterable
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+file:///home/fatih/Dosyalar/Yazilimsal/sonar/src/sonar/gui/qml/Mixer.qml:14:5: QML Row: Cannot specify left, right, horizontalCenter, fill or centerIn anchors for items inside Row. Row will not function.
+

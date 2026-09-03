@@ -9,8 +9,13 @@ import QtQuick
  *   çift tık         — birim kazanca (1.0) sıfırla
  *   tekerlek         — ±%2 (Shift ile ±%0.5)
  *
- * `value` lineer ses seviyesi (1.0 = birim kazanç). Üst sınır 1.0'da tutuluyor: daemon 4.0'a
- * kadar kabul ediyor ama mikserde yükseltme sürprizi istemiyoruz.
+ * `value` lineer ses seviyesi (1.0 = birim kazanç). **Dışarıdan sürülür**: fader ona
+ * asla yazmaz, yalnızca `moved()` yayınlar. Köprü zaten iyimser güncelleme yapıyor
+ * (`_optimistic` + `_hold`), yani tutamak yine anında hareket ediyor.
+ *
+ * Eskiden `root.value = v` yazıyordu; bu, modelden gelen bağlamayı **kalıcı olarak**
+ * koparıyordu. Bir kez sürükledikten sonra fader daemon'daki değeri bir daha takip
+ * etmiyordu — profil değiştirmek, mute etmek, "Sıfırla" demek tutamağı oynatmıyordu.
  */
 Item {
     id: root
@@ -76,7 +81,6 @@ Item {
             // Tutamağın dışına tıklandıysa oraya atla.
             if (mouse.y < handle.y || mouse.y > handle.y + handle.height) {
                 const v = root.fractionToValue(1 - (mouse.y - root.handleHeight / 2) / root.usable)
-                root.value = v
                 root.moved(v)
                 pressValue = v
                 pressY = mouse.y
@@ -87,17 +91,17 @@ Item {
             const scale = (mouse.modifiers & Qt.ShiftModifier) ? 0.2 : 1.0
             const delta = -(mouse.y - pressY) / root.usable * scale
             const v = root.fractionToValue(pressValue + delta)
-            if (v !== root.value) { root.value = v; root.moved(v) }
+            if (v !== root.value) root.moved(v)
         }
         onReleased: root.released()
-        onDoubleClicked: { root.value = 1.0; root.moved(1.0); root.released() }
+        onDoubleClicked: { root.moved(1.0); root.released() }
         onWheel: (wheel) => {
             const step = (wheel.modifiers & Qt.ShiftModifier) ? 0.005 : 0.02
             const v = root.fractionToValue(root.value + (wheel.angleDelta.y > 0 ? step : -step))
-            if (v !== root.value) { root.value = v; root.moved(v); root.released() }
+            if (v !== root.value) { root.moved(v); root.released() }
         }
     }
 
-    Keys.onUpPressed: { const v = fractionToValue(value + 0.02); value = v; moved(v); released() }
-    Keys.onDownPressed: { const v = fractionToValue(value - 0.02); value = v; moved(v); released() }
+    Keys.onUpPressed: { const v = fractionToValue(value + 0.02); moved(v); released() }
+    Keys.onDownPressed: { const v = fractionToValue(value - 0.02); moved(v); released() }
 }

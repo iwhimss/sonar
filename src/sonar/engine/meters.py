@@ -180,8 +180,15 @@ def meter_sources(config: SonarConfig) -> dict[str, bool]:
     return sources
 
 
+#: Ölçüm süreçlerinin node adı öneki. `pw-cat`'e kendi adını verdirmek şart: aksi hâlde
+#: her ölçüm noktası kullanıcıya "pw-cat" adlı bir uygulama olarak görünüyordu
+#: (test turu 3'te mikser listesinde yedi tane vardı).
+METER_NODE_PREFIX = "sonar_meter_"
+
+
 def _capture_command(node: str, capture_sink: bool, rate: int) -> list[str]:
     args = ["pw-cat", "--record", "--target", node]
+    args += ["-P", f"node.name={METER_NODE_PREFIX}{node}"]
     if capture_sink:
         args += ["-P", "stream.capture.sink=true"]
     args += ["--latency", CAPTURE_LATENCY]
@@ -328,12 +335,19 @@ class MeterManager:
         return tuple(self._sources)
 
     def configure(self, sources: dict[str, bool]) -> None:
-        """Ölçüm noktalarını belirler. Graf yeniden kurulduğunda yeniden çağrılır."""
+        """Ölçüm noktalarını belirler. Graf yeniden kurulduğunda yeniden çağrılır.
+
+        `_stop_sources()` 20 Hz'lik rapor zamanlayıcısını da iptal ediyor; yeniden
+        kurmayı unutmak ölçümü kalıcı olarak susturuyordu. Belirti: metreler yalnızca
+        uygulama ilk açıldığında çalışıyor, ilk yeniden inşadan sonra boş kalıyordu
+        (test turu 3). `subscribe()` ile aynı sırayı izliyoruz.
+        """
         with self._lock:
             self._wanted = dict(sources)
             if self._subscribers > 0:
                 self._stop_sources()
                 self._start_sources()
+                self._schedule()
 
     def subscribe(self) -> int:
         with self._lock:

@@ -90,6 +90,10 @@ class StreamInfo:
         Kanal→bus loopback'leri ve bus çıkışları da `Stream/Output/Audio` sınıfında görünüyor;
         envanterde dursunlar (graf doğru olsun) ama kullanıcıya "çalan uygulama" diye
         gösterilmesinler, yönlendirme kuralları da onlara dokunmasın.
+
+        Ölçüm süreçlerimiz de buraya giriyor: `pw-cat` kendi adıyla doğduğunda mikserde
+        yedi ayrı "pw-cat" uygulaması görünüyordu, bu yüzden `engine.meters` onlara
+        `sonar_meter_<hedef>` adını veriyor.
         """
         return self.node_name.startswith("sonar_")
 

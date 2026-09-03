@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 import numpy as np
@@ -131,9 +132,22 @@ def test_capture_command_shape():
     source = MeterSource("sonar_game_fx")
     assert source.command == [
         "pw-cat", "--record", "--target", "sonar_game_fx",
+        "-P", "node.name=sonar_meter_sonar_game_fx",
         "--latency", "500ms",
         "--rate", "8000", "--channels", "1", "--format", "f32", "-",
     ]  # fmt: skip
+
+
+def test_meter_nodes_are_named_so_they_look_internal():
+    """`pw-cat` kendi adıyla doğduğunda mikserde "pw-cat" adlı uygulamalar görünüyordu.
+
+    `is_internal` `sonar_` önekine bakıyor; ölçüm süreçleri de o öneki almalı.
+    """
+    from sonar.engine.pwstate import StreamInfo
+
+    source = MeterSource("sonar_media")
+    name = source.command[source.command.index("-P") + 1].split("=", 1)[1]
+    assert StreamInfo(id=1, node_name=name).is_internal
 
 
 def test_capture_asks_for_a_large_buffer():
@@ -271,4 +285,40 @@ def test_stop_clears_subscribers(manager):
     manager.subscribe()
     manager.stop()
     assert manager.subscribers == 0
+    assert manager.running is False
+
+
+# --------------------------------------------------------------------------- yeniden yapılandırma
+#
+# Test turu 3: metreler yalnızca uygulama ilk açıldığında çalışıyordu. `configure()`
+# kaynakları yeniden kuruyor ama 20 Hz'lik rapor zamanlayıcısını geri kurmuyordu;
+# `_stop_sources()` onu iptal ediyor.
+
+
+def _wait_for(predicate, message="beklenen olmadı", timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError(message)
+
+
+def test_configure_restarts_the_report_timer():
+    ticks: list[dict] = []
+    manager = MeterManager(interval=0.01, on_levels=ticks.append, source_factory=FakeSource)
+    manager.configure({"sonar_game": True})
+    manager.subscribe()
+    _wait_for(lambda: len(ticks) >= 1, "ilk rapor gelmedi")
+
+    before = len(ticks)
+    manager.configure({"sonar_game": True, "sonar_chat": True})
+    _wait_for(lambda: len(ticks) > before, "yeniden yapılandırmadan sonra rapor gelmedi")
+    manager.stop()
+
+
+def test_configure_without_subscribers_starts_nothing():
+    manager = MeterManager(interval=0.01, on_levels=lambda _levels: None,
+                           source_factory=FakeSource)
+    manager.configure({"sonar_game": True})
     assert manager.running is False

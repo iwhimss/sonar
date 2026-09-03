@@ -151,6 +151,10 @@ class SonarApi:
         # Ses yolu koptuğunda kullanıcıya haber ver: sessizce susan bir kanal,
         # bulunması en zor hata. `supervisor` bekçisi eşiği aşınca burayı çağırır.
         supervisor.on_links_changed.append(self._on_links_changed)
+        # Yeniden inşa node id'lerini eskitiyor; `pw-cat` ölçüm süreçleri eski node'a
+        # bağlı kalıyor ve sessizce ölü veri veriyor. `_structural` bunu zaten yapıyordu
+        # ama çökme kurtarması ve PipeWire restart yolları atlıyordu (test turu 3).
+        supervisor.on_rebuild.append(self._reconfigure_meters)
         #: Kulaklığın fiziksel ChatMix tekeri. Okunamıyorsa sessizce boşta bekler ve
         #: yazılım slider'ı bugünkü gibi çalışır.
         self.chatmix_reader = ChatMixReader(self._chatmix_from_hardware)
@@ -392,6 +396,12 @@ class SonarApi:
     def set_mic_mute(self, chain: str, muted: bool) -> None:
         self._mic(chain).muted = bool(muted)
         self._live_volumes({"kind": "mic_mute", "chain": chain})
+
+    def set_mic_monitor_volume(self, chain: str, value: float) -> None:
+        """Sidetone seviyesi. Giriş şeridindeki kulaklık fader'ı buna bağlı —
+        eskiden arayüzde karşılığı yoktu ve fader sessizce hiçbir şey yapmıyordu."""
+        self._mic(chain).monitor_volume = self._level(value)
+        self._live_volumes({"kind": "mic_monitor_volume", "chain": chain})
 
     # ------------------------------------------------------------------ filtreler
 
@@ -1196,6 +1206,9 @@ class SonarApi:
         if source == "hardware":
             return True
         return self.chatmix_reader.active
+
+    def _reconfigure_meters(self) -> None:
+        self.meters.configure(meter_sources(self.config))
 
     def _on_links_changed(self, missing: list[tuple[str, str]]) -> None:
         if not missing:

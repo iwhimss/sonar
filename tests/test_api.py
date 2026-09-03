@@ -18,6 +18,7 @@ class FakeSupervisor:
         self.calls: list[tuple[str, object]] = []
         self.monitor = FakeMonitor()
         self.on_links_changed: list = []
+        self.on_rebuild: list = []
         self.broken_links: list[tuple[str, str]] = []
 
     def apply_volumes(self, cfg, *, flush=True):

@@ -324,6 +324,11 @@ class SonarDBusInterface(QObject):
         """Mikrofon zincirinin giriş cihazı. **Yapısal**."""
         return reply(lambda: self.api.set_mic_device(chain, device))
 
+    @Slot(str, float, result=str)
+    def SetMicMonitorVolume(self, chain: str, value: float) -> str:
+        """Sidetone seviyesi (0.0–4.0 lineer)."""
+        return reply(lambda: self.api.set_mic_monitor_volume(chain, value))
+
     @Slot(str, bool, result=str)
     def SetMicMonitor(self, chain: str, enabled: bool) -> str:
         """Yan ton (kendi sesini kulaklıktan duyma). **Yapısal**."""

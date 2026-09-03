@@ -90,6 +90,7 @@ def test_stream_rows_use_the_channel_from_the_daemon():
             "binary": "firefox",
             "channel": "media",
             "direction": "out",
+            "capturesSink": False,
         }
     ]
 
@@ -580,3 +581,71 @@ def test_uninteresting_deltas_are_not_announced(bridge):
 
 def test_a_malformed_delta_payload_is_ignored(bridge):
     bridge.onStateChanged("bu json değil")  # yükseltmemeli
+
+
+# --------------------------------------------------------------------------- giriş kanalları
+#
+# Test turu 3: ikinci bir giriş kanalı eklendiğinde onun fader/mute düğmeleri birincil
+# `mic` zincirini sürüyordu — köprü zincir kimliğini sabit yazıyordu.
+
+
+def test_mic_slots_target_the_chain_they_are_given(bridge):
+    bridge.setMicMute("stream_mic", True)
+    assert bridge._client.calls[-1] == ("SetMicMute", ("stream_mic", True))
+
+    bridge.setMicVolume("stream_mic", 0.4)
+    assert bridge._client.calls[-1] == ("SetMicVolume", ("stream_mic", 0.4))
+
+    bridge.setMicMonitor("stream_mic", False)
+    assert bridge._client.calls[-1] == ("SetMicMonitor", ("stream_mic", False))
+
+    bridge.setMicDevice("stream_mic", "alsa_input.usb")
+    assert bridge._client.calls[-1] == ("SetMicDevice", ("stream_mic", "alsa_input.usb"))
+
+
+def test_mic_mute_updates_only_its_own_row(bridge):
+    mic = bridge.channels.index_of("id", "mic")
+    other = bridge.channels.index_of("id", "stream_mic")
+
+    bridge.setMicMute("stream_mic", True)
+
+    assert bridge.channels.get(other)["streamMuted"] is True
+    assert bridge.channels.get(mic)["streamMuted"] is False
+
+
+def test_sidetone_volume_has_an_api(bridge):
+    """Giriş şeridindeki kulaklık fader'ının karşılığı yoktu; sessizce hiçbir şey yapıyordu."""
+    bridge.setMicMonitorVolume("mic", 0.25)
+    assert bridge._client.calls[-1] == ("SetMicMonitorVolume", ("mic", 0.25))
+    assert bridge.channels.get(bridge.channels.index_of("id", "mic"))["personalVolume"] == 0.25
+
+
+# --------------------------------------------------------------------------- QML sözlükleri
+
+
+def test_qjsvalue_dicts_are_converted():
+    """QML'den gelen sözlük `QJSValue`; `dict()` onu iterable sanıp `TypeError` veriyordu."""
+    from sonar.gui.bridge import _as_dict
+
+    class FakeJsValue:
+        def toVariant(self):  # noqa: N802 - Qt adı
+            return {"enabled": True, "reduction_db": -9.0}
+
+    assert _as_dict(FakeJsValue()) == {"enabled": True, "reduction_db": -9.0}
+    assert _as_dict({"a": 1}) == {"a": 1}
+    assert _as_dict(None) == {}
+
+
+def test_desktop_capturers_are_listed_but_flagged():
+    """OBS'in "Masaüstü Sesi" kaynağı arayüzde görünmeli; yalnızca otomatik
+    yönlendirilmemeli. Eskiden köprüden de eleniyor ve OBS hiç görünmüyordu."""
+    state = make_state(
+        streams=[
+            {"id": 9, "app_name": "OBS", "is_capture": True, "captures_sink": True,
+             "target_node": "sonar_stream"},
+        ]
+    )
+    rows = stream_rows(state)
+    assert [(r["label"], r["capturesSink"], r["channel"]) for r in rows] == [
+        ("OBS", True, "stream")
+    ]

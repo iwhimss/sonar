@@ -142,13 +142,20 @@ def stream_rows(state: dict) -> list[dict]:
     config = state.get("config") or {}
     by_node = {f"sonar_{c['id']}": c["id"] for c in config.get("channels", [])}
     by_node.update({f"sonar_{m['id']}": m["id"] for m in config.get("mic_chains", [])})
+    # Bus'ı dinleyen akışlar (OBS'in yayın miksini yakalaması gibi) master şeridine
+    # düşsün; eskiden hiçbir yere düşmüyor ve kullanıcı "OBS görünmüyor" diyordu.
+    by_node.update({f"sonar_{b['id']}": b["id"] for b in config.get("buses", [])})
+    by_node.update({f"sonar_{b['id']}_out": b["id"] for b in config.get("buses", [])})
+
     rows = []
     for stream in state.get("streams", []):
         # Yakalama akışları artık atılmıyor: aynı uygulama hem çıkış hem giriş
         # şeridinde görünüyor (Discord örneği). Ayrım `direction` alanında.
+        #
+        # Masaüstü sesini yakalayanlar da **gösteriliyor** (OBS'in "Masaüstü Sesi"
+        # kaynağı gibi); yalnızca otomatik yönlendirilmiyorlar — o eleme `Router`'da.
+        # Eskiden buradan da eleniyorlardı ve OBS arayüzde hiç görünmüyordu.
         capture = bool(stream.get("is_capture"))
-        if capture and stream.get("captures_sink"):
-            continue  # masaüstü sesi yakalayan akış; mikrofon kullanıcısı değil
         rows.append(
             {
                 "id": stream["id"],
@@ -159,6 +166,8 @@ def stream_rows(state: dict) -> list[dict]:
                 "binary": stream.get("app_binary", ""),
                 "channel": stream.get("channel") or by_node.get(stream.get("target_node", ""), ""),
                 "direction": stream.get("direction") or ("in" if capture else "out"),
+                # Masaüstü sesi yakalayan akış: kural motoru ona dokunmuyor.
+                "capturesSink": bool(stream.get("captures_sink")),
             }
         )
     return rows
@@ -261,7 +270,7 @@ class ChannelModel(_DictModel):
 
 
 class StreamModel(_DictModel):
-    keys = ("id", "label", "binary", "channel", "direction")
+    keys = ("id", "label", "binary", "channel", "direction", "capturesSink")
 
 
 class DeviceModel(_DictModel):
@@ -584,19 +593,26 @@ class SonarBridge(QObject):
     def setMasterMute(self, bus: str, muted: bool) -> None:
         self._call("SetMasterMute", bus, muted)
 
-    @Slot(float)
-    def setMicVolume(self, value: float) -> None:
-        self._optimistic("mic", "streamVolume", value)
-        self._call("SetMicVolume", "mic", value)
+    @Slot(str, float)
+    def setMicVolume(self, chain: str, value: float) -> None:
+        self._optimistic(chain, "streamVolume", value)
+        self._call("SetMicVolume", chain, value)
 
-    @Slot(bool)
-    def setMicMute(self, muted: bool) -> None:
-        self._optimistic("mic", "streamMuted", muted)
-        self._call("SetMicMute", "mic", muted)
+    @Slot(str, bool)
+    def setMicMute(self, chain: str, muted: bool) -> None:
+        self._optimistic(chain, "streamMuted", muted)
+        self._call("SetMicMute", chain, muted)
 
-    @Slot(bool)
-    def setMicMonitor(self, enabled: bool) -> None:
-        self._call("SetMicMonitor", "mic", enabled)
+    @Slot(str, bool)
+    def setMicMonitor(self, chain: str, enabled: bool) -> None:
+        self._optimistic(chain, "personalMuted", not enabled)
+        self._call("SetMicMonitor", chain, enabled)
+
+    @Slot(str, float)
+    def setMicMonitorVolume(self, chain: str, value: float) -> None:
+        """Sidetone seviyesi — giriş şeridindeki kulaklık fader'ı."""
+        self._optimistic(chain, "personalVolume", value)
+        self._call("SetMicMonitorVolume", chain, value)
 
     # ------------------------------------------------------------------ FX sayfası
 
@@ -655,10 +671,15 @@ class SonarBridge(QObject):
 
     @Slot("QVariant")
     def setDucking(self, fields: Any) -> None:
-        """Smart Volume ayarlarını değiştirir. Yalnızca verilen alanlar yazılır."""
+        """Smart Volume ayarlarını değiştirir. Yalnızca verilen alanlar yazılır.
+
+        QML'den gelen sözlük bir `QJSValue`; `dict()` onu iterable sanıp `TypeError`
+        veriyordu ve anahtar hiç çalışmıyordu (test turu 3). `toVariant()` gerçek bir
+        Python sözlüğü veriyor.
+        """
         import json as _json
 
-        payload = dict(fields) if fields else {}
+        payload = _as_dict(fields)
         self._call("SetDucking", _json.dumps(payload))
         self.refresh()
 
@@ -857,9 +878,9 @@ class SonarBridge(QObject):
     def setBusDevice(self, bus: str, device: str) -> None:
         self._call("SetBusDevice", bus, device)
 
-    @Slot(str)
-    def setMicDevice(self, device: str) -> None:
-        self._call("SetMicDevice", "mic", device)
+    @Slot(str, str)
+    def setMicDevice(self, chain: str, device: str) -> None:
+        self._call("SetMicDevice", chain, device)
 
     @Slot(float)
     def setChatMix(self, value: float) -> None:
@@ -922,3 +943,17 @@ class SonarBridge(QObject):
             log.debug("D-Bus çağrısı başarısız (%s): %s", method, error)
             self._set_connected(False)
             return None
+
+
+def _as_dict(value: Any) -> dict:
+    """QML'den gelen bir değeri Python sözlüğüne çevirir.
+
+    QML sözlükleri köprüye `QJSValue` olarak geliyor; `dict()` onları iterable sanıyor.
+    `toVariant()` PySide6'nın dönüşümünü kullanıyor.
+    """
+    if value is None:
+        return {}
+    to_variant = getattr(value, "toVariant", None)
+    if to_variant is not None:
+        value = to_variant()
+    return dict(value) if isinstance(value, dict) else {}

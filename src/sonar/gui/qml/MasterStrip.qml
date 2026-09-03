@@ -144,7 +144,7 @@ Item {
                     accent: Theme.master
                     model: root.deviceList(true)
                     currentValue: (root.masters, root.deviceOf("mic"))
-                    onActivated: (value) => root.bridge.setMicDevice(value)
+                    onActivated: (value) => root.bridge.setMicDevice("mic", value)
                 }
 
                 /* Yayın Miksi'nin fiziksel bir cihazı yok: çıkışı sanal bir kaynak.

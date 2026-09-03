@@ -7,11 +7,17 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 3 bekleniyor)
+**Aktif faz:** Faz 26 — Yerleşim onarımı
 **Son güncelleme:** 2026-09-03
-**Sonraki adım:** Kullanıcı üçüncü test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/24-verify.md` içinde işaretsiz duruyor. Faz 23 (ChatMix tekeri) tek
-seferlik bir `sudo` bekliyor. Sonra Faz 11 — Paketleme.
+**Sonraki adım:** Faz 25 → 26 → 27 → 28 → 29 → 30 → 31 → 32. Sonra kullanıcı dördüncü
+test turunu yapar; Faz 11 (Paketleme) ondan sonra.
+
+> **Test turu 3 (2026-09-03).** Kullanıcı ekran görüntüleriyle (`görsel-bug/`) ve
+> loglarla geldi. Bu tur **yeni özellik değil onarım** turu: yerleşim birçok yerde
+> kırık, Faz 22'de eklenen kontrollerin bir kısmı hiç çalışmıyor, bazı ayarlar yanlış
+> yere konmuş ve çoklu çıkış bus'ı karışıklık üretmiş.
+> Kullanıcı kararları: **çoklu çıkış kaldırılıyor**, **Spatial Audio HRTF yerine ucuz
+> crossfeed oluyor**, **fader'lar %300'e çıkıyor (koruma yok, yalnızca uyarı)**.
 
 > **Test turu 2 (2026-09-03).** Kullanıcı ikinci turu yaptı. Çıkan tablo: ses yolu
 > aralıklı kopuyor, arayüz daemon'ı hiç yansıtmıyor ve dört yeni yetenek isteniyor.
@@ -46,8 +52,16 @@ seferlik bir `sudo` bekliyor. Sonra Faz 11 — Paketleme.
 | 20 | [Çoklu çıkış bus'ı](20-outputs.md) | 🟢 Tamamlandı |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | 🟢 Tamamlandı |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟢 Tamamlandı |
-| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟡 Kullanıcı bekleniyor (udev) |
-| 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟡 Ekran testleri kullanıcıda |
+| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🔴 udev kuralı yanlış sırada — Faz 32 |
+| 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟢 Tamamlandı |
+| 25 | [Kırık kontroller](25-broken-controls.md) | 🟢 Tamamlandı |
+| 26 | [Yerleşim onarımı](26-layout.md) | 🟡 Sıradaki |
+| 27 | [Çoklu çıkışın geri alınması](27-single-output.md) | ⚪ Bekliyor |
+| 28 | [Master davranışı, dişli, %300 fader](28-master.md) | ⚪ Bekliyor |
+| 29 | [Smart Volume profile taşınıyor](29-smart-volume.md) | ⚪ Bekliyor |
+| 30 | [DSP: crossfeed, Boost, mikrofon zinciri](30-dsp.md) | ⚪ Bekliyor |
+| 31 | [EQ nokta ekleme/silme](31-eq-points.md) | ⚪ Bekliyor |
+| 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | ⚪ Bekliyor |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 

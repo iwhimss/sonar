@@ -1,6 +1,14 @@
 import QtQuick
 
-/* Yatay slider — ChatMix ve benzeri kontroller için. Köşesiz. */
+/*
+ * Yatay slider — ChatMix ve benzeri kontroller için. Köşesiz.
+ *
+ * `value` **dışarıdan sürülür**; slider ona asla yazmaz, yalnızca `moved()` yayınlar.
+ * Eskiden sürükleme `root.value = v` yapıyordu ve bu `value: bridge.chatmix / 100`
+ * bağlamasını kalıcı olarak koparıyordu: bir kez sürükledikten sonra "Sıfırla"
+ * modeli 50'ye çekiyor ama slider olduğu yerde kalıyordu (test turu 3).
+ * `SonarFader` da aynı deseni kullanıyor.
+ */
 Item {
     id: root
     property real value: 0.5
@@ -50,11 +58,11 @@ Item {
         cursorShape: Qt.PointingHandCursor
         function apply(x) {
             const v = Math.max(0, Math.min(1, (x - root.handleWidth / 2) / root.usable))
-            if (v !== root.value) { root.value = v; root.moved(v) }
+            if (v !== root.value) root.moved(v)
         }
         onPressed: (mouse) => apply(mouse.x)
         onPositionChanged: (mouse) => { if (pressed) apply(mouse.x) }
         onReleased: root.released()
-        onDoubleClicked: { root.value = 0.5; root.moved(0.5); root.released() }
+        onDoubleClicked: { root.moved(0.5); root.released() }
     }
 }
