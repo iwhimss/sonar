@@ -168,7 +168,6 @@ def test_dsp_changes_are_live(api, call, args):
 @pytest.mark.parametrize(
     ("call", "args"),
     [
-        ("set_band_count", ("game", 32)),
         ("add_channel", ("Music",)),
     ],
 )
@@ -224,7 +223,6 @@ def test_live_changes_never_touch_the_conf(api):
         ("set_eq_band", ("game", 99, "gain_db", 1.0), "unknown_band"),
         ("set_eq_band", ("game", 0, "yok", 1.0), "unknown_field"),
         ("set_eq_band", ("game", 0, "band_type", "hayali"), "unknown_field"),
-        ("set_band_count", ("game", 7), "unsupported_band_count"),
         ("list_profiles", ("yok",), "unknown_target"),
         ("add_channel", ("",), "invalid_name"),
         ("add_channel", ("Game",), "duplicate_channel"),
@@ -656,7 +654,7 @@ def test_structural_change_reasserts_instead_of_forgetting(api):
     assert api.router.decided
     api.supervisor.state.nodes["sonar_media"] = 99
     api.supervisor.control.moved.clear()
-    api.set_band_count("game", 32)
+    api.add_channel("Music")
     assert api.router.decided  # karar korunuyor
     assert api.supervisor.control.moved == [(10, "sonar_media")]  # taşıma tekrarlandı
 
@@ -1049,3 +1047,63 @@ def test_filter_params_are_validated_against_the_definition(api):
     api.profile("game").filter(FilterStage.SPATIAL).params = {"width_deg": 30.0}
     api.set_filter_param("game", "spatial", "immersion", 80.0)
     assert api.profile("game").filter(FilterStage.SPATIAL).params["immersion"] == 80.0
+
+
+# --------------------------------------------------------------------------- EQ noktaları
+#
+# Kullanıcı band sayısını açılır menüden seçmek yerine eğriye sağ tıklayarak nokta
+# eklemek/silmek istedi. Zincir her zaman 32 bandlık eklentiyle kurulduğu için bu
+# tamamen canlı — eskiden kapasite değişimi grafı yeniden kuruyordu.
+
+
+def test_adding_a_band_keeps_the_list_sorted_by_frequency(api):
+    index = api.add_eq_band("game", 3000.0, 6.0)
+    bands = api.profile("game").eq.bands
+    assert [round(b.freq) for b in bands] == sorted(round(b.freq) for b in bands)
+    assert bands[index].freq == 3000.0
+    assert bands[index].gain_db == 6.0
+    assert api.profile("game").eq.band_count == len(bands)
+
+
+def test_adding_a_band_is_live(api):
+    api.supervisor.calls.clear()
+    api.add_eq_band("game", 3000.0)
+    assert "reconcile" not in api.supervisor.kinds, "band eklemek grafı yeniden kurmamalı"
+
+
+def test_removing_a_band(api):
+    before = len(api.profile("game").eq.bands)
+    api.remove_eq_band("game", 0)
+    assert len(api.profile("game").eq.bands) == before - 1
+    assert api.profile("game").eq.band_count == before - 1
+
+
+def test_the_last_band_cannot_be_removed(api):
+    eq = api.profile("game").eq
+    eq.bands = eq.bands[:1]
+    eq.band_count = 1
+    with pytest.raises(ApiError) as error:
+        api.remove_eq_band("game", 0)
+    assert error.value.code == "last_band"
+
+
+def test_the_band_count_is_capped_by_the_plugin(api):
+    from sonar.core.dsp import registry
+
+    eq = api.profile("game").eq
+    while len(eq.bands) < registry.EQ_CAPACITY:
+        api.add_eq_band("game", 1000.0)
+    with pytest.raises(ApiError) as error:
+        api.add_eq_band("game", 1000.0)
+    assert error.value.code == "eq_full"
+
+
+def test_an_unknown_band_index_is_rejected(api):
+    with pytest.raises(ApiError) as error:
+        api.remove_eq_band("game", 99)
+    assert error.value.code == "unknown_band"
+
+
+def test_added_band_frequency_is_clamped(api):
+    index = api.add_eq_band("game", 5.0)
+    assert api.profile("game").eq.bands[index].freq == pytest.approx(31.25)

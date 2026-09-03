@@ -47,11 +47,14 @@ def test_eq_variant_covers_requested_bands(band_count):
     assert f"ft_{band_count - 1}" in spec.ports
 
 
-def test_eq_variant_picks_the_smallest_that_fits():
-    assert registry.eq_plugin_for(5).band_capacity == 8
-    assert registry.eq_plugin_for(10).band_capacity == 16
-    assert registry.eq_plugin_for(16).band_capacity == 16
-    assert registry.eq_plugin_for(32).band_capacity == 32
+def test_eq_capacity_is_fixed_at_the_largest_variant():
+    """Kapasite band sayısından bağımsız: band eklemek grafı yeniden kurmasın diye.
+
+    Bedeli ölçüldü (altı zincir, ses akarken): x16 %11.6, x32 %12.0 — kullanılmayan
+    bandlar `ft = 0` ile kapalı ve analizörler zaten kapalı olduğu için neredeyse bedava.
+    """
+    for count in (5, 10, 16, 32):
+        assert registry.eq_plugin_for(count).band_capacity == registry.EQ_CAPACITY
 
 
 def test_mono_variants_exist():

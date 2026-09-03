@@ -22,6 +22,7 @@ from functools import cache
 from pathlib import Path
 
 __all__ = [
+    "EQ_CAPACITY",
     "LADSPA_SEARCH_PATH",
     "LV2_SEARCH_PATH",
     "PLUGINS",
@@ -299,8 +300,16 @@ PLUGINS[_DEEPFILTER_STEREO.key] = _DEEPFILTER_STEREO
 del _bands, _ch, _spec, _name, _ports_map
 
 
-#: Arayüzde sunulan band sayısı → kullanılacak LSP EQ varyantının band kapasitesi.
-_BAND_COUNT_TO_CAPACITY = {5: 8, 8: 8, 10: 16, 16: 16, 32: 32}
+#: Zincir **her zaman** en büyük EQ varyantıyla kuruluyor.
+#:
+#: Eskiden band sayısı kapasiteyi seçiyordu (8/16/32) ve kapasite değişimi **yapısal**
+#: bir değişiklikti — grafı yeniden kurmak gerekiyordu. Kullanıcı band eklemeyi/silmeyi
+#: EQ eğrisinde sağ tıkla yapmak isteyince bu kabul edilemez oldu: her nokta eklemede
+#: ses kesilirdi.
+#:
+#: Bedeli ölçüldü (altı zincir, ses akarken): x16 **%11.6**, x32 **%12.0** — analizörler
+#: kapalı olduğu için kullanılmayan bandlar (`ft = 0`) neredeyse bedava.
+EQ_CAPACITY = 32
 
 
 def plugin(key: str) -> PluginSpec:
@@ -311,13 +320,15 @@ def plugin(key: str) -> PluginSpec:
         raise KeyError(f"katalogda böyle bir eklenti yok: {key}") from None
 
 
-def eq_plugin_for(band_count: int, channels: int = 2) -> PluginSpec:
-    """İstenen band sayısını karşılayan en küçük LSP EQ varyantını döndürür."""
-    capacity = _BAND_COUNT_TO_CAPACITY.get(band_count)
-    if capacity is None:
-        capacity = next((c for c in (8, 16, 32) if c >= band_count), 32)
+def eq_plugin_for(band_count: int = 0, channels: int = 2) -> PluginSpec:
+    """Kullanılacak LSP EQ varyantı — her zaman en büyüğü (bkz. `EQ_CAPACITY`).
+
+    `band_count` yalnızca çağrı yerlerini bozmamak için duruyor; kapasite artık ondan
+    bağımsız, böylece band eklemek/silmek grafı yeniden kurmuyor.
+    """
+    del band_count
     suffix = "stereo" if channels == 2 else "mono"
-    return plugin(f"lsp_para_eq_x{capacity}_{suffix}")
+    return plugin(f"lsp_para_eq_x{EQ_CAPACITY}_{suffix}")
 
 
 # --------------------------------------------------------------------------- kurulu mu?

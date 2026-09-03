@@ -60,7 +60,7 @@ def test_plan_ignores_availability_when_asked():
     assert plan.stages == CHAIN_ORDER
 
 
-@pytest.mark.parametrize(("bands", "capacity"), [(5, 8), (10, 16), (16, 16), (32, 32)])
+@pytest.mark.parametrize(("bands", "capacity"), [(5, 32), (10, 32), (16, 32), (32, 32)])
 def test_plan_picks_eq_capacity(bands, capacity, all_installed):
     assert plan_chain(band_count=bands).eq_capacity == capacity
 

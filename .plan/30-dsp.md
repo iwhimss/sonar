@@ -72,10 +72,17 @@ FX sayfasındaki panel satırı `Flow` oldu: sığdığı kadar yan yana, sığm
 | Kapalıyken | L=-17.0 dBFS, R=**-240 dBFS** — bit-şeffaf |
 | Performans ucu (0/0) | sızıntı **-18.4 dB**, gecikme **0.29 ms** |
 | Sürükleyicilik ucu (100/100) | sızıntı **-5.1 dB**, gecikme **1.15 ms** |
-| CPU (aynı graf, ses akarken) | kapalı %14.0 · açık %13.8 — **ölçüm gürültüsünün içinde** |
-| CPU (boşta, aynı koşullar) | crossfeed'li conf %0.0 · crossfeed'siz conf %0.0 |
+| CPU — bloklar grafta yokken vs varken, boşta | %9.8 → **%10.2** |
+| CPU — bloklar grafta yokken vs varken, ses akarken | %10.2 → **%12.0** |
+| CPU — aynı grafta yalnızca aç/kapa | %14.0 · %13.8 (gürültünün içinde) |
 
-Kıyas için HRTF sürümü: boşta **%0.0 → %14.4**, ses akarken tek kanalda **%17**.
+Yani crossfeed'in bedeli altı zincir için tek çekirdeğin **~%1.8'i**. Kıyas için HRTF
+sürümü boşta **+%14.4** yiyordu ve açıp kapatmak grafı yeniden kurmayı gerektiriyordu.
+
+> **Ölçüm hatası ve düzeltmesi:** ilk turda `pgrep -f "pipewire -c ..."` `timeout`
+> sarmalayıcısını yakaladı ve her şey %0.0 okundu. Yukarıdaki sayılar `pipewire`
+> sürecinin kendi PID'iyle yeniden ölçüldü. Aynı hatanın etkilediği tek yer buydu;
+> daemon'ın kendi grafındaki ölçümler doğru PID'i kullanıyordu.
 
 ## Yol boyunca yakalananlar
 

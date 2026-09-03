@@ -134,14 +134,18 @@ def test_stream_bus_has_no_device_target(portable):
     assert "sonar_stream_out" not in confgen.live_targets(config)
 
 
-def test_band_count_change_changes_the_conf(portable):
-    """EQ eklentisinin kapasitesi conf'ta; band sayısı yapısal bir ayardır."""
+def test_band_count_no_longer_touches_the_conf(portable):
+    """Zincir her zaman 32 bandlık eklentiyle kuruluyor.
+
+    Eskiden band sayısı kapasiteyi seçiyordu ve değişimi yapısaldı; kullanıcı band
+    eklemeyi eğriye sağ tıkla yapmak isteyince bu kabul edilemez oldu — her nokta
+    eklemede ses kesilirdi (Faz 31).
+    """
     config = default_config()
     before = confgen.generate(config)
     config.settings.default_band_count = 32
-    after = confgen.generate(config)
-    assert "para_equalizer_x32_stereo" in after
-    assert "para_equalizer_x16_stereo" in before
+    assert confgen.generate(config) == before
+    assert "para_equalizer_x32_stereo" in before
 
 
 # --------------------------------------------------------------------------- node envanteri

@@ -214,10 +214,15 @@ class SonarDBusInterface(QObject):
         """Ekolayzer öncesi kazanç."""
         return reply(lambda: self.api.set_eq_preamp(target, value_db))
 
+    @Slot(str, float, float, result=str)
+    def AddEqBand(self, target: str, freq: float, gain_db: float) -> str:
+        """Verilen frekansa yeni bir EQ bandı ekler. Sonuç: bandın indeksi. **Canlı**."""
+        return reply(lambda: self.api.add_eq_band(target, freq, gain_db))
+
     @Slot(str, int, result=str)
-    def SetBandCount(self, target: str, count: int) -> str:
-        """EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur."""
-        return reply(lambda: self.api.set_band_count(target, count))
+    def RemoveEqBand(self, target: str, index: int) -> str:
+        """Bir EQ bandını siler. **Canlı**."""
+        return reply(lambda: self.api.remove_eq_band(target, index))
 
     # ------------------------------------------------------------------ profiller
 

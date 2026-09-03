@@ -724,9 +724,16 @@ class SonarBridge(QObject):
         self._patch_eq(target, {"preamp_db": value_db})
         self._call("SetEqPreamp", target, value_db)
 
+    @Slot(str, float, float)
+    def addEqBand(self, target: str, freq: float, gain_db: float) -> None:
+        """Eğriye sağ tıklamanın karşılığı. Canlı — ses kesilmez."""
+        self._call("AddEqBand", target, freq, gain_db)
+        self.refresh()
+
     @Slot(str, int)
-    def setBandCount(self, target: str, count: int) -> None:
-        self._call("SetBandCount", target, count)
+    def removeEqBand(self, target: str, index: int) -> None:
+        self._call("RemoveEqBand", target, index)
+        self.refresh()
 
     @Slot(str, str, bool)
     def setFilterEnabled(self, target: str, stage: str, enabled: bool) -> None:

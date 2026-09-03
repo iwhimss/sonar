@@ -17,6 +17,8 @@ SonarPanel {
     readonly property var eq: profile.eq !== undefined ? profile.eq : ({})
     readonly property int bandCount: eq.band_count !== undefined ? eq.band_count : 10
     readonly property var bands: eq.bands !== undefined ? eq.bands : []
+    //: LSP `para_equalizer_x32`'nin kapasitesi. Sınırda "ekle" hiçbir şey yapmıyor.
+    readonly property int maxBands: 32
 
     Column {
         anchors.fill: parent
@@ -52,15 +54,12 @@ SonarPanel {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Item { width: Theme.s4; height: 1 }
-            SonarSectionLabel { text: "Bandlar"; anchors.verticalCenter: parent.verticalCenter }
-            SonarComboBox {
-                width: 70
-                accent: root.accent
+            /* "Bandlar" açılırı kalktı: band sayısı artık eğriye sağ tıklayarak
+               değişiyor. Zincir her zaman 32 bandlık eklentiyle kurulduğu için bu
+               tamamen canlı — eskiden kapasite değişimi grafı yeniden kuruyordu. */
+            SonarSectionLabel {
+                text: root.bandCount + " band"
                 anchors.verticalCenter: parent.verticalCenter
-                model: [{value:"5",label:"5"},{value:"10",label:"10"},
-                        {value:"16",label:"16"},{value:"32",label:"32"}]
-                currentValue: String(root.bandCount)
-                onActivated: (v) => root.bridge.setBandCount(root.target, parseInt(v))
             }
             Item { width: Theme.s4; height: 1 }
             SonarSectionLabel { text: "Ölçek"; anchors.verticalCenter: parent.verticalCenter }
@@ -94,13 +93,22 @@ SonarPanel {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     property int band: -1
 
+                    /* Sağ tık: bir düğümün üstündeyse **sil**, boşluktaysa o frekansa
+                       yeni bir nokta **ekle**. İkisi de canlı. Eskiden sağ tık bandın
+                       kazancını sıfırlıyordu; kullanıcı nokta ekleyip silmek istedi. */
                     onPressed: (mouse) => {
                         band = curve.bandAt(mouse.x, mouse.y)
                         if (band >= 0) curve.selectedBand = band
-                        if (mouse.button === Qt.RightButton && band >= 0) {
-                            root.bridge.setEqBand(root.target, band, "gain_db", "0")
-                            band = -1
+                        if (mouse.button !== Qt.RightButton) return
+                        if (band >= 0) {
+                            if (root.bands.length > 1) root.bridge.removeEqBand(root.target, band)
+                            curve.selectedBand = -1
+                        } else if (root.bands.length < root.maxBands) {
+                            root.bridge.addEqBand(root.target,
+                                                  curve.freqForX(mouse.x),
+                                                  curve.gainForY(mouse.y))
                         }
+                        band = -1
                     }
                     onPositionChanged: (mouse) => {
                         if (!pressed || band < 0) return

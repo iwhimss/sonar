@@ -50,7 +50,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -280,7 +280,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -510,7 +510,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -740,7 +740,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -970,7 +970,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -1200,7 +1200,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -1635,7 +1635,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0
@@ -1931,7 +1931,7 @@ context.modules = [
                     {
                         type = "lv2"
                         name = "eq"
-                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo"
+                        plugin = "http://lsp-plug.in/plugins/lv2/para_equalizer_x32_stereo"
                         control = {
                             enabled = 0.0
                             ife_l = 0.0

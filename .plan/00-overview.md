@@ -7,7 +7,7 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 31 — EQ nokta ekleme/silme
+**Aktif faz:** Faz 26 — Yerleşim onarımı
 **Son güncelleme:** 2026-09-03
 **Sonraki adım:** Faz 25 → 27 → 28 → 29 → 30 → 31 → 26 → 32 (yerleşim, arayüz son hâlini aldıktan sonra). Sonra kullanıcı dördüncü
 test turunu yapar; Faz 11 (Paketleme) ondan sonra.
@@ -55,12 +55,12 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🔴 udev kuralı yanlış sırada — Faz 32 |
 | 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟢 Tamamlandı |
 | 25 | [Kırık kontroller](25-broken-controls.md) | 🟢 Tamamlandı |
-| 26 | [Yerleşim onarımı](26-layout.md) | ⚪ Bekliyor (31'den sonra) |
+| 26 | [Yerleşim onarımı](26-layout.md) | 🟡 Sıradaki |
 | 27 | [Çoklu çıkışın geri alınması](27-single-output.md) | 🟢 Tamamlandı |
 | 28 | [Master davranışı, dişli, %300 fader](28-master.md) | 🟢 Tamamlandı |
 | 29 | [Smart Volume profile taşınıyor](29-smart-volume.md) | 🟢 Tamamlandı |
 | 30 | [DSP: crossfeed, Boost, mikrofon zinciri](30-dsp.md) | 🟢 Tamamlandı |
-| 31 | [EQ nokta ekleme/silme](31-eq-points.md) | 🟡 Sıradaki |
+| 31 | [EQ nokta ekleme/silme](31-eq-points.md) | 🟢 Tamamlandı |
 | 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | ⚪ Bekliyor |
 | 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |

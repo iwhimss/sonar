@@ -59,10 +59,13 @@ from typing import Any
 
 from sonar.core import config as config_mod
 from sonar.core import importers, presets, serde
+from sonar.core.dsp import registry
 from sonar.core.model import (
     DEFAULT_FILTER_PARAMS,
-    SUPPORTED_BAND_COUNTS,
+    EQ_FREQ_MAX,
+    EQ_FREQ_MIN,
     Channel,
+    EqBand,
     EqBandType,
     FilterStage,
     MatchKey,
@@ -71,6 +74,7 @@ from sonar.core.model import (
     RoutingRule,
     SonarConfig,
     StreamDirection,
+    default_band_q,
     default_profile,
     slugify,
 )
@@ -458,16 +462,42 @@ class SonarApi:
             target, {"kind": "eq_band", "target": target, "band": band, "field": field}
         )
 
-    def set_band_count(self, target: str, count: int) -> None:
-        """Band sayısı EQ eklentisinin kapasitesini belirler → **yapısal**."""
-        if count not in SUPPORTED_BAND_COUNTS:
+    def add_eq_band(self, target: str, freq: float, gain_db: float = 0.0) -> int:
+        """Belirtilen frekansa yeni bir EQ bandı ekler ve indeksini döndürür. **Canlı**.
+
+        Arayüzde eğriye sağ tıklamanın karşılığı. Bandlar frekansa göre sıralı tutuluyor:
+        kullanıcı eğriye baktığında soldan sağa gitmesi bekleniyor.
+
+        Zincir her zaman 32 bandlık eklentiyle kurulduğu için burada yapısal bir
+        değişiklik yok — band eklemek ses kesmiyor.
+        """
+        eq = self._editable(target).eq
+        if len(eq.bands) >= registry.EQ_CAPACITY:
             raise ApiError(
-                "unsupported_band_count",
-                f"desteklenen band sayıları: {', '.join(map(str, SUPPORTED_BAND_COUNTS))}",
+                "eq_full", f"en fazla {registry.EQ_CAPACITY} band olabilir"
             )
-        self._editable(target).eq.band_count = count
-        self.config.settings.default_band_count = count
-        self._structural({"kind": "band_count", "target": target})
+        band = EqBand(
+            freq=max(EQ_FREQ_MIN, min(float(freq), EQ_FREQ_MAX)),
+            gain_db=float(gain_db),
+            q=default_band_q(max(len(eq.bands) + 1, 1)),
+        )
+        eq.bands.append(band)
+        eq.bands.sort(key=lambda b: b.freq)
+        eq.band_count = len(eq.bands)
+        index = eq.bands.index(band)
+        self._live_target(target, {"kind": "eq_band_added", "target": target, "band": index})
+        return index
+
+    def remove_eq_band(self, target: str, index: int) -> None:
+        """Bir EQ bandını siler. **Canlı**."""
+        eq = self._editable(target).eq
+        if not 0 <= index < len(eq.bands):
+            raise ApiError("unknown_band", f"böyle bir band yok: {index}")
+        if len(eq.bands) <= 1:
+            raise ApiError("last_band", "en az bir band kalmalı")
+        eq.bands.pop(index)
+        eq.band_count = len(eq.bands)
+        self._live_target(target, {"kind": "eq_band_removed", "target": target, "band": index})
 
     # ------------------------------------------------------------------ profiller
 
