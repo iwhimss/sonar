@@ -31,11 +31,9 @@ __all__ = [
     "available_plugins",
     "eq_analyzer_ports",
     "eq_plugin_for",
-    "hrtf_file",
     "is_available",
     "plugin",
     "plugin_reference",
-    "sofa_available",
 ]
 
 
@@ -45,8 +43,8 @@ class PluginKind(StrEnum):
     #: PipeWire'ın kendi `filter-graph` eklentileri (`copy`, `mixer`, `linear`).
     #: Kurulum gerektirmiyor, PipeWire varsa vardır.
     BUILTIN = "builtin"
-    #: SOFA/HRTF `spatializer`. `libspa-filter-graph-plugin-sofa.so` ve bir `.sofa`
-    #: dosyası gerekiyor; ikisi de yoksa aşama zincirden düşer.
+    #: PipeWire'ın SOFA/HRTF eklentisi. Spatial Audio bir dönem bunu kullanıyordu;
+    #: CPU maliyeti kabul edilemez çıkınca crossfeed'e geçildi (bkz. `chain`).
     SOFA = "sofa"
 
 
@@ -429,42 +427,3 @@ def clear_cache() -> None:
     """Eklenti tarama önbelleğini boşaltır (paket kurulumundan sonra çağrılır)."""
     _installed_lv2_uris.cache_clear()
     _ladspa_library.cache_clear()
-    hrtf_file.cache_clear()
-    sofa_available.cache_clear()
-
-
-# --------------------------------------------------------------------------- SOFA / HRTF
-
-#: `spatializer` eklentisini taşıyan SPA modülü. PipeWire libmysofa olmadan
-#: derlenmişse bu dosya yoktur ve Spatial Audio aşaması zincirden düşer.
-SOFA_PLUGIN_PATHS: tuple[Path, ...] = (
-    Path("/usr/lib/spa-0.2/filter-graph/libspa-filter-graph-plugin-sofa.so"),
-    Path("/usr/lib64/spa-0.2/filter-graph/libspa-filter-graph-plugin-sofa.so"),
-)
-
-#: Aranacak HRTF dosyaları, tercih sırasıyla. `default.sofa` libmysofa'nın kendi
-#: gömülü seti; MIT KEMAR daha ayrıntılı ama her kurulumda yok.
-HRTF_SEARCH_PATH: tuple[Path, ...] = (
-    Path("/usr/share/libmysofa/default.sofa"),
-    Path("/usr/share/libmysofa/MIT_KEMAR_normal_pinna.sofa"),
-    Path("/usr/share/sofa/default.sofa"),
-)
-
-
-@cache
-def hrtf_file() -> str:
-    """Kullanılacak HRTF dosyasının yolu; hiçbiri yoksa boş dize.
-
-    Boş dönmesi Spatial Audio aşamasının kurulamayacağı anlamına gelir; `plan_chain`
-    onu zincirden düşürür ve arayüz "eklenti kurulu değil" yolunu kullanır.
-    """
-    for candidate in HRTF_SEARCH_PATH:
-        if candidate.is_file():
-            return str(candidate)
-    return ""
-
-
-@cache
-def sofa_available() -> bool:
-    """SOFA eklentisi ve bir HRTF dosyası var mı?"""
-    return bool(hrtf_file()) and any(path.is_file() for path in SOFA_PLUGIN_PATHS)

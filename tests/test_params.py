@@ -188,9 +188,10 @@ def test_profile_to_params_covers_the_whole_chain():
     out = params.profile_to_params(default_profile())
     prefixes = {key.split(":", 1)[0] for key in out}
     # Spatial ve Boost kanal başına ayrı node'lara yayılıyor; anahtar öneki node adı.
+    # Spatial kapalıyken yalnızca mikserin sızıntı kazancı yazılıyor (bypass).
     assert prefixes == {
         "df", "gate", "eq", "comp", "lim",
-        "boost_l", "boost_r", "spatial_l", "spatial_r",
+        "boost_l", "boost_r", "spatial_mix_l", "spatial_mix_r",
     }  # fmt: skip
 
 
@@ -201,10 +202,39 @@ def test_spatial_params_are_skipped_when_the_stage_is_not_in_the_chain():
     assert not any(key.startswith("spatial_") for key in out)
 
 
-def test_spatial_params_appear_when_the_stage_is_in_the_chain():
+def test_spatial_bypass_is_bit_transparent():
+    """Sızıntı kazancı 0 → çıkış girişe birebir eşit (ölçüldü: R = -240 dBFS)."""
     out = params.profile_to_params(default_profile(), stages=CHAIN_ORDER)
-    assert out["spatial_l:Azimuth"] == pytest.approx(30.0)
-    assert out["spatial_r:Azimuth"] == pytest.approx(330.0), "sağ hoparlör -30°"
+    assert out["spatial_mix_l:Gain 2"] == 0.0
+    assert out["spatial_mix_r:Gain 2"] == 0.0
+
+
+def test_spatial_maps_its_two_sliders_onto_the_crossfeed():
+    profile = default_profile()
+    spatial = profile.filter(FilterStage.SPATIAL)
+    spatial.enabled = True
+    spatial.params = {"immersion": 100.0, "distance": 100.0}
+    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+
+    assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MAX)
+    assert out["spatial_delay_l:Delay (s)"] == pytest.approx(params.SPATIAL_DELAY_MAX_S)
+    # Sürükleyicilik ucunda tizler daha erken kesiliyor.
+    assert out["spatial_lp_l:Freq"] == pytest.approx(params.SPATIAL_CUTOFF_MIN_HZ)
+
+    spatial.params = {"immersion": 0.0, "distance": 0.0}
+    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+    assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MIN)
+    assert out["spatial_lp_l:Freq"] == pytest.approx(params.SPATIAL_CUTOFF_MAX_HZ)
+
+
+def test_spatial_values_are_clamped():
+    profile = default_profile()
+    spatial = profile.filter(FilterStage.SPATIAL)
+    spatial.enabled = True
+    spatial.params = {"immersion": 500.0, "distance": -20.0}
+    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+    assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MAX)
+    assert out["spatial_delay_l:Delay (s)"] == pytest.approx(params.SPATIAL_DELAY_MIN_S)
 
 
 def test_profile_to_params_honours_a_shorter_chain():

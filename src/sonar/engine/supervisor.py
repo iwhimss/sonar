@@ -98,6 +98,7 @@ def live_params(
     """Her DSP node'una yazılacak port değerleri: `{node adı: {port: değer}}`."""
     nodes = confgen.dsp_nodes(cfg)
     mic_stages = _stages_for(mic=True)
+    playback_stages = _stages_for(mic=False)
     mic_ids = {mic.id for mic in cfg.mic_chains}
     shared = {mic.id for mic in cfg.mic_chains if mic.share_chain_with_mic}
 
@@ -108,13 +109,7 @@ def live_params(
             # Zinciri paylaşan mikrofonun kendi DSP'si yok; birincilinki geçerli.
             continue
         profile = load_profile(target, _active_profile(cfg, target))
-        # Spatial yapısal: yalnızca hedefin kendi ayarında açıksa grafta var. Olmayan
-        # bir node'a parametre yazmak sessizce kaybolurdu.
-        stages = (
-            mic_stages
-            if target in mic_ids
-            else _stages_for(mic=False, spatial=_spatial_on(cfg, target))
-        )
+        stages = mic_stages if target in mic_ids else playback_stages
         out[node] = profile_to_params(profile, stages=stages, channels=2)
     return out
 
@@ -173,20 +168,12 @@ def _active_profile(cfg: SonarConfig, target: str) -> str:
     return bus.active_profile if bus is not None else "Default"
 
 
-def _spatial_on(cfg: SonarConfig, target: str) -> bool:
-    channel = cfg.channel(target)
-    if channel is not None:
-        return channel.spatial
-    bus = cfg.bus(target)
-    return bus.spatial if bus is not None else False
-
-
-def _stages_for(*, mic: bool, spatial: bool = False) -> tuple[FilterStage, ...]:
+def _stages_for(*, mic: bool) -> tuple[FilterStage, ...]:
     """Zincirde gerçekten kurulmuş aşamalar — kurulu olmayan eklentiye yazmayalım."""
     wanted = CHAIN_ORDER
     if not mic:
         wanted = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
-    return plan_chain(wanted, channels=2, spatial=spatial).stages
+    return plan_chain(wanted, channels=2 if not mic else 1).stages
 
 
 # --------------------------------------------------------------------------- süpervizör

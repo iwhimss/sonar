@@ -62,7 +62,6 @@ def plan_chain(
     channels: int = 2,
     band_count: int = 10,
     require_installed: bool = True,
-    spatial: bool = False,
 ) -> ChainPlan:
     """İstenen aşamalardan kurulabilir olanları seçer.
 
@@ -84,14 +83,10 @@ def plan_chain(
             kept.append(stage)
             continue
         if stage is FilterStage.SPATIAL:
-            # Yapısal: yalnızca hedef açıkça istediğinde kuruluyor. Konvolver bypass'ta
-            # da CPU yiyor (ölçüldü: boşta %0.0 → %14.4), bu yüzden kapalıyken grafta
-            # hiç bulunmuyor. Mono zincirde (mikrofon) anlamsız; SOFA yoksa kurulamaz.
-            if (
-                not spatial
-                or channels != 2
-                or (require_installed and not registry.sofa_available())
-            ):
+            # Crossfeed PipeWire'ın kendi bloklarıyla kuruluyor: kurulum gerektirmiyor ve
+            # bypass bedava, bu yüzden diğer aşamalar gibi her zaman zincirde.
+            # Mono zincirde (mikrofon) kulaklık simülasyonunun karşılığı yok.
+            if channels != 2:
                 skipped.append(stage)
             else:
                 kept.append(stage)
@@ -186,53 +181,78 @@ def _boost_block(channels: int) -> StageBlock:
 
 
 def _spatial_block(channels: int) -> StageBlock:
-    """HRTF ile iki sanal hoparlör.
+    """Spatial Audio — kulaklar arası sızıntı (crossfeed).
 
     Alt graf (stereo):
 
     ```
-    spatial_l ─┬─ "Out L" ─► spatial_mix_l:"In 1"
-               └─ "Out R" ─► spatial_mix_r:"In 1"
-    spatial_r ─┬─ "Out L" ─► spatial_mix_l:"In 2"
-               └─ "Out R" ─► spatial_mix_r:"In 2"
+    cp_l ─┬──────────────────────────────────► mix_l:"In 1"   (doğrudan)
+          └─► delay_l ─► lowpass_l ──────────► mix_r:"In 2"   (karşı kulağa sızıntı)
+    cp_r ─┬──────────────────────────────────► mix_r:"In 1"
+          └─► delay_r ─► lowpass_r ──────────► mix_l:"In 2"
     ```
 
-    `spatializer` mono girip stereo çıkıyor, yani iki sanal hoparlörün binaural
-    çıktısını **toplamak** gerekiyor; mikserler bunun için.
+    Gerçek hoparlörlerde sol hoparlörün sesi sağ kulağa da ulaşır: biraz geç ve kafanın
+    gölgelediği tizler kısılmış hâlde. Kulaklıkta bu hiç olmaz, ses "kafanın içinde"
+    kalır. Blok tam bunu geri koyuyor — `delay` gecikmeyi, `bq_lowpass` kafa gölgesini.
 
-    ## Neden bu blok yapısal (conf'a girip çıkıyor)
+    ## Neden HRTF değil
 
-    İlk sürümde blokta ayrıca bir kuru yol ve karışım kazançları vardı; aşama
-    "bypass"ta bile konvolverler çalışıyordu. Ölçüldü: altı zincirde **boştaki CPU
-    %0.0 → %14.4**. Bir konvolveri bypass etmek onu ucuzlatmıyor.
+    İlk sürüm PipeWire'ın `sofa` `spatializer`'ıyla iki sanal hoparlör kuruyordu.
+    Ölçüm onu çürüttü: ses akan tek bir kanalda tek çekirdeğin **%17'sini** yiyordu ve
+    bir konvolveri bypass etmek onu ucuzlatmadığı için aşamayı açıp kapatmak grafı
+    yeniden kurmayı gerektiriyordu (boştaki CPU %0.0 → %14.4). Kullanıcı bunun yerine
+    ucuz bir çözüm istedi.
 
-    Bu yüzden Spatial Audio, projedeki tek "aşamayı aç/kapa = grafı yeniden kur"
-    istisnası. Açma/kapama profilde değil, hedefin kendi ayarında (`Channel.spatial`,
-    `MasterBus.spatial`) — böylece profil değiştirmek asla grafı yeniden kurmuyor,
-    Faz 2'nin değişmez kuralı bozulmuyor.
+    Burada her şey PipeWire'ın kendi `builtin` blokları: bir gecikme hattı, bir biquad
+    ve bir mikser. Bypass mikserin sızıntı kazancını 0 yapmak, yani **bit-şeffaf** ve
+    graf hiç değişmiyor. Ölçüldü: kapalıyken sol-tek sinyal L=-17.0 / R=-240 dBFS,
+    açıkken R=-23.0 dBFS ve kulaklar arası gecikme 0.40 ms.
+
+    Bu gerçek bir surround simülasyonu değil, stereo sahnenin kafanın dışına çıkması.
     """
     if channels != 2:  # pragma: no cover - plan_chain buraya izin vermez
         raise ValueError("Spatial Audio yalnızca stereo zincirde kurulabilir")
 
-    config = {"filename": registry.hrtf_file()}
     nodes = (
-        _sofa("spatial_l", config),
-        _sofa("spatial_r", config),
+        _builtin("spatial_copy_l", "copy"),
+        _builtin("spatial_copy_r", "copy"),
+        _delay("spatial_delay_l"),
+        _delay("spatial_delay_r"),
+        _lowpass("spatial_lp_l"),
+        _lowpass("spatial_lp_r"),
         _mixer("spatial_mix_l"),
         _mixer("spatial_mix_r"),
     )
     links = (
-        {"output": "spatial_l:Out L", "input": "spatial_mix_l:In 1"},
-        {"output": "spatial_r:Out L", "input": "spatial_mix_l:In 2"},
-        {"output": "spatial_l:Out R", "input": "spatial_mix_r:In 1"},
-        {"output": "spatial_r:Out R", "input": "spatial_mix_r:In 2"},
+        {"output": "spatial_copy_l:Out", "input": "spatial_mix_l:In 1"},
+        {"output": "spatial_copy_r:Out", "input": "spatial_mix_r:In 1"},
+        {"output": "spatial_copy_l:Out", "input": "spatial_delay_l:In"},
+        {"output": "spatial_copy_r:Out", "input": "spatial_delay_r:In"},
+        {"output": "spatial_delay_l:Out", "input": "spatial_lp_l:In"},
+        {"output": "spatial_delay_r:Out", "input": "spatial_lp_r:In"},
+        # Sol kanalın sızıntısı **sağ** kulağa gider, sağınki sola.
+        {"output": "spatial_lp_l:Out", "input": "spatial_mix_r:In 2"},
+        {"output": "spatial_lp_r:Out", "input": "spatial_mix_l:In 2"},
     )
     return StageBlock(
         nodes=nodes,
-        audio_in=("spatial_l:In", "spatial_r:In"),
+        audio_in=("spatial_copy_l:In", "spatial_copy_r:In"),
         audio_out=("spatial_mix_l:Out", "spatial_mix_r:Out"),
         links=links,
     )
+
+
+def _delay(name: str) -> dict:
+    """Gecikme hattı. `max-delay` en uzun "Mesafe" ayarını kapsamalı."""
+    node = _builtin(name, "delay", {"Delay (s)": 0.0})
+    node["config"] = {"max-delay": 0.01}
+    return node
+
+
+def _lowpass(name: str) -> dict:
+    """Kafa gölgesi: sızıntının tizleri kısılır."""
+    return _builtin(name, "bq_lowpass", {"Freq": 1000.0, "Q": 0.707})
 
 
 def _builtin(name: str, label: str, control: dict | None = None) -> dict:
@@ -243,8 +263,8 @@ def _builtin(name: str, label: str, control: dict | None = None) -> dict:
 
 
 def _mixer(name: str) -> dict:
-    """İki sanal hoparlörün aynı kulağa düşen katkılarını toplar."""
-    return _builtin(name, "mixer", {"Gain 1": 1.0, "Gain 2": 1.0})
+    """Doğrudan sinyal + karşı kanaldan sızıntı. Bypass: sızıntı kazancı 0."""
+    return _builtin(name, "mixer", {"Gain 1": 1.0, "Gain 2": 0.0})
 
 
 def _sofa(name: str, config: dict) -> dict:

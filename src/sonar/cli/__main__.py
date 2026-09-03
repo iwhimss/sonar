@@ -334,19 +334,15 @@ def _cmd_channel(client: Client, args) -> int:
     return 0
 
 
-def _cmd_spatial(client: Client, args) -> int:
-    client.call("SetSpatial", args.target, args.state == "on")
-    print(f"{args.target} Spatial Audio: {args.state}  (graf yeniden kuruluyor)")
-    return 0
-
-
 def _cmd_smart(client: Client, args) -> int:
-    """Smart Volume: bir kanal konuşurken diğerlerini kıs."""
+    """Smart Volume: bu kanal konuşurken diğerlerini kıs.
+
+    Ayar kanalın **aktif profilinde** duruyor (şema 4), yani profil başına farklı
+    olabiliyor.
+    """
     fields: dict = {}
     if args.state:
         fields["enabled"] = args.state == "on"
-    if args.trigger:
-        fields["trigger_channels"] = args.trigger
     if args.targets is not None:
         fields["target_channels"] = args.targets
     for name in ("reduction_db", "threshold_db", "attack_ms", "hold_ms", "release_ms"):
@@ -355,13 +351,15 @@ def _cmd_smart(client: Client, args) -> int:
             fields[name] = value
 
     if fields:
-        duck = client.call("SetDucking", json.dumps(fields))
+        duck = client.call("SetDucking", args.channel, json.dumps(fields))
     else:
-        duck = (client.call("GetState")["config"] or {}).get("ducking") or {}
+        state = client.call("GetState")
+        duck = ((state["profiles"] or {}).get(args.channel) or {}).get("ducking") or {}
 
-    targets = duck.get("target_channels") or ["(tetikleyici olmayan hepsi)"]
+    profile = _active_profile(client.call("GetState"), args.channel)
+    targets = duck.get("target_channels") or ["(kendisi dışındaki hepsi)"]
+    print(f"{args.channel} / {profile}")
     print(f"Smart Volume : {'açık' if duck.get('enabled') else 'kapalı'}")
-    print(f"tetikleyici  : {', '.join(duck.get('trigger_channels') or []) or '(yok)'}")
     print(f"hedef        : {', '.join(targets)}")
     print(f"indirim      : {duck.get('reduction_db', 0):.1f} dB  "
           f"(eşik {duck.get('threshold_db', 0):.1f} dB)")
@@ -543,15 +541,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--color", default="#8B95A5")
 
-    p = sub.add_parser("spatial", help="Spatial Audio (HRTF) aç/kapa — yapısal")
-    p.add_argument("target", help="kanal veya çıkış bus'ı")
-    p.add_argument("state", choices=("on", "off"))
-
-    p = sub.add_parser("smart", help="Smart Volume (bir kanal konuşurken diğerlerini kıs)")
+    p = sub.add_parser("smart", help="Smart Volume (bu kanal konuşurken diğerlerini kıs)")
+    p.add_argument("channel", help="tetikleyici kanal; ayar onun aktif profiline yazılır")
     p.add_argument("state", nargs="?", choices=("on", "off"), help="verilmezse yalnızca gösterir")
-    p.add_argument("--trigger", nargs="+", metavar="KANAL", help="sesi izlenen kanal(lar)")
     p.add_argument("--targets", nargs="*", metavar="KANAL",
-                   help="kısılacak kanallar; boş verilirse tetikleyici olmayan hepsi")
+                   help="kısılacak kanallar; boş verilirse kendisi dışındaki hepsi")
     p.add_argument("--reduction-db", type=float, dest="reduction_db")
     p.add_argument("--threshold-db", type=float, dest="threshold_db")
     p.add_argument("--attack-ms", type=float, dest="attack_ms")
@@ -602,7 +596,6 @@ _COMMANDS = {
     "device": _cmd_device,
     "obs": _cmd_obs,
     "smart": _cmd_smart,
-    "spatial": _cmd_spatial,
     "channel": _cmd_channel,
     "new": _cmd_new,
     "favorite": _cmd_favorite,

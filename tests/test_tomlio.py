@@ -76,4 +76,4 @@ def test_default_config_roundtrips_through_toml():
 
 def test_header_plus_body_parses():
     text = _HEADER + tomlio.dumps(to_jsonable(default_config()))
-    assert tomllib.loads(text)["schema_version"] == 3
+    assert tomllib.loads(text)["schema_version"] == 4

@@ -196,9 +196,18 @@ MULTI_NODE_STAGES: tuple[FilterStage, ...] = (FilterStage.SPATIAL, FilterStage.B
 #: sınırsız bırakmak kullanıcıya kendini sağır etme imkânı verirdi.
 MAX_BOOST_DB = 12.0
 
-#: Spatial Audio'nun sanal hoparlör açısı sınırı. 0 = iki hoparlör de tam önde,
-#: 30° klasik stereo üçgeni, 60° çok geniş.
-MAX_SPATIAL_WIDTH_DEG = 60.0
+#: Crossfeed sızıntı kazancının uçları. Alt uç ("Performans") yön algısını korumak için
+#: kasten düşük; üst uç ("Sürükleyicilik") -4.4 dB, gerçek hoparlörlerdekine yakın.
+SPATIAL_BLEED_MIN = 0.12
+SPATIAL_BLEED_MAX = 0.60
+
+#: Kafa gölgesinin kesim frekansı. Sürükleyicilik ucunda daha erken kesiliyor.
+SPATIAL_CUTOFF_MAX_HZ = 1600.0
+SPATIAL_CUTOFF_MIN_HZ = 700.0
+
+#: Kulaklar arası gecikme. Gerçek bir stereo üçgeninde 0.2–0.3 ms.
+SPATIAL_DELAY_MIN_S = 0.00015
+SPATIAL_DELAY_MAX_S = 0.0008
 
 
 def multi_stage_params(
@@ -230,33 +239,48 @@ def _boost_params(state: FilterState, channels: int) -> dict[str, float]:
 
 
 def _spatial_params(state: FilterState) -> dict[str, float]:
-    """HRTF açıları. Aşama grafta varsa açıktır; ayrı bir bypass yok.
+    """Crossfeed ayarları → gecikme, alçak geçiren kesim ve sızıntı kazancı.
 
-    Azimut yönü **ölçülerek** bulundu: `Azimuth = 330` verilen sol kanal sağ kulakta
-    daha yüksek çıktı, yani PipeWire'ın konvansiyonu "0 = ön, artan derece = **sola**".
-    Bu yüzden sol hoparlör `+genişlik`, sağ hoparlör `360 - genişlik`.
+    Kullanıcıya iki kaydırıcı gösteriliyor (SteelSeries'teki gibi):
 
-    Aşamanın kendisi yapısal (bkz. `chain._spatial_block`): kapalıyken bu node'lar
-    grafta hiç bulunmuyor, dolayısıyla buraya yalnızca açıkken geliniyor.
+    * **Performans ↔ Sürükleyicilik** (`immersion`, 0–100): ne kadar sızıntı ve ne kadar
+      "yumuşak". Performans ucunda sızıntı az ve tizleri daha çok geçiyor → yön algısı
+      keskin kalır, rekabetçi FPS için tercih edilen bu. Sürükleyicilik ucunda sızıntı
+      artıyor ve daha erken kesiliyor → sahne genişler, hikâye oyunları ve film için.
+    * **Mesafe** (`distance`, 0–100): sanal hoparlörlerin uzaklığı, yani kulaklar arası
+      gecikme. Gerçek bir stereo üçgeninde bu 0.2–0.3 ms; daha uzun değerler sahneyi
+      büyütüyor.
+
+    Bypass mikserde: sızıntı kazancı 0 → çıkış girişe **birebir** eşit.
     """
     defaults = _default_params(FilterStage.SPATIAL)
-    width = min(
-        max(float(state.params.get("width_deg", defaults["width_deg"])), 0.0),
-        MAX_SPATIAL_WIDTH_DEG,
-    )
-    elevation = min(
-        max(float(state.params.get("elevation_deg", defaults["elevation_deg"])), -40.0), 40.0
-    )
-    radius = min(max(float(state.params.get("distance_m", defaults["distance_m"])), 0.1), 10.0)
+    if not state.enabled:
+        return {"spatial_mix_l:Gain 2": 0.0, "spatial_mix_r:Gain 2": 0.0}
+
+    immersion = _unit(state.params.get("immersion", defaults["immersion"]))
+    distance = _unit(state.params.get("distance", defaults["distance"]))
+
+    bleed = SPATIAL_BLEED_MIN + immersion * (SPATIAL_BLEED_MAX - SPATIAL_BLEED_MIN)
+    cutoff = SPATIAL_CUTOFF_MAX_HZ + immersion * (SPATIAL_CUTOFF_MIN_HZ - SPATIAL_CUTOFF_MAX_HZ)
+    delay = SPATIAL_DELAY_MIN_S + distance * (SPATIAL_DELAY_MAX_S - SPATIAL_DELAY_MIN_S)
 
     return {
-        "spatial_l:Azimuth": width,
-        "spatial_r:Azimuth": (360.0 - width) % 360.0,
-        "spatial_l:Elevation": elevation,
-        "spatial_r:Elevation": elevation,
-        "spatial_l:Radius": radius,
-        "spatial_r:Radius": radius,
+        "spatial_mix_l:Gain 1": 1.0,
+        "spatial_mix_r:Gain 1": 1.0,
+        "spatial_mix_l:Gain 2": bleed,
+        "spatial_mix_r:Gain 2": bleed,
+        "spatial_delay_l:Delay (s)": delay,
+        "spatial_delay_r:Delay (s)": delay,
+        "spatial_lp_l:Freq": cutoff,
+        "spatial_lp_r:Freq": cutoff,
+        "spatial_lp_l:Q": 0.707,
+        "spatial_lp_r:Q": 0.707,
     }
+
+
+def _unit(value: float) -> float:
+    """0–100 aralığındaki kullanıcı değerini 0–1'e indirger."""
+    return min(max(float(value), 0.0), 100.0) / 100.0
 
 
 def stage_bypass_ports(stage: FilterStage) -> dict[str, float]:

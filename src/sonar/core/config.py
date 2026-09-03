@@ -24,6 +24,7 @@ from pathlib import Path
 
 from sonar.core import tomlio
 from sonar.core.model import (
+    DEFAULT_FILTER_PARAMS,
     DEFAULT_OUTPUT_BUS,
     SCHEMA_VERSION,
     STREAM_BUS,
@@ -171,9 +172,41 @@ class ConfigStore:
         config.ensure_sends()
         if config.schema_version < 2:
             self._migrate_favorites(config)
+        if config.schema_version < 4:
+            self._migrate_ducking(raw, config)
         if config.schema_version != SCHEMA_VERSION:
             config.schema_version = SCHEMA_VERSION
         return config
+
+    def _migrate_ducking(self, raw: dict, config: SonarConfig) -> None:
+        """Şema 3 → 4: Smart Volume ayarlardan profillere taşınır.
+
+        Şema 3'te tek bir global blok vardı ve tetikleyici kanal ayrıca seçiliyordu.
+        Şema 4'te ayar profilin içinde ve tetikleyici, profili taşıyan kanalın kendisi —
+        kullanıcı her profilde ayrı olmasını istedi.
+
+        Eski blok `trigger_channels` listesindeki kanalların **aktif** profillerine
+        yazılır; o profiller diske kaydedilir.
+        """
+        old = raw.get("ducking")
+        if not isinstance(old, dict) or not old.get("enabled"):
+            return
+        triggers = [c for c in (old.get("trigger_channels") or []) if config.channel(c)]
+        fields = {
+            key: old[key]
+            for key in ("target_channels", "reduction_db", "threshold_db",
+                        "attack_ms", "hold_ms", "release_ms")
+            if key in old
+        }  # fmt: skip
+        for channel_id in triggers:
+            channel = config.channel(channel_id)
+            assert channel is not None
+            profile = self.load_profile(channel_id, channel.active_profile)
+            profile.ducking.enabled = True
+            for key, value in fields.items():
+                setattr(profile.ducking, key, value)
+            self.save_profile(channel_id, profile)
+            log.info("Smart Volume '%s/%s' profiline taşındı", channel_id, profile.name)
 
     def _collapse_extra_outputs(self, config: SonarConfig) -> None:
         """Fazladan çıkış bus'larını siler — artık tek çıkış var (Faz 27).
@@ -261,6 +294,7 @@ class ConfigStore:
             log.warning("Profil okunamadı (%s/%s): %s", target, name, exc)
             return default_profile(name)
         profile.name = name
+        _normalise_filters(profile)
         return profile
 
     def save_profile(self, target: str, profile: Profile) -> None:
@@ -342,6 +376,8 @@ def migrate(raw: dict) -> dict:
         )
     if version < 3:
         raw = _migrate_to_buses(raw)
+    # Şema 3 → 4 (Smart Volume'un profillere taşınması) `ConfigStore.load()` içinde
+    # yapılıyor: profil **dosyalarına** yazmak gerekiyor, ham sözlükte yapılamaz.
     return raw
 
 
@@ -399,6 +435,24 @@ def load() -> SonarConfig:
 
 def save(config: SonarConfig) -> None:
     store().save(config)
+
+
+def _normalise_filters(profile: Profile) -> None:
+    """Aşama parametrelerini bugünkü tanıma uydurur.
+
+    Diskteki profiller eski parametre adlarını taşıyabiliyor: Spatial Audio bir dönem
+    HRTF açılarıyla (`width_deg`, `elevation_deg`, `distance_m`) çalışıyordu, şimdi
+    crossfeed ayarlarıyla (`immersion`, `distance`). Tanımda olmayan anahtarlar düşer,
+    eksik olanlar varsayılanla dolar — böylece kullanıcının profili sessizce
+    kullanılamaz hâle gelmiyor.
+    """
+    for stage, state in profile.filters.items():
+        defaults = DEFAULT_FILTER_PARAMS.get(stage)
+        if defaults is None:  # pragma: no cover - bilinmeyen aşama
+            continue
+        state.params = {
+            key: state.params.get(key, default) for key, default in defaults.items()
+        }
 
 
 def load_profile(target: str, name: str) -> Profile:

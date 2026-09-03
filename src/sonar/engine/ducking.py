@@ -28,12 +28,17 @@ Geçiş dB'de doğrusal: kulağa doğrusal gelen budur (`chatmix_gains` da öyle
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from sonar.core.dsp.params import db_to_linear
-from sonar.core.model import SonarConfig
+from sonar.core.model import Profile, SonarConfig
 
-__all__ = ["Ducker", "duck_targets", "next_depth"]
+__all__ = ["Ducker", "ProfileLookup", "duck_pairs", "next_depth"]
+
+#: Hedef kimliğinden **aktif** profili veren fonksiyon. `daemon.api.profile` bunu
+#: karşılıyor; motorun diske veya önbelleğe bakması gerekmiyor.
+ProfileLookup = Callable[[str], Profile]
 
 
 def next_depth(
@@ -59,34 +64,47 @@ def next_depth(
     return max(current - step, target)
 
 
-def duck_targets(config: SonarConfig) -> tuple[set[str], set[str]]:
-    """`(tetikleyiciler, hedefler)` kanal kimlikleri.
+def duck_pairs(config: SonarConfig, profile_of: ProfileLookup) -> dict[str, set[str]]:
+    """`tetikleyici kanal → kısılacak kanallar`.
 
-    Hedef listesi boşsa "tetikleyici olmayan her kanal" anlamına gelir — kullanıcı tek
-    tek seçmek zorunda kalmasın diye.
+    Tetikleyici, **Smart Volume'u açık olan profili taşıyan kanalın kendisi** (şema 4).
+    Hedef listesi boşsa "kendisi dışındaki her çıkış kanalı" demek — kullanıcı tek tek
+    seçmek zorunda kalmasın diye.
+
+    Birden fazla kanalda açık olabilir; her biri kendi ayarlarıyla bağımsız çalışır.
     """
-    duck = config.ducking
-    triggers = {cid for cid in duck.trigger_channels if config.channel(cid) is not None}
-    if duck.target_channels:
-        targets = {cid for cid in duck.target_channels if config.channel(cid) is not None}
-    else:
-        targets = {c.id for c in config.channels}
-    return triggers, targets - triggers
+    everyone = {channel.id for channel in config.channels}
+    pairs: dict[str, set[str]] = {}
+    for channel in config.channels:
+        duck = profile_of(channel.id).ducking
+        if not duck.enabled:
+            continue
+        wanted = {cid for cid in duck.target_channels if cid in everyone} or everyone
+        targets = wanted - {channel.id}
+        if targets:
+            pairs[channel.id] = targets
+    return pairs
 
 
 @dataclass(slots=True)
 class Ducker:
-    """Zarfın canlı durumu. `step()` her ölçüm turunda çağrılır."""
+    """Zarfların canlı durumu. `step()` her ölçüm turunda çağrılır.
 
-    #: 0 = dokunma, 1 = tam indirim.
-    depth: float = 0.0
+    Tetikleyici başına ayrı bir zarf tutuluyor: her kanalın kendi profili, kendi
+    indirimi ve kendi atak/bırakma süresi var. Bir hedef birden fazla tetikleyicinin
+    kapsamındaysa **en derin** indirim uygulanır (çarpmak yerine) — böylece toplam
+    indirim ayarlanan değerlerin ötesine geçmiyor.
+    """
+
+    #: Tetikleyici kimliği → 0 (dokunma) … 1 (tam indirim).
+    depth: dict[str, float] = field(default_factory=dict)
     #: Tetikleyici sustuktan sonra hold'un bitmesine kalan süre (saniye).
-    hold_left: float = 0.0
+    hold_left: dict[str, float] = field(default_factory=dict)
     _gains: dict[str, float] = field(default_factory=dict, repr=False)
 
     def reset(self) -> None:
-        self.depth = 0.0
-        self.hold_left = 0.0
+        self.depth = {}
+        self.hold_left = {}
         self._gains = {}
 
     @property
@@ -94,34 +112,46 @@ class Ducker:
         """Son hesaplanan kanal → lineer kazanç eşlemesi."""
         return dict(self._gains)
 
-    def step(self, config: SonarConfig, levels: dict[str, float], dt: float) -> dict[str, float]:
+    def step(
+        self,
+        config: SonarConfig,
+        profile_of: ProfileLookup,
+        levels: dict[str, float],
+        dt: float,
+    ) -> dict[str, float]:
         """Yeni kazançları hesaplar. `levels` kanal kimliği → tepe dBFS."""
-        duck = config.ducking
-        if not duck.enabled:
+        pairs = duck_pairs(config, profile_of)
+        if not pairs:
             self.reset()
             return {}
 
-        triggers, targets = duck_targets(config)
-        if not triggers or not targets:
-            self.reset()
-            return {}
+        # Artık tetiklemeyen kanalların zarfını unut.
+        for stale in [cid for cid in self.depth if cid not in pairs]:
+            self.depth.pop(stale, None)
+            self.hold_left.pop(stale, None)
 
-        loudest = max((levels.get(cid, -120.0) for cid in triggers), default=-120.0)
-        speaking = loudest >= duck.threshold_db
-        if speaking:
-            self.hold_left = max(duck.hold_ms, 0.0) / 1000.0
-        elif self.hold_left > 0.0:
-            self.hold_left = max(self.hold_left - dt, 0.0)
-            speaking = True  # hold süresince inik kal
+        gains: dict[str, float] = {}
+        for trigger, targets in pairs.items():
+            duck = profile_of(trigger).ducking
+            speaking = levels.get(trigger, -120.0) >= duck.threshold_db
+            if speaking:
+                self.hold_left[trigger] = max(duck.hold_ms, 0.0) / 1000.0
+            elif self.hold_left.get(trigger, 0.0) > 0.0:
+                self.hold_left[trigger] = max(self.hold_left[trigger] - dt, 0.0)
+                speaking = True  # hold süresince inik kal
 
-        self.depth = next_depth(
-            self.depth,
-            speaking=speaking,
-            depth_db=duck.reduction_db,
-            attack_ms=duck.attack_ms,
-            release_ms=duck.release_ms,
-            dt=dt,
-        )
-        gain = db_to_linear(self.depth * duck.reduction_db)
-        self._gains = dict.fromkeys(targets, gain)
+            depth = next_depth(
+                self.depth.get(trigger, 0.0),
+                speaking=speaking,
+                depth_db=duck.reduction_db,
+                attack_ms=duck.attack_ms,
+                release_ms=duck.release_ms,
+                dt=dt,
+            )
+            self.depth[trigger] = depth
+            gain = db_to_linear(depth * duck.reduction_db)
+            for target in targets:
+                gains[target] = min(gains.get(target, 1.0), gain)
+
+        self._gains = gains
         return self.gains

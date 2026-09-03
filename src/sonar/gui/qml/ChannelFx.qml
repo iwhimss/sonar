@@ -229,124 +229,89 @@ Item {
 
         // --- dinamikler ----------------------------------------------------
         //
-        // Mikrofonda Spatial yok (kulaklık simülasyonunun karşılığı yok), bu yüzden
-        // panel sayısı hedefe göre değişiyor.
-        Row {
+        // `Flow`: paneller sığdığı kadar yan yana, sığmayınca alt satıra sarıyor.
+        // Eskiden sabit yükseklikli bir `Row`du ve iki şey birden bozuluyordu —
+        // içerik kutunun dışına taşıyor, panel sayısı yanlış hesaplandığı için
+        // sonuncusu ekrandan çıkıyordu (test turu 3).
+        Flow {
             id: dynamics
             width: parent.width
-            height: 168
             spacing: Theme.s2
-            readonly property int panelCount: root.isMic ? 3 : 4
+
+            //: Bir panelin en dar hâli. Pencere daraldıkça sütun sayısı düşüyor.
+            readonly property int minPanelWidth: 300
+            readonly property int columns:
+                Math.max(1, Math.floor((width + spacing) / (minPanelWidth + spacing)))
             readonly property real panelWidth:
-                (width - Theme.s2 * (panelCount - 1)) / panelCount
+                (width - spacing * (columns - 1)) / columns
 
-            SonarFilterPanel {
-                width: dynamics.panelWidth
-                height: parent.height
-                title: root.isMic ? "AI Gürültü Engelleme" : "Noise Gate"
-                accent: root.accent
-                active: root.stageOn(root.isMic ? "df" : "gate")
-                onToggled: (v) => root.bridge.setFilterEnabled(root.target,
-                                                               root.isMic ? "df" : "gate", v)
-                Column {
-                    anchors.fill: parent
-                    spacing: 2
-                    Repeater {
-                        model: root.isMic ? root.dfParams : root.gateParams
-                        SonarParamRow {
-                            required property var modelData
+            Repeater {
+                model: root.panels
+                SonarFilterPanel {
+                    id: panel
+                    required property var modelData
+                    width: dynamics.panelWidth
+                    height: body.implicitHeight + 26 + Theme.s3 * 2
+                    title: modelData.title
+                    accent: root.accent
+                    active: root.stageOn(modelData.stage)
+                    note: modelData.note !== undefined ? modelData.note : ""
+                    onToggled: (v) => root.bridge.setFilterEnabled(root.target,
+                                                                   panel.modelData.stage, v)
+                    Column {
+                        id: body
+                        anchors.fill: parent
+                        spacing: 2
+                        Repeater {
+                            model: panel.modelData.params
+                            SonarParamRow {
+                                required property var modelData
+                                width: parent.width
+                                label: modelData.label
+                                from: modelData.from; to: modelData.to
+                                unit: modelData.unit
+                                decimals: modelData.digits !== undefined ? modelData.digits : 1
+                                accent: root.accent
+                                enabled: root.stageOn(panel.modelData.stage)
+                                       && !(root.isMic && panel.modelData.stage === "gate"
+                                            && root.stageOn("df"))
+                                value: root.paramOf(modelData.stage, modelData.key,
+                                                    modelData.fallback)
+                                onMoved: (v) => root.bridge.setFilterParam(
+                                    root.target, modelData.stage, modelData.key, v)
+                            }
+                        }
+                        Text {
+                            visible: panel.modelData.hint !== undefined
                             width: parent.width
-                            label: modelData.label
-                            from: modelData.from; to: modelData.to
-                            unit: modelData.unit
-                            decimals: modelData.digits !== undefined ? modelData.digits : 1
-                            accent: root.accent
-                            enabled: root.stageOn(modelData.stage)
-                            value: root.paramOf(modelData.stage, modelData.key, modelData.fallback)
-                            onMoved: (v) => root.bridge.setFilterParam(
-                                root.target, modelData.stage, modelData.key, v)
+                            wrapMode: Text.WordWrap
+                            text: panel.modelData.hint !== undefined ? panel.modelData.hint : ""
+                            color: Theme.textFaint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
                         }
                     }
                 }
             }
 
+            /* Smart Volume bir DSP aşaması değil, daemon tarafında bir zarf takipçisi —
+               bu yüzden `SonarFilterPanel`'i elle kuruluyor. Şema 4'ten beri profilin
+               içinde: tetikleyici, profili taşıyan kanalın kendisi. */
             SonarFilterPanel {
                 width: dynamics.panelWidth
-                height: parent.height
-                title: root.isMic ? "Noise Gate" : "Compressor"
-                accent: root.accent
-                active: root.stageOn(root.isMic ? "gate" : "comp")
-                note: (root.isMic && root.stageOn("df")) ? "AI aktifken devre dışı" : ""
-                onToggled: (v) => root.bridge.setFilterEnabled(root.target,
-                                                               root.isMic ? "gate" : "comp", v)
-                Column {
-                    anchors.fill: parent
-                    spacing: 2
-                    Repeater {
-                        model: root.isMic ? root.gateParams : root.compParams
-                        SonarParamRow {
-                            required property var modelData
-                            width: parent.width
-                            label: modelData.label
-                            from: modelData.from; to: modelData.to
-                            unit: modelData.unit
-                            decimals: modelData.digits !== undefined ? modelData.digits : 1
-                            accent: root.accent
-                            enabled: root.stageOn(modelData.stage)
-                                     && !(root.isMic && root.stageOn("df"))
-                            value: root.paramOf(modelData.stage, modelData.key, modelData.fallback)
-                            onMoved: (v) => root.bridge.setFilterParam(
-                                root.target, modelData.stage, modelData.key, v)
-                        }
-                    }
-                }
-            }
-
-            SonarFilterPanel {
-                width: dynamics.panelWidth
-                height: parent.height
-                title: root.isMic ? "Compressor + Limiter" : "Limiter"
-                accent: root.accent
-                active: root.stageOn("lim")
-                onToggled: (v) => root.bridge.setFilterEnabled(root.target, "lim", v)
-                Column {
-                    anchors.fill: parent
-                    spacing: 2
-                    Repeater {
-                        model: root.limParams
-                        SonarParamRow {
-                            required property var modelData
-                            width: parent.width
-                            label: modelData.label
-                            from: modelData.from; to: modelData.to
-                            unit: modelData.unit
-                            decimals: modelData.digits !== undefined ? modelData.digits : 1
-                            accent: root.accent
-                            enabled: root.stageOn(modelData.stage)
-                            value: root.paramOf(modelData.stage, modelData.key, modelData.fallback)
-                            onMoved: (v) => root.bridge.setFilterParam(
-                                root.target, modelData.stage, modelData.key, v)
-                        }
-                    }
-                }
-            }
-
-            /* Spatial + Boost tek kutuda: ikisi de "sesi nasıl duyduğun" ayarı ve
-               ikisi de limiter'ın öncesinde duruyor. Mikrofonda yalnızca Boost var. */
-            SonarFilterPanel {
-                width: dynamics.panelWidth
-                height: parent.height
+                height: smartBody.implicitHeight + 26 + Theme.s3 * 2
                 visible: !root.isMic
-                title: "Spatial Audio"
+                title: "Smart Volume"
                 accent: root.accent
-                active: root.spatialOn
-                note: root.spatialAvailable ? "graf yeniden kurulur" : "HRTF dosyası yok"
-                onToggled: (v) => root.bridge.setFilterEnabled(root.target, "spatial", v)
+                active: root.duckOn
+                onToggled: (v) => root.bridge.setDucking(root.target, { "enabled": v })
                 Column {
+                    id: smartBody
                     anchors.fill: parent
                     spacing: 2
                     Repeater {
-                        model: root.spatialParams
+                        model: root.duckParams
                         SonarParamRow {
                             required property var modelData
                             width: parent.width
@@ -355,82 +320,19 @@ Item {
                             unit: modelData.unit
                             decimals: modelData.digits !== undefined ? modelData.digits : 1
                             accent: root.accent
-                            enabled: root.spatialOn
-                            value: root.paramOf(modelData.stage, modelData.key, modelData.fallback)
-                            onMoved: (v) => root.bridge.setFilterParam(
-                                root.target, modelData.stage, modelData.key, v)
-                        }
-                    }
-                    Item { width: 1; height: Theme.s2 }
-                    /* Boost ayrı bir aşama ama kendi paneline değmeyecek kadar küçük;
-                       Spatial'ın HRTF kaybını (ölçüldü: -7.8 dB) telafi eden yer de
-                       burası olduğu için yan yana duruyorlar. */
-                    Row {
-                        width: parent.width
-                        spacing: Theme.s2
-                        Rectangle {
-                            width: 30; height: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: root.stageOn("boost") ? root.accent : Theme.sunken
-                            border.width: 1
-                            border.color: root.stageOn("boost") ? root.accent : Theme.border
-                            Rectangle {
-                                width: 12; height: 12
-                                x: root.stageOn("boost") ? 16 : 2
-                                y: 2
-                                color: root.stageOn("boost") ? "#0E1116" : Theme.textFaint
-                                Behavior on x { NumberAnimation { duration: 90 } }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.bridge.setFilterEnabled(
-                                    root.target, "boost", !root.stageOn("boost"))
+                            enabled: root.duckOn
+                            value: root.duckValue(modelData.key, modelData.fallback)
+                            onMoved: (v) => {
+                                const patch = {}
+                                patch[modelData.key] = v
+                                root.bridge.setDucking(root.target, patch)
                             }
                         }
-                        SonarSectionLabel {
-                            text: "Volume Boost"
-                            color: root.stageOn("boost") ? root.accent : Theme.textDim
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                    SonarParamRow {
-                        width: parent.width
-                        label: "Kazanç"
-                        from: 0; to: 12; unit: "dB"
-                        accent: root.accent
-                        enabled: root.stageOn("boost")
-                        value: root.paramOf("boost", "gain_db", 6)
-                        onMoved: (v) => root.bridge.setFilterParam(root.target, "boost", "gain_db", v)
-                    }
-                }
-            }
-
-            /* Mikrofonda Spatial yok; Boost tek başına küçük bir panelde. */
-            SonarFilterPanel {
-                width: dynamics.panelWidth
-                height: parent.height
-                visible: root.isMic
-                title: "Volume Boost"
-                accent: root.accent
-                active: root.stageOn("boost")
-                onToggled: (v) => root.bridge.setFilterEnabled(root.target, "boost", v)
-                Column {
-                    anchors.fill: parent
-                    spacing: 2
-                    SonarParamRow {
-                        width: parent.width
-                        label: "Kazanç"
-                        from: 0; to: 12; unit: "dB"
-                        accent: root.accent
-                        enabled: root.stageOn("boost")
-                        value: root.paramOf("boost", "gain_db", 6)
-                        onMoved: (v) => root.bridge.setFilterParam(root.target, "boost", "gain_db", v)
                     }
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: "Limiter'ın öncesinde uygulanır; kırpma üretmez."
+                        text: root.channelName + " kanalında ses olunca diğer kanallar kısılır."
                         color: Theme.textFaint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -530,17 +432,51 @@ Item {
     }
 
     // --- parametre tanımları -------------------------------------------------
-    /* Spatial Audio: iki sanal hoparlörün açısı, yüksekliği ve mesafesi. Ölçüldü —
-       ±30°'de kulaklar arası gecikme 0.38 ms, HRTF'in kendi kazanç kaybı -7.8 dB. */
+    /* Spatial Audio (crossfeed): kulaklar arası sızıntı. Ölçüldü — kapalıyken çıkış
+       girişe bit-eş, açıkken karşı kulakta -6 dB kopya ve 0.40 ms gecikme. */
     readonly property var spatialParams: [
-        { stage:"spatial", key:"width_deg",     label:"Genişlik", from:0,   to:60, unit:"°", fallback:30 },
-        { stage:"spatial", key:"elevation_deg", label:"Yükseklik",from:-40, to:40, unit:"°", fallback:0 },
-        { stage:"spatial", key:"distance_m",    label:"Mesafe",   from:0.1, to:5,  unit:"m", fallback:1, digits:1 }
+        { stage:"spatial", key:"immersion", label:"Sürükleyicilik", from:0, to:100, unit:"", fallback:50, digits:0 },
+        { stage:"spatial", key:"distance",  label:"Mesafe",         from:0, to:100, unit:"", fallback:40, digits:0 }
     ]
-    readonly property bool spatialAvailable: bridge ? (tick, bridge.spatialAvailable()) : true
-    /* Spatial profilde değil hedefin kendi ayarında: bir konvolveri bypass etmek onu
-       ucuzlatmıyor, bu yüzden kapalıyken grafta hiç bulunmuyor. */
-    readonly property bool spatialOn: bridge ? (tick, bridge.spatialEnabled(target)) : false
+    readonly property var boostParams: [
+        { stage:"boost", key:"gain_db", label:"Kazanç", from:0, to:12, unit:"dB", fallback:6 }
+    ]
+    /* Smart Volume ayarları profilde duruyor (şema 4). */
+    readonly property var ducking: bridge ? (tick, bridge.ducking(target)) : ({})
+    readonly property bool duckOn: ducking.enabled === true
+    readonly property string channelName: channel.name !== undefined ? channel.name : target
+    readonly property var duckParams: [
+        { key:"reduction_db", label:"İndirim",  from:-40, to:0,    unit:"dB", fallback:-12 },
+        { key:"threshold_db", label:"Eşik",     from:-80, to:0,    unit:"dB", fallback:-40 },
+        { key:"attack_ms",    label:"Atak",     from:0,   to:500,  unit:"ms", fallback:80 },
+        { key:"hold_ms",      label:"Tut",      from:0,   to:2000, unit:"ms", fallback:400 },
+        { key:"release_ms",   label:"Bırakma",  from:20,  to:3000, unit:"ms", fallback:800 }
+    ]
+
+    function duckValue(key, fallback) {
+        void root.tick
+        const value = ducking[key]
+        return value !== undefined ? value : fallback
+    }
+
+    /* Sayfadaki dinamik paneller. Mikrofonda Spatial yok (kulaklık simülasyonunun
+       karşılığı yok), Compressor ve Limiter artık ayrı — kullanıcı isteğiyle. */
+    readonly property var panels: {
+        const out = []
+        if (isMic)
+            out.push({ stage: "df", title: "AI Gürültü Engelleme", params: dfParams })
+        out.push({ stage: "gate", title: "Noise Gate", params: gateParams,
+                   note: (isMic && stageOn("df")) ? "AI aktifken devre dışı" : "" })
+        out.push({ stage: "comp", title: "Compressor", params: compParams })
+        out.push({ stage: "lim", title: "Limiter", params: limParams })
+        if (!isMic)
+            out.push({ stage: "spatial", title: "Spatial Audio", params: spatialParams,
+                       hint: "Sesi kafanın dışına çıkarır. Gerçek surround değil; "
+                           + "rekabetçi FPS'te kapalı tutmak yön algısını keskin bırakır." })
+        out.push({ stage: "boost", title: "Volume Boost", params: boostParams,
+                   hint: "Limiter'ın öncesinde uygulanır; kırpma üretmez." })
+        return out
+    }
 
     readonly property var gateParams: [
         { stage:"gate", key:"threshold_db", label:"Eşik",    from:-80, to:0,   unit:"dB", fallback:-40 },

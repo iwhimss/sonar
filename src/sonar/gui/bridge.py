@@ -623,30 +623,14 @@ class SonarBridge(QObject):
         """ChatMix'i kulaklık tekeri sürüyorsa slider salt okunur olur."""
         return bool(self._state.get("chatmix_hardware"))
 
-    @Slot(str, result=bool)
-    def spatialEnabled(self, target: str) -> bool:
-        """Hedefte Spatial Audio açık mı? Profilde değil, hedefin kendi ayarında."""
-        config = self._state.get("config") or {}
-        for group in ("channels", "buses"):
-            for row in config.get(group, []):
-                if row.get("id") == target:
-                    return bool(row.get("spatial"))
-        return False
+    @Slot(str, result="QVariant")
+    def ducking(self, target: str) -> dict:
+        """Bir hedefin **profilindeki** Smart Volume ayarları (şema 4)."""
+        profile = self._profile_dict(target) or {}
+        return dict(profile.get("ducking") or {})
 
-    @Slot(result=bool)
-    def spatialAvailable(self) -> bool:
-        """SOFA eklentisi ve HRTF dosyası var mı? Yoksa aşama zincire hiç girmiyor."""
-        from sonar.core.dsp import registry
-
-        return registry.sofa_available()
-
-    @Slot(result="QVariant")
-    def ducking(self) -> dict:
-        """Smart Volume ayarları."""
-        return dict((self._state.get("config") or {}).get("ducking") or {})
-
-    @Slot("QVariant")
-    def setDucking(self, fields: Any) -> None:
+    @Slot(str, "QVariant")
+    def setDucking(self, target: str, fields: Any) -> None:
         """Smart Volume ayarlarını değiştirir. Yalnızca verilen alanlar yazılır.
 
         QML'den gelen sözlük bir `QJSValue`; `dict()` onu iterable sanıp `TypeError`
@@ -656,7 +640,7 @@ class SonarBridge(QObject):
         import json as _json
 
         payload = _as_dict(fields)
-        self._call("SetDucking", _json.dumps(payload))
+        self._call("SetDucking", target, _json.dumps(payload))
         self.refresh()
 
     @Slot(str, result=bool)

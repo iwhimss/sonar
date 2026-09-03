@@ -1001,3 +1001,51 @@ def test_direction_must_be_known(api):
     with pytest.raises(ApiError) as error:
         api.add_channel("Bir Şey", "sideways")
     assert error.value.code == "invalid_direction"
+
+
+# --------------------------------------------------------------------------- Smart Volume
+#
+# Şema 4: ayar profilin içinde, tetikleyici profili taşıyan kanalın kendisi.
+
+
+def test_ducking_is_stored_in_the_channel_profile(api):
+    api.set_ducking("chat", enabled=True, reduction_db=-9.0)
+    assert api.profile("chat").ducking.enabled is True
+    assert api.profile("chat").ducking.reduction_db == -9.0
+    assert api.profile("game").ducking.enabled is False
+
+
+def test_ducking_only_applies_to_output_channels(api):
+    with pytest.raises(ApiError) as error:
+        api.set_ducking("mic", enabled=True)
+    assert error.value.code == "unknown_channel"
+
+
+def test_ducking_rejects_unknown_fields(api):
+    with pytest.raises(ApiError) as error:
+        api.set_ducking("chat", hiz=1.0)
+    assert error.value.code == "unknown_field"
+
+
+def test_ducking_follows_the_active_profile(api):
+    """Kullanıcı isteği: "her profilde bu ayar olmalı"."""
+    api.set_ducking("chat", enabled=True)
+    api.new_profile("chat", "Sessiz")
+    assert api.profile("chat").ducking.enabled is False, "yeni profil düz gelir"
+
+    api.load_profile("chat", "Default")
+    assert api.profile("chat").ducking.enabled is True
+
+
+# --------------------------------------------------------------------------- aşama parametreleri
+
+
+def test_filter_params_are_validated_against_the_definition(api):
+    """Eski bir profil aşamanın artık kullanılmayan parametrelerini taşıyabilir.
+
+    Spatial Audio HRTF'ten crossfeed'e geçerken oldu: profilde `width_deg` duruyordu ve
+    yeni `immersion` reddediliyordu.
+    """
+    api.profile("game").filter(FilterStage.SPATIAL).params = {"width_deg": 30.0}
+    api.set_filter_param("game", "spatial", "immersion", 80.0)
+    assert api.profile("game").filter(FilterStage.SPATIAL).params["immersion"] == 80.0

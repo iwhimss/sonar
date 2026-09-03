@@ -60,6 +60,7 @@ from typing import Any
 from sonar.core import config as config_mod
 from sonar.core import importers, presets, serde
 from sonar.core.model import (
+    DEFAULT_FILTER_PARAMS,
     SUPPORTED_BAND_COUNTS,
     Channel,
     EqBandType,
@@ -404,11 +405,6 @@ class SonarApi:
     # ------------------------------------------------------------------ filtreler
 
     def set_filter_enabled(self, target: str, stage: str, enabled: bool) -> None:
-        # Spatial profilde değil hedefin ayarında; arayüz aynı düğmeyi kullanabilsin
-        # diye burada yönlendiriliyor.
-        if stage == FilterStage.SPATIAL:
-            self.set_spatial(target, enabled)
-            return
         profile = self._editable(target)
         if stage == FilterStage.EQ:
             profile.eq.enabled = bool(enabled)
@@ -417,10 +413,16 @@ class SonarApi:
         self._live_target(target, {"kind": "filter_enabled", "target": target, "stage": stage})
 
     def set_filter_param(self, target: str, stage: str, name: str, value: float) -> None:
-        """`name` insan birimindeki parametre adıdır (`threshold_db`), port sembolü değil."""
-        state = self._editable(target).filter(self._stage(target, stage))
-        if name not in state.params:
+        """`name` insan birimindeki parametre adıdır (`threshold_db`), port sembolü değil.
+
+        Doğrulama **tanıma** bakıyor, profilde depolanana değil: eski bir profil
+        aşamanın artık kullanılmayan parametrelerini taşıyor olabilir ve o zaman yeni
+        parametreler reddedilirdi (Spatial Audio HRTF'ten crossfeed'e geçerken oldu).
+        """
+        filter_stage = self._stage(target, stage)
+        if name not in DEFAULT_FILTER_PARAMS[filter_stage]:
             raise ApiError("unknown_param", f"'{stage}' aşamasında böyle bir parametre yok: {name}")
+        state = self._editable(target).filter(filter_stage)
         state.params[name] = float(value)
         self._live_target(
             target, {"kind": "filter_param", "target": target, "stage": stage, "param": name}
@@ -670,28 +672,6 @@ class SonarApi:
     def set_mic_stream_send(self, chain: str, enabled: bool) -> None:
         self._mic(chain).send_to_stream_bus = bool(enabled)
         self._live_volumes({"kind": "mic_stream_send", "chain": chain})
-
-    def set_spatial(self, target: str, enabled: bool) -> None:
-        """Spatial Audio — **yapısal**, graf yeniden kurulur (~200 ms sessizlik).
-
-        Profilde değil hedefin kendi ayarında duruyor: bir HRTF konvolverini bypass
-        etmek onu ucuzlatmıyor (ölçüldü: boşta CPU %0.0 → %14.4), bu yüzden kapalıyken
-        node'lar grafta hiç bulunmamalı. Profilde olsaydı profil değiştirmek grafı
-        yeniden kurardı — Faz 2'nin değişmez kuralı.
-
-        Genişlik/yükseklik/mesafe **profilde** ve canlı yazılıyor.
-        """
-        channel = self.config.channel(target)
-        bus = self.config.bus(target)
-        if channel is not None:
-            channel.spatial = bool(enabled)
-        elif bus is not None and not bus.is_stream:
-            bus.spatial = bool(enabled)
-        elif bus is not None:
-            raise ApiError("not_spatial_capable", "yayın miksinde Spatial Audio anlamsız")
-        else:
-            raise ApiError("not_spatial_capable", f"Spatial Audio bu hedefte yok: {target}")
-        self._structural({"kind": "spatial", "target": target})
 
     def set_channel_stream_source(self, channel: str, enabled: bool) -> None:
         """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlayıp yayınlamayacağı.
@@ -1053,7 +1033,7 @@ class SonarApi:
             self._on_levels(levels)
 
     def _advance_ducking(self, levels: dict[str, Level]) -> None:
-        if not self.config.ducking.enabled:
+        if not self._ducking_wanted():
             if self._duck_gains:
                 self._duck_gains = {}
                 self.ducker.reset()
@@ -1069,16 +1049,22 @@ class SonarApi:
             for channel in self.config.channels
             if channel.sink_node in levels
         }
-        gains = self.ducker.step(self.config, by_channel, min(dt, 1.0))
+        gains = self.ducker.step(self.config, self.profile, by_channel, min(dt, 1.0))
         # Yazımı yalnızca duyulur bir fark olduğunda yap: 20 Hz'de her turda yazmak
         # `pw-cli` oturumunu gereksiz meşgul eder.
         if _gains_differ(gains, self._duck_gains):
             self._duck_gains = gains
             self.supervisor.apply_volumes(self.config, duck=gains)
 
+    def _ducking_wanted(self) -> bool:
+        """Herhangi bir kanalın aktif profilinde Smart Volume açık mı?"""
+        return any(
+            self.profile(channel.id).ducking.enabled for channel in self.config.channels
+        )
+
     def _sync_duck_subscription(self) -> None:
         """Ducking açıkken ölçüm hep açık kalmalı: arayüz kapalıyken de çalışsın."""
-        wanted = self.config.ducking.enabled
+        wanted = self._ducking_wanted()
         if wanted and not self._duck_meters:
             self.meters.subscribe()
             self._duck_meters = True
@@ -1086,9 +1072,16 @@ class SonarApi:
             self.meters.unsubscribe()
             self._duck_meters = False
 
-    def set_ducking(self, **fields: object) -> dict:
-        """Smart Volume ayarları. Verilmeyen alanlar değişmez."""
-        duck = self.config.ducking
+    def set_ducking(self, target: str, **fields: object) -> dict:
+        """Bir **profilin** Smart Volume ayarları. Verilmeyen alanlar değişmez.
+
+        Tetikleyici, profili taşıyan kanalın kendisi (şema 4). Gömülü bir preset
+        düzenleniyorsa `_editable()` önce kopyaya geçirir — diğer profil düzenlemeleriyle
+        aynı davranış.
+        """
+        if self.config.channel(target) is None:
+            raise ApiError("unknown_channel", f"Smart Volume yalnızca çıkış kanallarında: {target}")
+        duck = self._editable(target).ducking
         for name, value in fields.items():
             if not hasattr(duck, name):
                 raise ApiError("unknown_field", f"bilinmeyen Smart Volume alanı: {name}")
@@ -1104,8 +1097,8 @@ class SonarApi:
         self._duck_gains = {}
         self._sync_duck_subscription()
         self.supervisor.apply_volumes(self.config)
-        self._dirty_config = True
-        self._emit({"kind": "ducking"})
+        self._dirty_profiles.add(target)
+        self._emit({"kind": "ducking", "target": target})
         self._save_soon()
         return serde.to_jsonable(duck)
 

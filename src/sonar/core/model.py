@@ -47,7 +47,7 @@ __all__ = [
     "default_profile",
 ]
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: Varsayılan EQ bandlarının yayıldığı aralık. 31.25 Hz – 16 kHz tam 9 oktav olduğu için
 #: 10 bandda tam oktav aralıklı klasik grafik ekolayzer frekansları çıkar.
@@ -220,12 +220,41 @@ class FilterState:
 
 
 @dataclass(slots=True)
+class DuckingConfig:
+    """Smart Volume: **bu profilin kanalı** konuşurken diğerlerini kıs.
+
+    SteelSeries GG'deki "Smart Volume". Bir DSP aşaması değil, daemon tarafında bir
+    zarf takipçisi — nedeni `engine.ducking` başlığında.
+
+    Profilin içinde duruyor (şema 4): tetikleyici, profili taşıyan kanalın kendisi.
+    Böylece "Chat'in oyun profilinde açık, müzik profilinde kapalı" gibi bir ayrım
+    mümkün oluyor. Önce ayarlarda tek bir global blok olarak duruyordu ve hangi kanalın
+    tetikleyici olduğu ayrıca seçiliyordu.
+    """
+
+    enabled: bool = False
+    #: Kısılacak kanallar. **Boş = bu kanal dışındaki her çıkış kanalı.**
+    target_channels: list[str] = field(default_factory=list)
+    #: Tam indirim miktarı (negatif dB).
+    reduction_db: float = -12.0
+    #: Kanalın "konuşuyor" sayılması için gereken tepe seviye.
+    threshold_db: float = -40.0
+    attack_ms: float = 80.0
+    #: Sustuktan sonra inik kalınan süre. Olmazsa cümle aralarında ses pompalıyor.
+    hold_ms: float = 400.0
+    release_ms: float = 800.0
+
+
+@dataclass(slots=True)
 class Profile:
     """Bir kanalın tüm DSP durumu. Kanal başına birden fazla profil kaydedilebilir."""
 
     name: str = "Default"
     eq: EqState = field(default_factory=EqState)
     filters: dict[FilterStage, FilterState] = field(default_factory=dict)
+    #: Smart Volume — bu kanal konuşurken diğerlerini kıs. Şema 4'te ayarlardan buraya
+    #: taşındı: kullanıcı her profilde ayrı olmasını istedi.
+    ducking: DuckingConfig = field(default_factory=DuckingConfig)
 
     def filter(self, stage: FilterStage) -> FilterState:
         """Aşamanın durumunu döndürür; tanımlı değilse varsayılanı üretir."""
@@ -266,11 +295,6 @@ class Channel:
     #: mikrofon listesinde görünür ve "Media neden mikrofon?" sorusuna yol açar.
     #: SteelSeries GG'de de yalnızca birleşik Stream Mix vardı.
     stream_source: bool = False
-    #: Spatial Audio (HRTF ile sanal hoparlörler). **Yapısal**: açık olduğunda zincire
-    #: iki konvolver giriyor. Profilde değil burada duruyor, çünkü bir konvolveri
-    #: bypass etmek onu ucuzlatmıyor (ölçüldü: boşta CPU %0.0 → %14.4) ve profilin
-    #: grafı yeniden kurması Faz 2'nin değişmez kuralını bozardı.
-    spatial: bool = False
 
     def send(self, bus_id: str) -> BusSend:
         """Bu kanalın bir bus'a gönderisi. Yoksa nötr bir tane üretilip saklanır."""
@@ -317,8 +341,6 @@ class MasterBus:
     muted: bool = False
     active_profile: str = "Default"
     order: int = 0
-    #: Spatial Audio — bkz. `Channel.spatial`.
-    spatial: bool = False
 
     @property
     def sink_node(self) -> str:
@@ -397,29 +419,6 @@ class RoutingRule:
 
 
 @dataclass(slots=True)
-class DuckingConfig:
-    """Smart Volume: bir kanal konuşurken diğerlerini kıs.
-
-    SteelSeries GG'deki "Smart Volume". Bir DSP aşaması değil, daemon tarafında bir
-    zarf takipçisi — nedeni `engine.ducking` başlığında.
-    """
-
-    enabled: bool = False
-    #: Sesi izlenen kanallar. Varsayılan: sohbet.
-    trigger_channels: list[str] = field(default_factory=lambda: ["chat"])
-    #: Kısılacak kanallar. **Boş = tetikleyici olmayan her kanal.**
-    target_channels: list[str] = field(default_factory=list)
-    #: Tam indirim miktarı (negatif dB).
-    reduction_db: float = -12.0
-    #: Tetikleyicinin "konuşuyor" sayılması için gereken tepe seviye.
-    threshold_db: float = -40.0
-    attack_ms: float = 80.0
-    #: Sustuktan sonra inik kalınan süre. Olmazsa cümle aralarında ses pompalıyor.
-    hold_ms: float = 400.0
-    release_ms: float = 800.0
-
-
-@dataclass(slots=True)
 class ChatMixConfig:
     """Tek slider ile iki kanal arasında denge kurar. Yalnızca kişisel miksi etkiler."""
 
@@ -474,7 +473,6 @@ class SonarConfig:
     mic_chains: list[MicChain] = field(default_factory=list)
     rules: list[RoutingRule] = field(default_factory=list)
     chatmix: ChatMixConfig = field(default_factory=ChatMixConfig)
-    ducking: DuckingConfig = field(default_factory=DuckingConfig)
     settings: Settings = field(default_factory=Settings)
     #: Hedef → sıralı favori profil adları. Sıra listenin kendisi; sayı sınırı yok.
     #: Şema 1'de bu bilgi profil dosyalarındaki `favorite_slot` alanında (9 slot) duruyordu.
@@ -579,13 +577,11 @@ def default_band_q(count: int) -> float:
 
 #: Her dinamik aşamanın insan birimli varsayılan parametreleri.
 DEFAULT_FILTER_PARAMS: dict[FilterStage, dict[str, float]] = {
-    #: Spatial Audio: stereo içeriği iki sanal hoparlöre (±genişlik) HRTF ile yerleştirir.
-    #: `width_deg = 0` iki hoparlörü de tam öne koyar (mono'ya yakın); 30° klasik
-    #: stereo üçgeni, 60° geniş. Ölçüldü: ±30°'de kulaklar arası gecikme 0.38 ms.
+    #: Spatial Audio (crossfeed): kulaklar arası sızıntı. `immersion` sızıntının
+    #: miktarını ve yumuşaklığını, `distance` gecikmesini belirliyor — ikisi de 0–100.
     FilterStage.SPATIAL: {
-        "width_deg": 30.0,
-        "elevation_deg": 0.0,
-        "distance_m": 1.0,
+        "immersion": 50.0,
+        "distance": 40.0,
     },
     #: Volume Boost: limiter'dan önce uygulanan düz kazanç.
     FilterStage.BOOST: {"gain_db": 6.0},

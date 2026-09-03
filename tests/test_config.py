@@ -46,7 +46,7 @@ def test_config_file_is_valid_toml_and_hand_editable(config_store: ConfigStore):
     text = config_store.paths.config_file.read_text(encoding="utf-8")
     assert text.startswith("# Sonar yapılandırması")
     raw = tomllib.loads(text)
-    assert raw["schema_version"] == 3
+    assert raw["schema_version"] == 4
     assert raw["channels"][0]["id"] == "game"
 
 
@@ -257,20 +257,20 @@ def test_favorites_move_from_profile_files_to_the_config(config_store: ConfigSto
     # Yapılandırmayı şema 1'e geri düşür ki göç tetiklensin.
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 3", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 4", "schema_version = 1"),
         encoding="utf-8",
     )
 
     config = config_store.load()
     assert config.favorites["game"] == ["Arc", "CS2"], "eski slot numarası sırayı belirler"
-    assert config.schema_version == 3
+    assert config.schema_version == 4
 
 
 def test_a_config_without_old_favorites_migrates_to_an_empty_list(config_store: ConfigStore):
     config_store.save(default_config())
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 3", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 4", "schema_version = 1"),
         encoding="utf-8",
     )
     assert config_store.load().favorites == {}
@@ -328,7 +328,7 @@ def test_schema_2_sends_move_into_the_bus_dictionary(config_store: ConfigStore):
     channel = config.channel("game")
     assert channel.send("personal").volume == 0.42
     assert channel.send("stream") == BusSend(volume=0.7, muted=True)
-    assert config.schema_version == 3
+    assert config.schema_version == 4
 
 
 def test_schema_2_buses_get_their_kind(config_store: ConfigStore):
@@ -359,3 +359,58 @@ def test_extra_output_buses_are_collapsed(config_store: ConfigStore):
     assert [b.id for b in loaded.output_buses()] == ["personal"]
     assert loaded.stream_bus() is not None
     assert all("hoparlor" not in c.sends for c in loaded.channels)
+
+
+def test_ducking_moves_from_settings_into_the_active_profiles(config_store: ConfigStore):
+    """Şema 3 → 4: Smart Volume global bir bloktu, artık profilin içinde."""
+    config = default_config()
+    config.channel("chat").active_profile = "Oyun"
+    config_store.save(config)
+    config_store.save_profile("chat", default_profile("Oyun"))
+
+    path = config_store.paths.config_file
+    text = path.read_text(encoding="utf-8").replace("schema_version = 4", "schema_version = 3")
+    path.write_text(
+        text
+        + "\n[ducking]\nenabled = true\ntrigger_channels = [\"chat\"]\n"
+          "reduction_db = -9.0\nhold_ms = 250.0\n",
+        encoding="utf-8",
+    )
+
+    loaded = config_store.load()
+
+    assert loaded.schema_version == 4
+    duck = config_store.load_profile("chat", "Oyun").ducking
+    assert duck.enabled is True
+    assert duck.reduction_db == -9.0
+    assert duck.hold_ms == 250.0
+    # Diğer kanallara dokunulmadı.
+    assert config_store.load_profile("game", "Default").ducking.enabled is False
+
+
+def test_stale_filter_params_are_normalised(config_store: ConfigStore):
+    """Spatial Audio HRTF açılarından crossfeed ayarlarına geçti; eski profiller kalıcı.
+
+    Tanımda olmayan anahtarlar düşmeli, eksik olanlar varsayılanla dolmalı — yoksa
+    kullanıcının profili sessizce kullanılamaz hâle gelirdi.
+    """
+    import json
+
+    from sonar.core.model import DEFAULT_FILTER_PARAMS, FilterStage
+
+    profile = default_profile("Eski")
+    config_store.save_profile("game", profile)
+    path = config_store.paths.profile_file("game", "Eski")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["filters"]["spatial"] = {
+        "enabled": True,
+        "params": {"width_deg": 30.0, "elevation_deg": 0.0, "distance_m": 1.0},
+    }
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = config_store.load_profile("game", "Eski")
+
+    assert set(loaded.filter(FilterStage.SPATIAL).params) == set(
+        DEFAULT_FILTER_PARAMS[FilterStage.SPATIAL]
+    )
+    assert loaded.filter(FilterStage.SPATIAL).enabled is True, "açık/kapalı korunmalı"

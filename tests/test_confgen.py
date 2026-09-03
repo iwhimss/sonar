@@ -225,7 +225,12 @@ def test_deepfilter_is_only_in_the_mic_chain(portable):
         for m in modules
         if m["name"] == "libpipewire-module-filter-chain"
     }
-    playback = ["gate", "eq", "comp", "boost_l", "boost_r", "lim"]
+    playback = [
+        "gate", "eq", "comp",
+        "spatial_copy_l", "spatial_copy_r", "spatial_delay_l", "spatial_delay_r",
+        "spatial_lp_l", "spatial_lp_r", "spatial_mix_l", "spatial_mix_r",
+        "boost_l", "boost_r", "lim",
+    ]  # fmt: skip
     assert [n["name"] for n in chains["sonar_game"]["nodes"]] == playback
     assert [n["name"] for n in chains["sonar_personal"]["nodes"]] == playback
     assert chains["sonar_mic_capture"]["nodes"][0]["name"] == "df"
@@ -276,8 +281,11 @@ def test_pipewire_can_parse_the_generated_conf(conf, tmp_path):
     game = next(c for c in chains if c["args"]["capture.props"]["node.name"] == "sonar_game")
     graph = game["args"]["filter.graph"]
     assert [n["name"] for n in graph["nodes"]] == [
-        "gate", "eq", "comp", "boost_l", "boost_r", "lim"
-    ]
+        "gate", "eq", "comp",
+        "spatial_copy_l", "spatial_copy_r", "spatial_delay_l", "spatial_delay_r",
+        "spatial_lp_l", "spatial_lp_r", "spatial_mix_l", "spatial_mix_r",
+        "boost_l", "boost_r", "lim",
+    ]  # fmt: skip
     assert graph["inputs"] == ["gate:in_l", "gate:in_r"]
     assert graph["outputs"] == ["lim:out_l", "lim:out_r"]
 
