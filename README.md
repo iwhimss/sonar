@@ -110,7 +110,8 @@ görünmez.
 
 ```bash
 sonar-cli status                       # kanallar, fader'lar, çalan uygulamalar
-sonar-cli volume game personal 70      # oyun sesini kulaklıkta %70 yap
+sonar-cli doctor                       # ses gelmiyorsa ilk buraya bak
+sonar-cli volume game output 70        # oyun sesini kendi çıkışında %70 yap
 sonar-cli volume media stream 0        # müziği yayından çıkar
 sonar-cli presets game                 # hazır preset'ler
 sonar-cli profile game "FPS Footsteps" # anında geçiş
@@ -129,6 +130,20 @@ sonar-cli favorite add game "CS2"       # hızlı geçiş için favorilere
 sonar-cli favorite list game
 
 sonar-cli obs game on                   # bu kanalı OBS'e ayrı bir kaynak olarak ver
+```
+
+Çıkışlar, mikrofon yönlendirme ve yeni efektler:
+
+```bash
+sonar-cli output add "Hoparlör" --device alsa_output.pci-0000_00_1f.3.analog-stereo
+sonar-cli output list                   # hangi kanal hangi cihaza gidiyor
+sonar-cli send game hoparlor            # Game'i hoparlöre taşı (canlı, ses kesilmez)
+
+sonar-cli route Discord mic --direction in   # Discord hangi mikrofonu kullansın
+sonar-cli move 142 stream_mic                # çalan bir mikrofon akışını taşı
+
+sonar-cli spatial game on               # HRTF ile sanal hoparlörler
+sonar-cli smart on --trigger chat       # biri konuşunca diğer kanalları kıs
 ```
 
 Kulaklığın için AutoEQ düzeltme eğrisi varsa doğrudan içe aktarabilirsin:
@@ -166,6 +181,50 @@ Kanal başına ayrı OBS kaynağı **varsayılan olarak kapalı**. Açık olsayd
 sistemin mikrofon listesinde de görünürdü ("Media neden mikrofon?"). Yayında kanal başına
 ayrı track istiyorsan `sonar-cli obs <kanal> on` ile açarsın.
 
+### Birden fazla çıkış cihazı
+
+Her fiziksel cihaz kendi **çıkış bus'ını** alır: kendi master fader'ı, kendi EQ'su, kendi
+profilleri. Kanal hangisine gideceğini seçer, yani oyun laptop hoparlöründen, müzik
+kulaklıktan çalabilir.
+
+```
+Game  ─┐
+Chat  ─┼─▶ Kişisel Miks (master EQ + fader) ─▶ Kulaklık
+Media ─┘
+Aux   ───▶ Hoparlör (kendi EQ + fader'ı)    ─▶ Laptop hoparlörü
+   hepsi ─▶ Yayın Miksi                      ─▶ OBS
+```
+
+Kanalın çıkışını değiştirmek **canlı** — graf yeniden kurulmaz, ses kesilmez. Yeni bir
+çıkış **eklemek** yapısaldır (~200 ms). ChatMix, kanalın bağlı olduğu çıkışta uygulanır.
+
+### Mikrofon yönlendirme
+
+Uygulamalar hem çıkış kanallarında hem giriş kanallarında görünür: Discord'un sesi
+`Chat`'te, mikrofonu `Mic` zincirinde. Kutucuklardaki `OUT` / `IN` rozeti hangisi
+olduğunu söyler ve ikisi birbirinden bağımsız taşınabilir. Kurallar da yön taşır
+(`--direction in`), yani "Discord sesi chat'e, mikrofonu stream_mic'e" yazılabilir.
+
+Masaüstü sesini yakalayan uygulamalar (cava, OBS'in "Masaüstü Sesi" kaynağı) mikrofon
+kullanıcısı sayılmaz ve yönlendirilmez — `stream.capture.sink` bayrağıyla ayırt ediliyor.
+
+---
+
+## Efektler
+
+Zincir: **gürültü engelleme → gate → EQ → kompresör → spatial → boost → limiter**
+
+| | |
+|---|---|
+| **Spatial Audio** | HRTF ile iki sanal hoparlör. Genişlik 0–60°, yükseklik, mesafe. Ölçüldü: 30°'de kulaklar arası gecikme 0.38 ms, 60°'de 0.65 ms. |
+| **Volume Boost** | Limiter'dan **önce** 0–12 dB düz kazanç, yani kırpma üretmez. Spatial'ın HRTF kaybını (-7.8 dB) telafi etmenin yeri de burası. |
+| **Smart Volume** | Sohbet kanalında ses olunca diğer kanalları kısar, susunca geri verir. Atak/tut/bırakma ayarlanabilir. Bir DSP aşaması değil, daemon tarafında bir zarf takipçisi. |
+
+**Spatial Audio, projedeki tek "aç/kapa = graf yeniden kurulur" istisnası.** Bir HRTF
+konvolverini bypass etmek onu ucuzlatmıyor (ölçüldü: boştaki CPU %0.0 → %14.4), bu
+yüzden kapalıyken node'lar grafta hiç bulunmuyor. Açıkken ses akan bir kanalda tek
+çekirdeğin ~%17'sini yiyor — bilerek aç.
+
 ---
 
 ## Nasıl çalışıyor
@@ -192,6 +251,8 @@ Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](doc
 | Ekolayzer doğruluğu | çizilen eğri ile gerçek yanıt arasında **0.01 dB** |
 | Profil geçişi | 12 geçişte **0 kesinti, 0 tık** |
 | Boştaki CPU | %5–7 (mikser açıkken %12–13) |
+| Kanal izolasyonu | iki ayrı çıkış cihazında sızıntı **-240 dBFS** (dijital sessizlik) |
+| Spatial Audio | ses akarken tek kanalda **+%17** CPU; kapalıyken **%0** |
 | Bellek | ~180–200 MB |
 | DeepFilterNet açıkken | **+%43** — pahalı, bilerek kullan |
 
@@ -206,6 +267,9 @@ Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](doc
 * [CONTRIBUTING.md](CONTRIBUTING.md) — geliştirme ortamı
 * [.plan/](.plan/) — faz faz geliştirme günlüğü ve alınan kararların gerekçeleri
 
+Bir şey duyulmuyorsa ilk komut **`sonar-cli doctor`**: beklenen ve gerçek bağlantıları
+karşılaştırır, doğmamış node'ları ve çakışan ses işleyicilerini söyler.
+
 ---
 
 ## Bilinen sınırlar
@@ -213,10 +277,21 @@ Her sayı gerçek donanımda ölçüldü, ayrıntısı [docs/PERFORMANCE.md](doc
 * **EasyEffects ile birlikte çalışmaz.** İkisi de sistem geneli ses işlemeye çalışıyor;
   EasyEffects servis kipindeyken Sonar'ın çıkışını kendi zincirine çekiyor. Sonar zaten
   aynı eklentilerle aynı işi kanal başına yapıyor.
-* **Donanım ChatMix tekeri okunmuyor.** Cihaz tespiti ve udev kuralı hazır ama HID rapor
-  biçimi çözülmedi; yazılım ChatMix'i çalışıyor.
-* Kanal ekleme/silme, cihaz değiştirme ve OBS kaynağı açma/kapama grafı yeniden kurar
-  (~200 ms sessizlik). Ses seviyesi, EQ, filtre ve profil değişimi kesintisizdir.
+* **Donanım ChatMix tekeri henüz okunmuyor.** Sürücü ve udev kuralı hazır, HID rapor
+  biçimi çözülmedi — `/dev/hidraw*` root'a kapalı olduğu için cihazdan tek rapor bile
+  okunamıyor. Kural kurulduktan sonra:
+
+  ```bash
+  sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
+  sudo udevadm control --reload && sudo udevadm trigger
+  ./scripts/sonar-hid-capture     # tekeri uçtan uca çevir
+  ```
+
+  Teker okunmaya başlayınca mikserdeki slider salt okunur olur; iki kaynağın birbirini
+  ezmesi istenmiyordu.
+* Yeniden inşa gerektiren işlemler: kanal/çıkış ekleme-silme, band sayısı, OBS kaynağı
+  ve Spatial Audio (~200 ms sessizlik). **Cihaz değiştirmek, kanalı başka bir çıkışa
+  taşımak, sidetone, ses seviyesi, EQ, filtre ve profil değişimi kesintisizdir.**
 * Kanal seviye metreleri kanalın **girişini** ölçer (DSP ve fader öncesi) — uygulamanın
   ne kadar yüksek çaldığını gösterir, EQ'dan etkilenmez.
 

@@ -15,6 +15,10 @@ Daemon çalışırken OBS'in ses kaynağı listesinde şunlar görünür:
 | **Sonar Stream Mix — Virtual Input** | Yayın fader'larıyla mikslenmiş birleşik ses |
 | **Sonar Stream Mic — Virtual Input** | Mikrofonun yayına özel işlenmiş hâli |
 
+Sonar'ın mikser ekranında Master şeridindeki **Yayın Miksi** satırı da bu adı gösterir —
+oraya bir cihaz seçmeniz gerekmez, yayın miksinin fiziksel bir çıkışı yoktur. (Eskiden
+orada bir cihaz açılırı vardı ve hiçbir şey yapmıyordu.)
+
 Çoğu kurulum için gereken bu ikisi. **Kanal başına ayrı kaynak varsayılan olarak
 kapalıdır**; açılırsa o kanal sistemin **mikrofon listesinde** de görünür, bu yüzden
 istemeden açık kalmasın diye kapalı geliyor.
@@ -77,6 +81,23 @@ Dört ayrı ses akışı görmelisin.
 
 > **Not:** Yayın (streaming) tek bir ses track'i gönderir — çok track yalnızca **kayıt**
 > içindir. OBS'te "Ses Parçaları" ayarı Yayın ve Kayıt için ayrıdır.
+
+---
+
+## OBS'in kendi mikrofonu ve masaüstü sesi
+
+OBS'te bir **Ses Girişi Yakalama** kaynağı açtığınızda o da Sonar'ın giriş şeritlerinde
+bir uygulama olarak görünür (`IN` rozetiyle) ve istediğiniz mikrofon zincirine
+taşınabilir. Yani OBS'e ham mikrofonu değil, işlenmiş `Stream Mic` zincirini verebilir
+ve bunu Sonar'dan seçebilirsiniz:
+
+```bash
+sonar-cli route obs stream_mic --direction in
+```
+
+OBS'in **Masaüstü Sesi Yakalama** kaynağı bu listede görünmez ve yönlendirilmez: o bir
+mikrofon kullanıcısı değil, bir sink monitörü. Yayına giden masaüstü sesi için zaten
+`Sonar Stream Mix` var.
 
 ---
 

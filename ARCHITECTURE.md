@@ -71,18 +71,24 @@ uygulama yönlendirme.
   │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤   açıkça bağlanır
   │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤
   └───────────────┘                                          │
-                          her kanaldan 2 loopback:           │
+       her kanaldan HER bus'a bir gönderi loopback'i         │
                      ┌────────────────────────────────────────┘
                      │
-       personal fader ├──▶ [sonar_personal] ─master DSP─▶ ► fiziksel kulaklık
-       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
+                     ├──▶ [sonar_personal]  ─master DSP─▶ sonar_personal_out ─▶ kulaklık
+                     ├──▶ [sonar_<çıkış-2>] ─master DSP─▶ sonar_<çıkış-2>_out ─▶ hoparlör
+                     └──▶ [sonar_stream]    ─master DSP─▶ sonar_stream_out ────▶ OBS
 
      GİRİŞ KANALLARI
   fiziksel ─┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord vb.)
             └──▶ [stream mic zinciri] ─▶ sonar_stream_mic  (→ OBS)
-                      └──(ops.) sidetone ─▶ sonar_personal
-                      └──(ops.) ─────────▶ sonar_stream
+                      └── sidetone ──▶ sonar_personal   (mute ile aç/kapa)
+                      └── yayına ────▶ sonar_stream     (mute ile aç/kapa)
 ```
+
+**Kanal tek bir çıkışa gider.** Conf her kanaldan **her** bus'a gönderi kurar; kanalın
+seçtiği çıkışın gönderisi açık, diğer çıkışlarınki susturulur. Yayın gönderisi her zaman
+ayrıca açıktır. Böylece kanalı başka bir cihaza taşımak bir *mute yazımı* — graf yeniden
+kurulmuyor, ses kesilmiyor. Ölçüldü: iki ayrı cihazda karşılıklı sızıntı **-240 dBFS**.
 
 ### Node isimleri
 
@@ -91,9 +97,9 @@ uygulama yönlendirme.
 | `sonar_<kanal>` | `Audio/Sink` | `Sonar <Ad> — Virtual Output` | Uygulamalar buraya çalar |
 | `sonar_<kanal>_fx` | *(yok)* | `Sonar <Ad> FX` | DSP çıkışı — **cihaz değil** |
 | `sonar_<kanal>_fx` | `Audio/Source` | `Sonar <Ad> — Stream Source (Virtual Input)` | `stream_source` açıkken: OBS kanal track'i |
-| `sonar_<kanal>_to_personal` | loopback | — | Personal fader'ı bu node'a uygulanır |
-| `sonar_<kanal>_to_stream` | loopback | — | Stream fader'ı bu node'a uygulanır |
-| `sonar_personal` | `Audio/Sink` | `Sonar Personal Mix — Virtual Output` | Kişisel miks → fiziksel çıkış |
+| `sonar_<kanal>_to_<bus>` | loopback | — | O bus'a giden fader; kanal başına her bus için bir tane |
+| `sonar_personal` | `Audio/Sink` | `Sonar Personal Mix — Virtual Output` | Varsayılan çıkış bus'ı |
+| `sonar_<bus>_out` | *(akış)* | `Sonar <Ad> Output` | Çıkış bus'ının fiziksel cihaza giden akışı |
 | `sonar_stream` | `Audio/Sink` | `Sonar Stream Mix — Virtual Output` | Yayın miksi (uygulamalar doğrudan da hedefleyebilir) |
 | `sonar_stream_out` | `Audio/Source` | `Sonar Stream Mix — Virtual Input` | **OBS bunu seçer** |
 | `sonar_<giriş>` | `Audio/Source` | `Sonar <Ad> — Virtual Input` | İşlenmiş mikrofon |
@@ -112,13 +118,44 @@ beliriyordu ("Media kanalı neden mikrofon?").
 olarak yakalanabilir hâle gelir. Faydası kayıt sonrası düzenlemede: oyun sesini kısıp
 Discord'u bırakmak. EQ ile ilgisi yok — EQ zaten kanal başına.
 
+### Çıkış bus'ları
+
+`MasterBus.kind` iki değer alır: `output` ve `stream`. Çıkış bus'ı **birden çok** olabilir
+ve her biri bir fiziksel cihaza karşılık gelir; kendi master fader'ı, DSP zinciri ve
+profilleri vardır. Yayın bus'ı tektir.
+
+Bu, kullanıcının "game kanalı laptopun hoparlörünü kullanırken media kanalı kulaklığın
+çıkış cihazını kullanabilmeli" isteğinin karşılığı. Alternatif — kanalı doğrudan cihaza
+bağlamak — daha az iş olurdu ama master fader'ı, master EQ'yu ve ChatMix'i atlardı.
+
+`Channel.sends` bir `dict[bus_id → BusSend]`; `Channel.output_bus` hangi çıkışa gittiğini
+söyler. Şema 3'e geçerken eski `personal`/`stream` sabit alanları bu sözlüğe taşındı.
+
+### Cihaz seçimi conf'a girmiyor
+
+`sonar_<bus>_out` bir **akış** node'u; hedefi `pw-metadata <id> target.object <cihaz>` ile
+canlı değiştirilebiliyor — akış taşımayla aynı mekanizma. Ölçüldü (Faz 18): bağlantı
+`pw-link -lo` çıktısında anında taşındı ve kesinti kayıt gürültüsünün üstüne çıkmadı.
+
+Eskiden cihaz adı conf'a `target.object` olarak yazılıyordu, yani her cihaz değişimi grafı
+yeniden kurup çalan müziği kesiyordu. Aynı şey mikrofon kaynağı için de geçerli.
+
 ### Gönderiler neden `pw-link` ile bağlanıyor
 
 `media.class` taşımayan bir node'u WirePlumber'ın yönlendirme politikası bir kaynak
 saymaz; gönderi loopback'lerinin `capture.props` bölümündeki `target.object` işe yaramaz.
 Bu yüzden loopback yakalama tarafı bilerek **bağlantısız** doğar
-(`node.autoconnect = false`) ve `Supervisor._wire_sends()` graf ayağa kalktıktan sonra
-`pw-link` ile bağlar, `pw-link -l` çıktısıyla doğrular.
+(`node.autoconnect = false`) ve `Supervisor.reconcile_links()` `pw-link` ile bağlar,
+`pw-link -l` çıktısıyla doğrular.
+
+Bu **sürekli bir uzlaştırıcı**, tek atışlık değil: yeniden inşadan sonra, grafta node
+değiştiğinde (300 ms debounce) ve sağlık yoklamasında çalışır. Eskiden tek seferlikti ve
+tutmazsa yalnızca bir log satırı bırakıyordu — kanal **tamamen ve sessizce** susuyordu.
+Test turu 2'deki "hiç ses gelmiyor" şikâyetinin bir ayağı buydu. Ölçüldü: elle koparılan
+bir gönderi 3 saniye içinde geri kuruluyor.
+
+Üst üste üç tur onarılamazsa arayüze kırmızı bir uyarı düşer ve `sonar-cli doctor`
+beklenen/gerçek farkı basar. Sessiz sessizlik kalmadı.
 
 Port adları moda göre değiştiği için (`output_FL` / `capture_FL`) `pw-link`'e port değil
 **node adı** verilir; portları o eşleştirir.
@@ -132,7 +169,7 @@ Port adları moda göre değiştiği için (`output_FL` / `capture_FL`) `pw-link
 > seçerse, personal bus kendi çıkışını kendine besler. Varsayılanı devralmak isteyen
 > `settings.take_over_default_sink` bunu `pw-metadata` ile açıkça yapar.
 
-### Kanal yönü
+### Kanal yönü ve akış yönü
 
 | Yön | Model | Üretilen |
 |---|---|---|
@@ -142,6 +179,15 @@ Port adları moda göre değiştiği için (`output_FL` / `capture_FL`) `pw-link
 Yön modelde ayrı bir alan değil; hangi listede durduğu zaten söylüyor. Her ikisi de
 kullanıcı tarafından eklenip silinebilir. Kısıtlar: en az bir çıkış kanalı ve kendi DSP
 zincirine sahip en az bir giriş kanalı kalmalı.
+
+**Akışların** da yönü var ve `RoutingRule.direction` bunu taşıyor: `out` uygulamanın
+çaldığı ses, `in` dinlediği mikrofon. Bir uygulamanın ikisi için ayrı kuralı olabilir —
+Discord'un sesi `chat` kanalına, mikrofonu `mic` zincirine. Taşıma mekanizması ikisinde
+de aynı (`pw-metadata target.object`), yalnızca hedef node farklı.
+
+`stream.capture.sink` bayrağı taşıyan akışlar (cava, OBS'in "Masaüstü Sesi" kaynağı)
+mikrofon kullanıcısı sayılmaz ve yönlendirilmez. Bu ayrım ölçümle bulundu: yakalama
+akışları yönlendirilmeye başlayınca cava sessizce `sonar_mic`'e çekildi.
 
 ### OBS erişim noktaları
 
@@ -158,9 +204,11 @@ Topoloji **sabittir**; efektler açılıp kapanmaz, yalnızca bypass edilir. Bu 
 açıp kapatmak graf değişikliği değil, tek bir parametre yazımıdır — ses kesintisi olmaz.
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ limiter ─▶ çıkış
-mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ limiter ─▶ çıkış
+kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ [spatial] ─▶ boost ─▶ limiter ─▶ çıkış
+mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
 ```
+
+Köşeli parantez: **yapısal** aşama — açık olmadığında grafta hiç bulunmaz (aşağıya bakın).
 
 | Aşama | Eklenti | Bypass |
 |---|---|---|
@@ -168,10 +216,63 @@ mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ limite
 | Gate | `http://lsp-plug.in/plugins/lv2/gate_stereo` | `enabled` = 0 |
 | EQ | `http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo` | `enabled` = 0 |
 | Compressor | `http://lsp-plug.in/plugins/lv2/compressor_stereo` | `enabled` = 0 |
+| Spatial | PipeWire `sofa` `spatializer` (HRTF) + `mixer` | — *(yapısal)* |
+| Volume Boost | PipeWire `builtin` `linear` | `Mult` = 1.0 |
 | Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
 
 Zincirdeki aşama adları sabittir (`df`, `gate`, `eq`, `comp`, `lim`), böylece parametre
 anahtarları da kararlı olur: `"eq:g_3"`, `"gate:at"` gibi.
+
+### Çok node'lu aşamalar
+
+`spatializer` ve `linear` **mono** eklentiler; stereo bir zincire tek node olarak
+girmiyorlar. Bu yüzden `core.dsp.chain` bir aşamayı `StageBlock` olarak modelliyor: bir
+ya da birden çok node, kendi iç linkleri ve dışarıya kanal başına tek bir port çifti.
+Tek node'lu aşamalar bunun özel hâli — link sırası korunduğu için mevcut zincirler byte
+olarak değişmedi.
+
+Spatial bloğu (stereo):
+
+```
+spatial_l ─┬─ "Out L" ─▶ spatial_mix_l:"In 1"
+           └─ "Out R" ─▶ spatial_mix_r:"In 1"
+spatial_r ─┬─ "Out L" ─▶ spatial_mix_l:"In 2"
+           └─ "Out R" ─▶ spatial_mix_r:"In 2"
+```
+
+Sol hoparlör `Azimuth = +genişlik`, sağ hoparlör `360 - genişlik`. Yön **ölçülerek**
+bulundu: `Azimuth = 330` verilen sol kanal sağ kulakta daha yüksek çıktı, yani PipeWire'ın
+konvansiyonu "0 = ön, artan derece **sola**". Ölçüm: 30°'de kulaklar arası gecikme
+0.38 ms / seviye farkı 2.5 dB; 60°'de 0.65 ms / 4.1 dB.
+
+### Spatial Audio neden yapısal
+
+Projenin değişmez kuralı "efekti açıp kapatmak grafı değiştirmez". Spatial bunun **tek
+istisnası**, çünkü ölçüm başka bir şey söyledi: bir HRTF konvolverini bypass etmek onu
+ucuzlatmıyor.
+
+| | boştaki CPU |
+|---|---|
+| Spatial zincirde yok | **%0.0** |
+| Spatial zincirde, bypass'ta | **%14.4** |
+
+Bu yüzden Spatial kapalıyken node'lar grafta hiç bulunmuyor. Açma/kapama **profilde
+değil** hedefin kendi ayarında (`Channel.spatial`, `MasterBus.spatial`) — profilde olsaydı
+profil değiştirmek grafı yeniden kurardı ve asıl kural bozulurdu. Genişlik/yükseklik/
+mesafe profilde ve canlı.
+
+### Smart Volume neden DSP değil
+
+Yan-zincirli bir kompresör, tetikleyici kanalın sesini hedef kanalın kompresörüne besleme
+olarak vermeyi gerektirirdi; PipeWire `filter-chain` içinde kanallar arası besleme yok.
+
+Buna karşılık seviye ölçümü zaten var (20 Hz) ve fader yazımı zaten ucuz (0.003 ms). Bu
+yüzden ducking daemon tarafında bir zarf takipçisi (`engine/ducking.py`): tetikleyici
+eşiği aşınca attack boyunca in, sustuğunda hold kadar bekle, release boyunca çık.
+Bedeli çözünürlük — 50 ms'lik karar aralığı, konuşma için fazlasıyla yeterli.
+
+ChatMix ile **çarpılarak** birleşiyor; ikisi de `live_volumes()` içinde tek noktada
+toplandığı için çakışmıyorlar. Ölçüldü: ayarlanan -12.0 dB indirim çıkışta -12.1 dB.
 
 ### LSP `para_equalizer` port sembolleri
 
@@ -263,13 +364,15 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (47)
+### Metotlar (54)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
 | `AddChannel` | `s name, s direction, s color` | Yeni kanal ekler ve id'sini döndürür. **Yapısal**. |
+| `AddOutputBus` | `s name, s device` | Yeni bir çıkış bus'ı (fiziksel cihaz + kendi master'ı). Sonuç: yeni id. |
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
+| `Diagnose` | `—` | Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar. |
 | `ExportProfile` | `s target, s name, b autoeq` | Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde. |
 | `GetDevices` | `—` | Fiziksel ses cihazları (Sonar'ın kendi sanal node'ları hariç). |
 | `GetLevels` | `—` | Anlık seviyeler. Sürekli akış için `LevelsUpdated` sinyalini dinleyin. |
@@ -286,19 +389,23 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
 | `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
-| `RemoveRule` | `s match_key, s pattern` | Kuralı kaldırır. |
+| `RemoveOutputBus` | `s bus` | Bir çıkış bus'ını siler; ona bağlı kanallar varsayılana düşer. |
+| `RemoveRule` | `s match_key, s pattern, s direction` | Kuralı kaldırır. `direction` boşsa desenin her iki yönü de silinir. |
+| `RenameBus` | `s bus, s name` |  |
 | `RenameProfile` | `s target, s old, s new` | Kullanıcı profilini yeniden adlandırır. |
-| `ReorderFavorites` | `s target, as names` | Favori sırasını yeniden yazar. |
+| `ReorderFavorites` | `s target, ? names` | Favori sırasını yeniden yazar. |
 | `ResetProfile` | `s target` | Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı). |
 | `SaveProfile` | `s target, s name` | Çalışılan profili yeni adla kaydeder ('farklı kaydet'). |
 | `SetBandCount` | `s target, i count` | EQ band sayısı (5/10/16/32). **Yapısal** — graf yeniden kurulur. |
 | `SetBusDevice` | `s bus, s device` | Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur. |
 | `SetChannelMute` | `s channel, s bus, b muted` | Kanalın bir miks yolunu susturur. |
+| `SetChannelOutput` | `s channel, s bus` | Kanalın hangi çıkış cihazına gideceği. Canlı — ses kesilmez. |
 | `SetChannelStreamSource` | `s channel, b enabled` | Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**. |
 | `SetChannelVolume` | `s channel, s bus, d value` | Kanalın bir miks yolundaki seviyesi (lineer, 1.0 = birim kazanç). |
 | `SetChatMix` | `d value` | ChatMix konumu (0–100, 50 = nötr). Yalnızca kulaklık miksini etkiler. |
 | `SetChatMixConfig` | `b enabled, s left, s right` | ChatMix'in hangi kanalları sürdüğü; virgülle çoklu kanal. |
 | `SetDefaultChannel` | `s channel` | Kuralla eşleşmeyen uygulamaların düşeceği kanal. |
+| `SetDucking` | `s fields_json` | Smart Volume ayarları. JSON sözlük; verilmeyen alanlar değişmez. |
 | `SetEqBand` | `s target, i band, s field, s value` | `value` string taşınır: `band_type` metin, diğerleri sayı. |
 | `SetEqPreamp` | `s target, d value_db` | Ekolayzer öncesi kazanç. |
 | `SetFilterEnabled` | `s target, s stage, b enabled` | Bir DSP aşamasını açar/kapatır (canlı bypass). |
@@ -311,7 +418,8 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `SetMicStreamSend` | `s chain, b enabled` | Mikrofonu yayın miksine de gönderir. **Yapısal**. |
 | `SetMicVolume` | `s chain, d value` | Mikrofon zincirinin çıkış seviyesi. |
 | `SetProfileFavorite` | `s target, s name, b favorite` | Profili favorilere ekler veya çıkarır. Sayı sınırı yok. |
-| `SetRule` | `s match_key, s pattern, s channel, b is_regex` | Uygulama → kanal kuralı ekler veya günceller. |
+| `SetRule` | `s match_key, s pattern, s channel, b is_regex, s direction` | Uygulama → hedef kuralı ekler veya günceller. |
+| `SetSpatial` | `s target, b enabled` | Spatial Audio (HRTF ile sanal hoparlörler). **Yapısal** — graf yeniden kurulur. |
 | `SetTakeOverDefaultSink` | `b enabled` | Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı). |
 | `SubscribeMeters` | `b enabled` | Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı. |
 

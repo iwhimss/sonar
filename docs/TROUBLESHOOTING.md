@@ -25,21 +25,41 @@ Sonar bu durumu açılışta tespit eder ve `sonar-cli status` çıktısının s
 
 ## Hiç ses yok
 
-1. Graf ayakta mı?
-   ```bash
-   sonar-cli status          # en altta "Graf henüz hazır değil" yazmamalı
-   pw-dump | grep sonar_game
-   ```
-2. Uygulama doğru kanala mı düşmüş? `sonar-cli status` çıktısındaki "ÇALAN UYGULAMALAR"
-   bölümüne bakın; değilse `sonar-cli move <id> <kanal>`.
-3. Fader kapalı olabilir: `sonar-cli volume game personal 100`.
-4. Mute açık olabilir: `sonar-cli mute game personal off`.
-5. Kanal gönderileri bağlı mı? Kanal çıkışları bus'lara `pw-link` ile bağlanıyor:
-   ```bash
-   pw-link -l | grep to_personal_capture
-   ```
-   Her kanal için iki satır (FL, FR) görmelisiniz. Yoksa daemon logunda
-   "kanal gönderisi bağlanamadı" satırı vardır; `sonar-cli reload` yeniden dener.
+**İlk komut:**
+
+```bash
+sonar-cli doctor
+```
+
+Beklenen ve gerçek gönderi bağlantılarını karşılaştırır, doğmamış node'ları,
+yönlendirilmemiş akışları ve çakışan ses işleyicilerini tek çıktıda listeler. Çıkış
+kodu 0 = sorun yok.
+
+Temiz çıkıyorsa sırayla:
+
+1. Uygulama doğru kanalda mı? `sonar-cli status` → "ÇALAN UYGULAMALAR".
+   Değilse `sonar-cli move <id> <kanal>`.
+2. Kanal hangi çıkışa gidiyor? `sonar-cli output list` — Game'i yanlışlıkla başka bir
+   cihaza göndermiş olabilirsiniz. `sonar-cli send game personal` geri alır.
+3. Fader kapalı olabilir: `sonar-cli volume game output 100`.
+4. Mute açık olabilir: `sonar-cli mute game output off`.
+5. Çıkış bus'ının cihazı doğru mu? `sonar-cli status` alt kısmında her bus'ın hedefi
+   yazıyor; `(sistem varsayılanı)` diyorsa WirePlumber seçiyor demektir.
+
+### "X kanalı çıkışa bağlanamadı" uyarısı
+
+Kanal çıkışları bus'lara `pw-link` ile bağlanıyor ve daemon bunu sürekli uzlaştırıyor:
+grafta node değiştikçe ve iki saniyede bir sağlık yoklamasında. Üst üste üç tur
+onaramazsa bu uyarı çıkar. Ölçüldü: elle koparılan bir bağlantı 3 saniye içinde geri
+kuruluyor, yani uyarıyı görüyorsanız gerçekten kalıcı bir sorun var.
+
+```bash
+sonar-cli doctor          # hangi bağlantı eksik
+sonar-cli reload          # grafı baştan kur
+```
+
+Not: eski sürümlerde bu bağlantı tek seferlik kuruluyordu ve tutmazsa kanal **sessizce**
+susuyordu — hiçbir uyarı yoktu.
 
 ## Çift ses / yankı
 
@@ -110,6 +130,17 @@ bağlantısını kaybeder — süreç canlı görünürken graf boş kalır. Gö
 systemctl --user restart sonar-daemon
 ```
 
+## Cihaz değiştirince müzik duruyor
+
+Artık durmamalı. Çıkış cihazı ve mikrofon kaynağı conf'a yazılmıyor; hedef
+`pw-metadata target.object` ile canlı veriliyor, yani graf yeniden kurulmuyor.
+
+Hâlâ duruyorsa `sonar-cli doctor` çalıştırın: `sonar_<bus>_out` node'u grafta yoksa
+yeniden inşa gerçekten olmuştur ve başka bir sebep vardır.
+
+Yeniden inşa gerektiren işlemler yalnızca şunlar: kanal/çıkış ekleme-silme, band sayısı,
+kanal başına OBS kaynağı ve Spatial Audio.
+
 ## Sanal cihazları göremiyorum
 
 Önce gerçekten var mı bakın:
@@ -133,6 +164,53 @@ Varsayılan kapalıdır; kapalıyken kanal yalnızca birleşik Stream Mix üzeri
 
 **`*.monitor` girdileri.** Her sink'in bir monitörü olur — fiziksel kartlarda da vardır,
 Sonar'a özgü değildir ve kaldırılamaz.
+
+## Discord mikrofonu Sonar'ı kullanmıyor
+
+Uygulamalar hem çıkış hem giriş şeridinde görünür; ikisi ayrı ayrı yönlendirilir.
+
+```bash
+sonar-cli status                            # "MİKROFON KULLANANLAR" bölümü
+sonar-cli move <id> mic                     # o akışı Sonar mikrofonuna taşı
+sonar-cli route Discord mic --direction in  # bundan sonra hep oraya gitsin
+```
+
+`--direction in` şart: yönsüz bir kural uygulamanın **sesini** yönlendirir, mikrofonunu
+değil. `sonar-cli rules` çıktısında `→ SES` ve `← MİK` sütunu hangisi olduğunu söyler.
+
+Masaüstü sesini yakalayan uygulamalar (cava, OBS'in "Masaüstü Sesi" kaynağı) bu listede
+görünmez ve yönlendirilmez — mikrofon kullanıcısı değiller.
+
+## Spatial Audio açınca CPU fırladı
+
+Beklenen. Bir HRTF konvolveri ses akan bir kanalda tek çekirdeğin ~%17'sini yiyor.
+Kapalıyken node grafta hiç bulunmadığı için maliyeti **sıfır** — bu yüzden açıp kapatmak
+grafı yeniden kuruyor (~200 ms sessizlik), diğer efektlerin aksine.
+
+Birden çok kanalda birden açmayın; genelde yalnızca oyun kanalında anlamlı.
+
+## Kulaklığın ChatMix tekeri çalışmıyor
+
+`/dev/hidraw*` düğümleri varsayılan olarak `root`'a kapalı; Sonar cihazdan tek rapor bile
+okuyamıyor. Erişim için tek seferlik:
+
+```bash
+sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+```
+
+Kural `uaccess` etiketi kullanır: erişimi o an oturum açmış kullanıcıya verir, sabit bir
+gruba yazmaktan daha dardır.
+
+Kural kurulduktan sonra rapor biçiminin çözülmesi gerekiyor (cihaza özel):
+
+```bash
+./scripts/sonar-hid-capture     # tekeri yavaşça uçtan uca çevir, Ctrl+C
+```
+
+Teker okunmaya başlayınca mikserdeki slider salt okunur olur ve başlığı "kulaklık tekeri
+yönetiyor" der. Elle sürmeye devam etmek isterseniz `config.toml` içinde
+`settings.chatmix_source = "software"`.
 
 ## Uygulama yanlış kanalda
 

@@ -171,3 +171,67 @@ ayarlama" yoluna gerek kalmadı.
 **Denenmeyenler:** uyku/uyanma döngüsü, 24 saat sürekli çalışma (bellek sızıntısı),
 USB kulaklığı çıkarıp takma, `systemctl --user restart pipewire`. Bunlar oturumu kesintiye
 uğrattığı için kullanıcının kendi kullanımında doğrulanmalı.
+
+---
+
+## Test turu 2 ölçümleri (2026-09-03)
+
+Faz 18–23'te canlı graf üzerinde yapılan ölçümler. Hepsi ton enjeksiyonu + numpy
+analiziyle; kulakla değil.
+
+### Ses yolu
+
+| ölçüm | sonuç |
+|---|---|
+| Cihaz değişimi yeniden inşa yapıyor mu | **hayır** — `sonar_media` node id'si 108 → 108 |
+| Cihaz değişiminde kesinti | kayıt gürültüsünün içinde (kontrol 20/397 düşük pencere, anahtarlamayla 37/396) |
+| Bağlantı bekçisi onarım süresi | elle koparılan gönderi **3 saniyede** geri kuruldu |
+| Kanal çıkışını değiştirmek | node id sabit (304 → 304 → 304), conf değişmiyor |
+| Sidetone açma/kapama | node id sabit; mute yazımı |
+
+### Çoklu çıkış izolasyonu
+
+Game hoparlörde, Media kulaklıkta; her kanala ayrı ton verildi.
+
+| | kendi bus'ında | diğer bus'ta |
+|---|---|---|
+| Game → Hoparlör | **-37.0 dBFS** | -240.0 dBFS |
+| Media → Kişisel | **-37.0 dBFS** | -240.0 dBFS |
+
+-240 dBFS dijital sessizlik; sızıntı **yok**.
+
+### Yeni efektler
+
+| ölçüm | sonuç |
+|---|---|
+| Volume Boost +6 dB | çıkışta tam **+6.00 dB** |
+| Boost + Spatial kapalıyken zincir | kazanç **0.00 dB**, sağ kanal -240 dBFS (bit-şeffaf) |
+| Spatial 30° | kulaklar arası gecikme **0.38 ms**, seviye farkı **2.5 dB** |
+| Spatial 60° | **0.65 ms**, **4.1 dB** — geniş açı, büyük fark |
+| Spatial'ın kazanç kaybı | **-7.8 dB** (HRTF normalizasyonu) |
+| Smart Volume indirimi | ayar -12.0 dB → ölçüm **-12.1 dB** |
+| Smart Volume zarfı | atak ~200 ms, bırakma ~600 ms (ayar 100/600 ms + 50 ms ölçüm çözünürlüğü) |
+
+### Spatial Audio'nun CPU maliyeti
+
+Bu ölçüm tasarımı değiştirdi: aşama **yapısal** oldu.
+
+| durum | tek çekirdeğin yüzdesi |
+|---|---|
+| Spatial zincirde yok, boşta | **%0.0** |
+| Spatial zincirde ama bypass'ta, boşta | **%14.4** |
+| Spatial açık, tek kanalda ses akarken | **%17** |
+| Spatial kapalı, aynı kanalda ses akarken | **%0** |
+
+**Bir HRTF konvolverini bypass etmek onu ucuzlatmıyor.** Bu yüzden Spatial kapalıyken
+node'lar grafta hiç bulunmuyor ve açıp kapatmak — projedeki tek istisna olarak — grafı
+yeniden kuruyor.
+
+### Kabul senaryosu
+
+Media'nın yayın fader'ı kapalıyken müzik çalıyor:
+
+| | |
+|---|---|
+| kulaklıkta | **-23.0 dBFS** |
+| yayında | **-240.0 dBFS** |

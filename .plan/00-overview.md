@@ -52,9 +52,10 @@ turunu yapar; Faz 11 (Paketleme) ondan sonra.
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 754 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (47 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
-tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz.
+**Test durumu:** 805 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (54 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+tam kontrol çalışıyor. Profil geçişi anında ve kesintisiz; cihaz değişimi ve kanalın
+çıkış cihazını değiştirmek de artık kesintisiz.
 
 ---
 
@@ -124,20 +125,23 @@ yeniden üretilip sürecin restart edilmesini gerektirir (~200 ms kesinti, nadir
   │ oyun          ├──▶ [sonar_game]  ─DSP─▶ sonar_game_fx ──┐
   │ Discord       ├──▶ [sonar_chat]  ─DSP─▶ sonar_chat_fx ──┤   pw-link ile
   │ tarayıcı      ├──▶ [sonar_media] ─DSP─▶ sonar_media_fx ─┤   açıkça bağlanır
-  │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤
+  │ diğer         ├──▶ [sonar_aux]   ─DSP─▶ sonar_aux_fx ───┤   (sürekli bekçi)
   └───────────────┘                                          │
-                          her kanaldan 2 loopback:           │
+       her kanaldan HER bus'a bir gönderi loopback'i         │
                      ┌────────────────────────────────────────┘
-                     │
-       personal fader ├──▶ [sonar_personal] ─master DSP─▶ ► Arctis 7 (fiziksel)
-       stream  fader  └──▶ [sonar_stream]   ─master DSP─▶ ► sonar_stream_out → OBS
+                     ├──▶ [sonar_personal]  ─master DSP─▶ ► Arctis 7
+                     ├──▶ [sonar_<çıkış-2>] ─master DSP─▶ ► başka bir cihaz
+                     └──▶ [sonar_stream]    ─master DSP─▶ ► sonar_stream_out → OBS
 
-     GİRİŞ KANALLARI
+     GİRİŞ KANALLARI                        (uygulamalar buraya da yönlendirilir)
   Fifine ──┬──▶ [mic zinciri]        ─▶ sonar_mic         (→ Discord)
            └──▶ [stream mic zinciri] ─▶ sonar_stream_mic  (→ OBS)
-                     └──(ops.) sidetone ─▶ sonar_personal
-                     └──(ops.) ─────────▶ sonar_stream
+                     └── sidetone ──▶ sonar_personal   (mute ile aç/kapa)
+                     └── yayına ────▶ sonar_stream     (mute ile aç/kapa)
 ```
+
+Kanal **tek bir** çıkışa gider; diğer çıkışlara giden gönderileri susturulur. Bu yüzden
+kanalı başka bir cihaza taşımak bir mute yazımı, yeniden inşa değil.
 
 **OBS erişim noktaları** (Faz 12'de sadeleşti):
 
@@ -153,9 +157,13 @@ WirePlumber bağlamadığı için gönderiler `pw-link` ile daemon tarafından k
 ### DSP zinciri (sabit topoloji, bypass ile açma/kapama)
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ limiter ─▶ çıkış
-mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ limiter ─▶ çıkış
+kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ [spatial] ─▶ boost ─▶ limiter ─▶ çıkış
+mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
 ```
+
+Köşeli parantez = **yapısal** aşama: kapalıyken grafta hiç yok. Spatial bunun tek
+örneği; bir HRTF konvolverini bypass etmek onu ucuzlatmadığı için (ölçüldü: boştaki CPU
+%0.0 → %14.4).
 
 | Aşama | Eklenti | Bypass |
 |---|---|---|
@@ -163,6 +171,8 @@ mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ limite
 | Gate | `http://lsp-plug.in/plugins/lv2/gate_stereo` | `enabled` = 0 |
 | EQ | `http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo` | `enabled` = 0 |
 | Compressor | `http://lsp-plug.in/plugins/lv2/compressor_stereo` | `enabled` = 0 |
+| Spatial | PipeWire `sofa` `spatializer` + `mixer` | *(yapısal)* |
+| Volume Boost | PipeWire `builtin` `linear` | `Mult` = 1.0 |
 | Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
 
 Topoloji **hiç değişmez** → efekt açıp kapatmak sadece bir parametre yazımı, ses kesintisi yok.
