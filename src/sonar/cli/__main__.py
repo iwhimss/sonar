@@ -81,21 +81,18 @@ def _print_status(state: dict) -> None:
     channels = sorted(config["channels"], key=lambda c: (c["order"], c["id"]))
     streams = state["streams"]
 
-    buses = {b["id"]: b for b in config["buses"]}
-    print(f"{'KANAL':<12} {'PROFİL':<14} {'ÇIKIŞ':<14} {'ÇIKIŞ SEVİYESİ':<26} {'YAYIN':<26}")
-    print("─" * 96)
+    output_bus = next(
+        (b["id"] for b in config["buses"] if b.get("kind") != "stream"), "personal"
+    )
+    print(f"{'KANAL':<12} {'PROFİL':<16} {'KULAKLIK':<26} {'YAYIN':<26}")
+    print("─" * 82)
     for channel in channels:
-        output_bus = channel.get("output_bus", "personal")
         rows = []
         for bus_id in (output_bus, "stream"):
             send = _send_of(channel, bus_id)
             mark = "M" if send["muted"] else " "
             rows.append(f"{mark} {_bar(send['volume'])} {_pct(send['volume'])}")
-        output_name = buses.get(output_bus, {}).get("name", output_bus)
-        print(
-            f"{channel['name']:<12} {channel['active_profile']:<14} "
-            f"{output_name:<14} {rows[0]:<26} {rows[1]:<26}"
-        )
+        print(f"{channel['name']:<12} {channel['active_profile']:<16} {rows[0]:<26} {rows[1]:<26}")
 
     print()
     for bus in config["buses"]:
@@ -337,37 +334,6 @@ def _cmd_channel(client: Client, args) -> int:
     return 0
 
 
-def _cmd_output(client: Client, args) -> int:
-    """Çıkış bus'ları: her biri bir fiziksel cihaz + kendi master'ı."""
-    if args.action == "list":
-        state = client.call("GetState")
-        for bus in state["config"]["buses"]:
-            if bus.get("kind") == "stream":
-                continue
-            users = [
-                c["name"]
-                for c in state["config"]["channels"]
-                if c.get("output_bus", "personal") == bus["id"]
-            ]
-            device = bus["device"] or "(sistem varsayılanı)"
-            print(f"{bus['id']:<14} {bus['name']:<18} → {device}")
-            print(f"{'':<14} kanallar: {', '.join(users) or '(yok)'}")
-        return 0
-    if args.action == "add":
-        new_id = client.call("AddOutputBus", args.name, args.device or "")
-        print(f"çıkış eklendi: {new_id}  (graf yeniden kuruluyor)")
-        return 0
-    client.call("RemoveOutputBus", args.name)
-    print(f"çıkış silindi: {args.name}  (graf yeniden kuruluyor)")
-    return 0
-
-
-def _cmd_route_output(client: Client, args) -> int:
-    client.call("SetChannelOutput", args.channel, args.bus)
-    print(f"{args.channel} → {args.bus}")
-    return 0
-
-
 def _cmd_spatial(client: Client, args) -> int:
     client.call("SetSpatial", args.target, args.state == "on")
     print(f"{args.target} Spatial Audio: {args.state}  (graf yeniden kuruluyor)")
@@ -577,15 +543,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--color", default="#8B95A5")
 
-    p = sub.add_parser("output", help="çıkış bus'ları (fiziksel cihaz başına bir master)")
-    p.add_argument("action", choices=("list", "add", "remove"))
-    p.add_argument("name", nargs="?", default="", help="ekleme: görünen ad · silme: bus id'si")
-    p.add_argument("--device", default="", help="yalnızca ekleme: fiziksel cihaz node adı")
-
-    p = sub.add_parser("send", help="bir kanalı başka bir çıkışa taşı (canlı)")
-    p.add_argument("channel")
-    p.add_argument("bus", help="çıkış bus'ının kimliği")
-
     p = sub.add_parser("spatial", help="Spatial Audio (HRTF) aç/kapa — yapısal")
     p.add_argument("target", help="kanal veya çıkış bus'ı")
     p.add_argument("state", choices=("on", "off"))
@@ -647,8 +604,6 @@ _COMMANDS = {
     "smart": _cmd_smart,
     "spatial": _cmd_spatial,
     "channel": _cmd_channel,
-    "output": _cmd_output,
-    "send": _cmd_route_output,
     "new": _cmd_new,
     "favorite": _cmd_favorite,
     "presets": _cmd_presets,

@@ -1,7 +1,13 @@
 # Faz 26 — Yerleşim onarımı
 
 **Durum:** ⚪ Bekliyor
-**Bağımlılık:** Faz 25
+**Bağımlılık:** Faz 27–31 (arayüz son hâlini aldıktan sonra)
+
+---
+
+> **Sıra değişikliği (uygulama sırasında):** Faz 26 (yerleşim) **en sona**, Faz 31'den
+> sonra alındı. Faz 27–31 arayüzden panel siliyor ve taşıyor; yerleşimi önce düzeltmek
+> aynı işi iki kez yapmak olurdu. Gerçek sıra: 25 → 27 → 28 → 29 → 30 → 31 → 26 → 32.
 
 ---
 

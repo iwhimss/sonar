@@ -132,20 +132,18 @@ def live_volumes(
     duck = duck or {}
     out: dict[str, tuple[float, bool]] = {}
 
+    default_output = cfg.default_output_bus()
+    default_id = default_output.id if default_output is not None else ""
     for channel in cfg.channels:
-        active = cfg.output_bus_of(channel)
-        active_id = active.id if active is not None else channel.output_bus
         for bus in cfg.buses:
             send = channel.send(bus.id)
             if bus.is_stream:
                 out[channel.loopback_node(bus.id)] = (send.volume, send.muted)
                 continue
-            # Kanal tek bir çıkışa gider; diğer çıkış bus'larının gönderisi susturulur.
-            # Çıkışı değiştirmek bu yüzden bir mute yazımı, yeniden inşa değil.
-            if bus.id != active_id:
+            if bus.id != default_id:  # pragma: no cover - tek çıkış bus'ı var (Faz 27)
                 out[channel.loopback_node(bus.id)] = (send.volume, True)
                 continue
-            # ChatMix yalnızca kulaklık miksini etkiler; yayın miksine dokunmaz.
+            # ChatMix ve Smart Volume yalnızca kulaklık miksini etkiler; yayına dokunmaz.
             out[channel.loopback_node(bus.id)] = (
                 send.volume * gains.get(channel.id, 1.0) * duck.get(channel.id, 1.0),
                 send.muted,

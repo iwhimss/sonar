@@ -454,60 +454,30 @@ def test_link_keeper_reports_what_it_cannot_fix(supervisor, config_store):
     supervisor.stop(restore_default_sink=False)
 
 
-# --------------------------------------------------------------------------- çoklu çıkış
+# --------------------------------------------------------------------------- tek çıkış
 #
-# Kanal tek bir çıkış bus'ına gider; diğer çıkışların gönderisi susturulur. Bu yüzden
-# kanalı başka bir cihaza taşımak bir mute yazımı, yeniden inşa değil (Faz 20).
+# Bir dönem kanal başına ayrı çıkış bus'ı vardı (Faz 20); kullanıcı karışıklık ürettiği
+# için geri alındı (Faz 27). Artık tek çıkış + tek yayın bus'ı var ve kanalın çıkış
+# gönderisi her zaman varsayılan bus'a gidiyor.
 
 
-def _two_outputs():
-    from sonar.core.model import BusKind, MasterBus
-
+def test_every_channel_feeds_the_single_output_bus():
     config = default_config()
-    config.buses.append(MasterBus(id="hoparlor", name="Hoparlör", kind=BusKind.OUTPUT, order=2))
-    config.ensure_sends()
-    return config
+    volumes = live_volumes(config)
+    for channel in ("game", "chat", "media", "aux"):
+        assert volumes[f"sonar_{channel}_to_personal"][1] is False
+        assert volumes[f"sonar_{channel}_to_stream"][1] is False
 
 
-def test_only_the_selected_output_send_is_open():
-    config = _two_outputs()
-    config.channel("game").output_bus = "hoparlor"
+def test_chatmix_applies_on_the_output_send_only():
+    config = default_config()
+    config.chatmix.value = 100.0  # tam sağ: oyun kısılır
     volumes = live_volumes(config)
 
-    assert volumes["sonar_game_to_hoparlor"] == (1.0, False)
-    assert volumes["sonar_game_to_personal"][1] is True, "seçilmeyen çıkış susturulmalı"
-    assert volumes["sonar_game_to_stream"][1] is False, "yayın gönderisi hep açık"
-    # Diğer kanallar varsayılan çıkışta kalır.
-    assert volumes["sonar_media_to_personal"][1] is False
-    assert volumes["sonar_media_to_hoparlor"][1] is True
-
-
-def test_changing_the_output_does_not_touch_the_conf():
-    """Ses kesintisinin tek ölçütü bu."""
-    config = _two_outputs()
-    before = confgen.generate(config)
-    config.channel("game").output_bus = "hoparlor"
-    assert confgen.generate(config) == before
-
-
-def test_chatmix_applies_on_the_channels_own_output():
-    config = _two_outputs()
-    config.channel("game").output_bus = "hoparlor"
-    config.chatmix.value = 100.0  # tam sağ: oyun kısılır, sohbet açık kalır
-    volumes = live_volumes(config)
-
-    # ChatMix kanalı hangi çıkışa bağlıysa oradaki gönderisine uygulanıyor.
-    assert volumes["sonar_game_to_hoparlor"][0] < 0.02  # -40 dB taban
+    assert volumes["sonar_game_to_personal"][0] < 0.02  # -40 dB taban
     assert volumes["sonar_chat_to_personal"][0] == pytest.approx(1.0)
     # Yayın miksi ChatMix'ten etkilenmez.
     assert volumes["sonar_game_to_stream"][0] == pytest.approx(1.0)
-
-
-def test_a_deleted_output_falls_back_to_the_default():
-    config = _two_outputs()
-    config.channel("game").output_bus = "yok_boyle_bir_sey"
-    volumes = live_volumes(config)
-    assert volumes["sonar_game_to_personal"][1] is False
 
 
 # --------------------------------------------------------------------------- Smart Volume

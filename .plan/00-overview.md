@@ -7,9 +7,9 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 26 — Yerleşim onarımı
+**Aktif faz:** Faz 28 — Master davranışı, %300 fader
 **Son güncelleme:** 2026-09-03
-**Sonraki adım:** Faz 25 → 26 → 27 → 28 → 29 → 30 → 31 → 32. Sonra kullanıcı dördüncü
+**Sonraki adım:** Faz 25 → 27 → 28 → 29 → 30 → 31 → 26 → 32 (yerleşim, arayüz son hâlini aldıktan sonra). Sonra kullanıcı dördüncü
 test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 
 > **Test turu 3 (2026-09-03).** Kullanıcı ekran görüntüleriyle (`görsel-bug/`) ve
@@ -55,9 +55,9 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🔴 udev kuralı yanlış sırada — Faz 32 |
 | 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟢 Tamamlandı |
 | 25 | [Kırık kontroller](25-broken-controls.md) | 🟢 Tamamlandı |
-| 26 | [Yerleşim onarımı](26-layout.md) | 🟡 Sıradaki |
-| 27 | [Çoklu çıkışın geri alınması](27-single-output.md) | ⚪ Bekliyor |
-| 28 | [Master davranışı, dişli, %300 fader](28-master.md) | ⚪ Bekliyor |
+| 26 | [Yerleşim onarımı](26-layout.md) | ⚪ Bekliyor (31'den sonra) |
+| 27 | [Çoklu çıkışın geri alınması](27-single-output.md) | 🟢 Tamamlandı |
+| 28 | [Master davranışı, dişli, %300 fader](28-master.md) | 🟡 Sıradaki |
 | 29 | [Smart Volume profile taşınıyor](29-smart-volume.md) | ⚪ Bekliyor |
 | 30 | [DSP: crossfeed, Boost, mikrofon zinciri](30-dsp.md) | ⚪ Bekliyor |
 | 31 | [EQ nokta ekleme/silme](31-eq-points.md) | ⚪ Bekliyor |

@@ -61,11 +61,9 @@ from sonar.core import config as config_mod
 from sonar.core import importers, presets, serde
 from sonar.core.model import (
     SUPPORTED_BAND_COUNTS,
-    BusKind,
     Channel,
     EqBandType,
     FilterStage,
-    MasterBus,
     MatchKey,
     MicChain,
     Profile,
@@ -704,82 +702,6 @@ class SonarApi:
         self._channel(channel).stream_source = bool(enabled)
         self._structural({"kind": "channel_stream_source", "channel": channel})
 
-    # ------------------------------------------------------------------ çıkış bus'ları
-
-    def add_output_bus(self, name: str, device: str = "") -> str:
-        """Yeni bir çıkış bus'ı ekler ve id'sini döndürür. **Yapısal**.
-
-        Her çıkış bus'ı bir fiziksel cihaza karşılık gelir ve kendi master fader'ı,
-        DSP zinciri ve profili olur. Kanal hangi bus'a gideceğini seçer; böylece Game
-        hoparlöre, Media kulaklığa gidebiliyor (Faz 20). Kanalın çıkışını değiştirmek
-        **canlı**, ama yeni bir bus eklemek grafa node ekliyor.
-        """
-        name = str(name).strip()
-        if not name:
-            raise ApiError("invalid_name", "bus adı boş olamaz")
-        bus_id = slugify(name)
-        if bus_id in self.config.profile_targets():
-            raise ApiError("duplicate_bus", f"bu kimlik zaten kullanılıyor: {bus_id}")
-
-        self.config.buses.append(
-            MasterBus(
-                id=bus_id,
-                name=name,
-                kind=BusKind.OUTPUT,
-                device=str(device),
-                order=self.config.next_bus_order(),
-            )
-        )
-        self.config.ensure_sends()
-        self.store.ensure_default_profiles(self.config)
-        self._structural({"kind": "bus_added", "bus": bus_id})
-        return bus_id
-
-    def remove_output_bus(self, bus: str) -> None:
-        """Bir çıkış bus'ını siler. **Yapısal**.
-
-        Yayın bus'ı silinemez (OBS'in tek erişim noktası) ve en az bir çıkış bus'ı
-        kalmalı — aksi hâlde kanalların sesi hiçbir yere gitmez.
-        """
-        target = self._master(bus)
-        if target.is_stream:
-            raise ApiError("stream_bus_protected", "yayın miksi silinemez")
-        if len(self.config.output_buses()) <= 1:
-            raise ApiError("last_bus", "en az bir çıkış bus'ı kalmalı")
-
-        self.config.buses = [b for b in self.config.buses if b.id != bus]
-        fallback = self.config.default_output_bus()
-        assert fallback is not None
-        for channel in self.config.channels:
-            channel.sends.pop(bus, None)
-            if channel.output_bus == bus:
-                channel.output_bus = fallback.id
-        self.store.delete_target(bus)
-        self.profiles.pop(bus, None)
-        self._dirty_profiles.discard(bus)
-        self._structural({"kind": "bus_removed", "bus": bus})
-
-    def rename_bus(self, bus: str, name: str) -> None:
-        name = str(name).strip()
-        if not name:
-            raise ApiError("invalid_name", "bus adı boş olamaz")
-        # Ad conf'a `node.description` olarak giriyor; yapısal.
-        self._master(bus).name = name
-        self._structural({"kind": "bus_renamed", "bus": bus})
-
-    def set_channel_output(self, channel: str, bus: str) -> None:
-        """Kanalın hangi çıkış cihazına gideceği. **Canlı** — ses kesilmez.
-
-        Conf'ta kanaldan **her** bus'a bir gönderi kurulu; değişen yalnızca hangisinin
-        açık olduğu (`supervisor.live_volumes`).
-        """
-        target = self._channel(channel)
-        wanted = self._master(bus)
-        if wanted.is_stream:
-            raise ApiError("not_an_output", "yayın miksi bir kanal çıkışı olamaz")
-        target.output_bus = bus
-        self._live_volumes({"kind": "channel_output", "channel": channel, "bus": bus})
-
     # ------------------------------------------------------------------ kanallar
 
     def add_channel(
@@ -1310,13 +1232,16 @@ class SonarApi:
     def _bus(self, bus: str, channel: Channel | None = None) -> str:
         """Bus kimliğini çözer.
 
-        `"output"` özel bir addır: kanalın **seçili** çıkış bus'ı demek. Arayüzdeki
-        kulaklık fader'ı bunu kullanıyor — kanal başka bir cihaza taşınınca fader'ın
-        hangi bus'a yazacağı kendiliğinden değişsin diye. Çoklu çıkış bus'ından önce
-        bu ad sabit `"personal"`di.
+        `"output"` özel bir addır: **varsayılan çıkış bus'ı** demek. Arayüzdeki kulaklık
+        fader'ı bunu kullanıyor, böylece bus'ın kimliğini bilmek zorunda değil.
+
+        Bir dönem kanal başına ayrı çıkış bus'ı vardı ve bu ad "kanalın seçtiği çıkış"
+        anlamına geliyordu; kullanıcı karışıklık ürettiği için geri alındı (Faz 27).
         """
-        if bus == "output" and channel is not None:
-            return channel.output_bus
+        if bus == "output":
+            default = self.config.default_output_bus()
+            if default is not None:
+                return default.id
         if self.config.bus(bus) is None:
             names = ", ".join(b.id for b in self.config.ordered_buses())
             raise ApiError("unknown_bus", f"böyle bir bus yok: {bus} (var olanlar: {names})")

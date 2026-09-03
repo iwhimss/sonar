@@ -167,12 +167,33 @@ class ConfigStore:
         except (SerdeError, TypeError, ValueError) as exc:
             return self._recover(path, f"şemaya uymuyor: {exc}")
 
+        self._collapse_extra_outputs(config)
         config.ensure_sends()
         if config.schema_version < 2:
             self._migrate_favorites(config)
         if config.schema_version != SCHEMA_VERSION:
             config.schema_version = SCHEMA_VERSION
         return config
+
+    def _collapse_extra_outputs(self, config: SonarConfig) -> None:
+        """Fazladan çıkış bus'larını siler — artık tek çıkış var (Faz 27).
+
+        Faz 20'de kanal başına ayrı fiziksel çıkış eklenebiliyordu; kullanıcı için
+        karışıklık ürettiği için geri alındı. Eski bir yapılandırmada fazladan bus
+        kalmışsa burada temizleniyor: kanallar varsayılan çıkışa döner, silinen bus'ın
+        gönderileri düşer. Profil dosyaları diskte kalır — kullanıcı geri dönmek
+        isterse elde olsun.
+        """
+        outputs = config.output_buses()
+        if len(outputs) <= 1:
+            return
+        keep = config.bus(DEFAULT_OUTPUT_BUS) or outputs[0]
+        dropped = [b.id for b in outputs if b.id != keep.id]
+        config.buses = [b for b in config.buses if b.id == keep.id or b.is_stream]
+        for channel in config.channels:
+            for bus_id in dropped:
+                channel.sends.pop(bus_id, None)
+        log.info("fazladan çıkış bus'ı kaldırıldı: %s", ", ".join(dropped))
 
     def _migrate_favorites(self, config: SonarConfig) -> None:
         """Şema 1 → 2: favoriler profil dosyalarından yapılandırmaya taşınır.

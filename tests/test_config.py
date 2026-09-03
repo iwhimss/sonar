@@ -328,7 +328,6 @@ def test_schema_2_sends_move_into_the_bus_dictionary(config_store: ConfigStore):
     channel = config.channel("game")
     assert channel.send("personal").volume == 0.42
     assert channel.send("stream") == BusSend(volume=0.7, muted=True)
-    assert channel.output_bus == "personal"
     assert config.schema_version == 3
 
 
@@ -340,3 +339,23 @@ def test_schema_2_buses_get_their_kind(config_store: ConfigStore):
     assert [b.id for b in config.output_buses()] == ["personal"]
     assert config.stream_bus().id == "stream"
     assert config.bus("personal").device == "alsa_output.usb-Test"
+
+
+def test_extra_output_buses_are_collapsed(config_store: ConfigStore):
+    """Faz 20'de kanal başına ayrı çıkış eklenebiliyordu; Faz 27'de geri alındı.
+
+    Eski bir yapılandırmada fazladan bus kalmışsa yüklemede temizlenmeli, yoksa graf
+    kullanıcının bir daha ulaşamayacağı node'lar kurmaya devam ederdi.
+    """
+    from sonar.core.model import BusKind, MasterBus
+
+    config = default_config()
+    config.buses.append(MasterBus(id="hoparlor", name="Hoparlör", kind=BusKind.OUTPUT, order=2))
+    config.ensure_sends()
+    config_store.save(config)
+
+    loaded = config_store.load()
+
+    assert [b.id for b in loaded.output_buses()] == ["personal"]
+    assert loaded.stream_bus() is not None
+    assert all("hoparlor" not in c.sends for c in loaded.channels)

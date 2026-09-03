@@ -32,8 +32,6 @@ Item {
     required property bool personalMuted
     required property real streamVolume
     required property bool streamMuted
-    required property string outputBus
-    required property string outputName
     required property string kind
 
     property var bridge
@@ -60,15 +58,6 @@ Item {
 
     /* Profil menüsü: önce favoriler, sonra ayraç, sonra tümü. Gömülü presetler
        kilit işaretiyle ayrılıyor (salt okunurlar). */
-    /* Bu kanalın gidebileceği çıkışlar. Bus listesi kullanıcı tarafından
-       değiştirilebildiği için `bridge.outputs` üzerinden geliyor. */
-    readonly property var outputOptions: {
-        const out = []
-        for (const bus of (bridge ? bridge.outputs : []))
-            out.push({ value: bus.id, label: bus.name })
-        return out
-    }
-
     readonly property var profileOptions: {
         const all = (root.profiles || []).map(function (p) {
             return typeof p === "string"
@@ -195,25 +184,6 @@ Item {
                 model: root.profileOptions
                 currentValue: root.activeProfile
                 onActivated: (value) => root.bridge.loadProfile(root.id, value)
-            }
-        }
-
-        // --- çıkış ----------------------------------------------------------
-        //
-        // Kanal hangi fiziksel cihaza gidiyor? Değiştirmek **canlı**: conf'ta her
-        // bus'a gönderi zaten kurulu, yalnızca hangisinin açık olduğu değişiyor.
-        SonarPanel {
-            Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 30 : 0
-            visible: !root.isMic && root.outputOptions.length > 1
-            SonarComboBox {
-                anchors.fill: parent
-                anchors.margins: 2
-                accent: root.accent
-                popupWidth: 200
-                model: root.outputOptions
-                currentValue: root.outputBus
-                onActivated: (value) => root.bridge.setChannelOutput(root.id, value)
             }
         }
 

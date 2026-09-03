@@ -261,10 +261,6 @@ class Channel:
     #: Bus kimliği → gönderi seviyesi. Yayın bus'ı dâhil **her** bus için bir giriş
     #: bulunur; eksikse `send()` varsayılanını üretir.
     sends: dict[str, BusSend] = field(default_factory=dict)
-    #: Kanalın hangi çıkış bus'ına gittiği. Yalnızca bu bus'ın gönderisi açık kalır;
-    #: diğer çıkış bus'larının gönderileri susturulur. Değiştirmek grafı yeniden
-    #: kurmaz, yalnızca bir mute yazımıdır.
-    output_bus: str = DEFAULT_OUTPUT_BUS
     #: OBS'e kanal başına ayrı track vermek için `_fx` çıkışını sanal bir **giriş
     #: cihazı** olarak yayınla. Varsayılan kapalı: açıkken her çıkış kanalı sistemin
     #: mikrofon listesinde görünür ve "Media neden mikrofon?" sorusuna yol açar.
@@ -291,8 +287,8 @@ class Channel:
 
     @property
     def output(self) -> BusSend:
-        """Kanalın **seçili** çıkış bus'ına gönderisi; mikserdeki kulaklık fader'ı."""
-        return self.send(self.output_bus)
+        """Kanalın çıkış gönderisi; mikserdeki kulaklık fader'ı."""
+        return self.send(DEFAULT_OUTPUT_BUS)
 
     @property
     def sink_node(self) -> str:
@@ -498,7 +494,12 @@ class SonarConfig:
         return sorted(self.buses, key=lambda b: (b.order, b.id))
 
     def output_buses(self) -> list[MasterBus]:
-        """Fiziksel cihaza çıkan bus'lar — mikserdeki master şeritleri."""
+        """Fiziksel cihaza çıkan bus'lar.
+
+        Bir dönem birden fazla olabiliyordu (kanal başına ayrı cihaz); kullanıcı
+        karışıklık ürettiği için geri alındı ve liste artık tek elemanlı. `MasterBus.kind`
+        yine de duruyor: yayın bus'ını çıkıştan ayıran alan o.
+        """
         return [b for b in self.ordered_buses() if not b.is_stream]
 
     def stream_bus(self) -> MasterBus | None:
@@ -507,10 +508,6 @@ class SonarConfig:
     def default_output_bus(self) -> MasterBus | None:
         """Kanalların düşeceği çıkış. `personal` yoksa ilk çıkış bus'ı."""
         return self.bus(DEFAULT_OUTPUT_BUS) or next(iter(self.output_buses()), None)
-
-    def output_bus_of(self, channel: Channel) -> MasterBus | None:
-        """Kanalın gerçekten bağlı olduğu çıkış — seçtiği bus silinmişse varsayılan."""
-        return self.bus(channel.output_bus) or self.default_output_bus()
 
     def ensure_sends(self) -> None:
         """Her kanalın her bus'a bir gönderisi olsun.
@@ -526,9 +523,6 @@ class SonarConfig:
             # Silinmiş bir bus'ın gönderisi artılıp durmasın.
             for stale in [b for b in channel.sends if b not in bus_ids]:
                 del channel.sends[stale]
-
-    def next_bus_order(self) -> int:
-        return max((b.order for b in self.buses), default=-1) + 1
 
     def mic(self, mic_id: str) -> MicChain | None:
         return next((m for m in self.mic_chains if m.id == mic_id), None)
