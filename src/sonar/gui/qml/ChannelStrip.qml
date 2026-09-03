@@ -142,9 +142,13 @@ Item {
                     color: root.accent
                     Layout.alignment: Qt.AlignVCenter
                 }
+                /* Dişli düğmesi kalktı: üstteki sekmeler zaten FX sayfasını açıyor ve
+                   kullanıcı onu gereksiz buldu. Başlığa tıklamak kısayol olarak kaldı. */
                 Text {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     Layout.alignment: Qt.AlignVCenter
+                    verticalAlignment: Text.AlignVCenter
                     text: root.name.toUpperCase()
                     color: root.accent
                     elide: Text.ElideRight
@@ -153,12 +157,11 @@ Item {
                     font.bold: true
                     font.letterSpacing: 0.6
                     renderType: Text.NativeRendering
-                }
-                SonarIconButton {
-                    icon: "gear"
-                    accent: root.accent
-                    Layout.alignment: Qt.AlignVCenter
-                    onClicked: root.openFx(root.id)
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openFx(root.id)
+                    }
                 }
                 // Her kanal silinebilir — Aux'u kullanmayan kullanıcı onu da atabilmeli.
                 // Neyin kaybolacağını onay penceresi anlatıyor.
@@ -233,7 +236,8 @@ Item {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Theme.volumeText(busColumn.vol)
-                            color: Theme.textDim
+                            // %100 üstü dijital kazanç; kırpma riskini renk söylüyor.
+                            color: busColumn.vol > 1.001 ? Theme.warn : Theme.textDim
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall
                             renderType: Text.NativeRendering
@@ -253,6 +257,7 @@ Item {
                             spacing: 3
                             SonarFader {
                                 height: busColumn.barHeight
+                                maximum: Theme.maxVolume
                                 value: busColumn.vol
                                 muted: busColumn.mute
                                 accent: root.accent

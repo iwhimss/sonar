@@ -175,6 +175,7 @@ Item {
                         }
                         SonarFader {
                             height: Math.max(80, faders.height - 130)
+                            maximum: Theme.maxVolume
                             value: busColumn.vol
                             muted: busColumn.mute
                             accent: Theme.master

@@ -22,6 +22,10 @@ Item {
     property real value: 1.0
     property color accent: Theme.master
     property bool muted: false
+    //: Üst sınır (lineer). 1.0 = birim kazanç. Mikser 3.0 veriyor: %100'ün üstü
+    //: dijital kazanç, yani kaynak zaten yüksekse kırpabilir. Ses zincirine koruma
+    //: eklenmiyor (kullanıcı kararı); yalnızca tutamak ve yüzde uyarı rengine dönüyor.
+    property real maximum: 1.0
     signal moved(real value)
     signal released()
 
@@ -31,9 +35,12 @@ Item {
     readonly property int trackWidth: 4
     readonly property int handleHeight: 10
     readonly property real usable: height - handleHeight
+    readonly property bool boosted: value > 1.001 && maximum > 1.001
 
-    function fractionToValue(f) { return Math.max(0, Math.min(1, f)) }
-    function valueToY(v) { return (1 - Math.max(0, Math.min(1, v))) * usable }
+    function fractionToValue(f) { return Math.max(0, Math.min(1, f)) * maximum }
+    function valueToY(v) {
+        return (1 - Math.max(0, Math.min(1, v / maximum))) * usable
+    }
 
     // oluk
     Rectangle {
@@ -52,8 +59,18 @@ Item {
         width: root.trackWidth
         y: root.valueToY(root.value) + root.handleHeight / 2
         height: root.usable - root.valueToY(root.value)
-        color: root.muted ? Theme.textFaint : root.accent
+        color: root.muted ? Theme.textFaint : (root.boosted ? Theme.warn : root.accent)
         opacity: root.muted ? 0.4 : 1.0
+    }
+
+    /* Birim kazanç işareti — %300'lük bir fader'da %100'ün nerede olduğu görünmeli. */
+    Rectangle {
+        visible: root.maximum > 1.001
+        x: (root.width - 10) / 2
+        y: root.valueToY(1.0) + root.handleHeight / 2
+        width: 10
+        height: 1
+        color: Theme.borderStrong
     }
 
     // tutamak
@@ -64,7 +81,7 @@ Item {
         y: root.valueToY(root.value)
         color: drag.pressed ? Qt.lighter(Theme.raised, 1.4) : Theme.raised
         border.width: 1
-        border.color: root.muted ? Theme.border : root.accent
+        border.color: root.muted ? Theme.border : (root.boosted ? Theme.warn : root.accent)
     }
 
     MouseArea {
@@ -90,18 +107,19 @@ Item {
             if (!pressed) return
             const scale = (mouse.modifiers & Qt.ShiftModifier) ? 0.2 : 1.0
             const delta = -(mouse.y - pressY) / root.usable * scale
-            const v = root.fractionToValue(pressValue + delta)
+            const v = root.fractionToValue(pressValue / root.maximum + delta)
             if (v !== root.value) root.moved(v)
         }
         onReleased: root.released()
         onDoubleClicked: { root.moved(1.0); root.released() }
         onWheel: (wheel) => {
             const step = (wheel.modifiers & Qt.ShiftModifier) ? 0.005 : 0.02
-            const v = root.fractionToValue(root.value + (wheel.angleDelta.y > 0 ? step : -step))
+            const v = root.fractionToValue(
+                root.value / root.maximum + (wheel.angleDelta.y > 0 ? step : -step))
             if (v !== root.value) { root.moved(v); root.released() }
         }
     }
 
-    Keys.onUpPressed: { const v = fractionToValue(value + 0.02); moved(v); released() }
-    Keys.onDownPressed: { const v = fractionToValue(value - 0.02); moved(v); released() }
+    Keys.onUpPressed: { moved(fractionToValue(value / maximum + 0.02)); released() }
+    Keys.onDownPressed: { moved(fractionToValue(value / maximum - 0.02)); released() }
 }

@@ -56,6 +56,11 @@ QtObject {
         target.font.capitalization = Font.AllUppercase
     }
 
+    /* Mikser fader'larının üst sınırı (lineer). %100 üstü dijital kazanç: kaynak zaten
+       yüksekse kırpar. Ses zincirine koruma eklenmiyor, yalnızca uyarı rengi gösteriliyor
+       — kullanıcı kararı (test turu 3). Daemon 0–4 kabul ediyor. */
+    readonly property real maxVolume: 3.0
+
     /* dB değerini 0..1 aralığına çevirir (-60 dB taban). */
     function dbToFraction(db) {
         return Math.max(0, Math.min(1, (db + 60) / 60))

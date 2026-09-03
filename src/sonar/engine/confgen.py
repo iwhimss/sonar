@@ -300,6 +300,11 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
             "media.class": "Audio/Sink",
             "device.icon-name": SINK_ICON,
             "priority.session": VIRTUAL_SOURCE_PRIORITY,
+            # Monitör portları varsayılan olarak master fader'dan **önce** dallanıyor.
+            # Bunun bedeli ölçüldü: OBS "Ses Çıkışı Yakalama" ile yayın miksini
+            # dinlediğinde master fader'ı hiç duymuyordu, "Ses Girişi Yakalama" ise
+            # duyuyordu — aynı miks iki farklı seviyede. Master her şeyi kısmalı.
+            "monitor.channel-volumes": True,
             **_stereo(rate),
         },
         playback=playback,
