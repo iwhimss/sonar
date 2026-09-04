@@ -301,6 +301,12 @@ def _cmd_move(client: Client, args) -> int:
 
 
 def _cmd_chatmix(client: Client, args) -> int:
+    if args.invert is not None:
+        client.call("SetChatMixInvert", args.invert == "on")
+        print(f"Teker yönü: {'ters' if args.invert == 'on' else 'normal'}")
+        return 0
+    if args.value is None:
+        raise SystemExit("bir değer (0-100) veya --invert on|off verin")
     client.call("SetChatMix", float(args.value))
     print(f"ChatMix: {args.value}")
     return 0
@@ -548,7 +554,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p = sub.add_parser("chatmix", help="ChatMix konumu (0-100)")
-    p.add_argument("value", type=float)
+    p.add_argument("value", type=float, nargs="?")
+    # Kulaklık tekerinin hangi ucunun Game olduğu HID raporundan çıkmıyor; ters
+    # geliyorsa kullanıcı bir kez söylüyor.
+    p.add_argument("--invert", choices=["on", "off"], help="donanım tekerinin yönünü çevir")
 
     sub.add_parser("devices", help="fiziksel ses cihazlarını listele")
 

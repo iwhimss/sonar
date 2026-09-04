@@ -22,13 +22,13 @@ Hangi ucun Game olduğu kayıttan çıkmıyor — yön ayarla ters çevrilebilir
 
 ## Görevler
 
-- [ ] `engine/headset.py``decode_chatmix()` yazılsın; tanımadığı rapora `None`
+- [x] `engine/headset.py``decode_chatmix()` yazılsın; tanımadığı rapora `None`
       (batarya/durum raporları da aynı düğümden geliyor)
-- [ ] `tests/data/arctis7plus-wheel.txt` — `tekerlek.txt`'ten süzülmüş raporlar
-- [ ] Test: uçtan uca çevrim 0 → 50 → 100 ve monotonik
-- [ ] `settings.chatmix_invert` (varsayılan `False`) + `sonar-cli chatmix --invert`
-- [ ] `ChatMixReader.epsilon` 1.0 → 2.0; yazımlar 40 ms toplu pencerede birleşsin
-- [ ] `KNOWN_HEADSETS` kaydı doğrulanıp yorumlansın (`0x1038:0x220E`)
+- [x] `tests/data/arctis7plus-wheel.txt` — `tekerlek.txt`'ten süzülmüş raporlar
+- [x] Test: uçtan uca çevrim 0 → 50 → 100 ve monotonik
+- [x] `settings.chatmix_invert` (varsayılan `False`) + `sonar-cli chatmix --invert`
+- [x] `ChatMixReader.epsilon` 1.0 → 2.0; yazımlar 40 ms toplu pencerede birleşsin
+- [x] `KNOWN_HEADSETS` kaydı doğrulanıp yorumlansın (`0x1038:0x220E`)
 
 ## Ölçüm
 - Teker çevrilirken mikserdeki slider takip ediyor, kanal kazançları `pw-dump`'ta değişiyor

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from sonar.engine.headset import KNOWN_HEADSETS, detect_headsets, parse_hid_id
 
 
@@ -110,3 +114,103 @@ def test_repeated_values_are_swallowed():
     finally:
         mod.decode_chatmix = original
     assert seen == [50.0, 60.0]
+
+
+# --------------------------------------------------------------------------- teker biçimi
+#
+# Aşağıdakiler kullanıcının gerçek kaydıyla yazıldı: `tests/data/arctis7plus-wheel.txt`,
+# Arctis 7+ teker uçtan uca çevrilirken `sonar-hid-capture` ile alındı. Biçimi tahmin
+# etmiyoruz — doğrulanmamış bir bayt düzeni, kullanıcının ChatMix'ini rastgele bir bayta
+# bağlamak olurdu.
+
+WHEEL_CAPTURE = Path(__file__).parent / "data" / "arctis7plus-wheel.txt"
+
+
+def _captured_reports() -> list[bytes]:
+    lines = [
+        line
+        for line in WHEEL_CAPTURE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    return [bytes(int(part, 16) for part in line.split()) for line in lines]
+
+
+def test_the_capture_is_intact():
+    reports = _captured_reports()
+    assert len(reports) == 35
+    assert all(len(report) == 64 for report in reports)
+
+
+def test_the_wheel_sweeps_from_one_end_to_the_other():
+    """Kayıt uçtan uca bir çevrim: bir uç → orta → öbür uç."""
+    from sonar.engine.headset import decode_chatmix
+
+    values = [decode_chatmix(report, 0x220E) for report in _captured_reports()]
+    assert None not in values
+    assert values[0] == pytest.approx(0.5, abs=1.0)   # neredeyse tamamen bir uçta
+    assert max(values) == 100.0                        # öbür uca kadar gitmiş
+    assert 50.0 in values                              # ortadan geçmiş
+
+
+def test_the_sweep_is_monotonic():
+    """Teker tek yöne çevrildi; okunan konum geri gitmemeli.
+
+    Baytların yanlış eşlenmesi tam burada yakalanır: game ve chat yer değiştirirse
+    değerler ortada zıplar.
+    """
+    from sonar.engine.headset import decode_chatmix
+
+    values = [decode_chatmix(report, 0x220E) for report in _captured_reports()]
+    assert values == sorted(values)
+
+
+def test_a_report_with_impossible_gains_is_rejected():
+    """Aynı düğümden batarya/durum raporları da geliyor; onları ChatMix sanmayalım."""
+    from sonar.engine.headset import CHATMIX_REPORT_ID, decode_chatmix
+
+    assert decode_chatmix(bytes([CHATMIX_REPORT_ID, 0xFF, 0x64]), 0x220E) is None
+    assert decode_chatmix(bytes([CHATMIX_REPORT_ID, 0x64]), 0x220E) is None  # çok kısa
+
+
+def test_the_ends_are_the_two_extremes():
+    from sonar.engine.headset import CHATMIX_REPORT_ID as ID
+    from sonar.engine.headset import decode_chatmix
+
+    assert decode_chatmix(bytes([ID, 100, 0]), 0x220E) == 0.0     # tamamen game
+    assert decode_chatmix(bytes([ID, 100, 100]), 0x220E) == 50.0  # orta
+    assert decode_chatmix(bytes([ID, 0, 100]), 0x220E) == 100.0   # tamamen chat
+
+
+def test_all_hid_nodes_are_watched_not_just_the_first(tmp_path, monkeypatch):
+    """Teker raporları kulaklığın **hangi** düğümünden gelecek belli değil.
+
+    Arctis 7+ üç `hidraw` düğümü açıyor ve bu makinede teker yalnızca üçüncüsünden
+    (`/dev/hidraw2`) rapor veriyor. Reader eskiden ilk okunabilir düğümü seçiyor ve
+    oradan hiç rapor gelmediği için sonsuza kadar sessizce bekliyordu — udev kuralı
+    doğru kurulmuşken bile teker çalışmıyordu.
+    """
+    import os
+
+    from sonar.engine import headset as mod
+    from sonar.engine.headset import ChatMixReader, HeadsetInfo
+
+    devices = [
+        HeadsetInfo(device=str(tmp_path / f"hidraw{i}"), vendor=0x1038, product=0x220E,
+                    name="Arctis 7+", readable=True)
+        for i in range(3)
+    ]
+    opened: list[str] = []
+    real_open = os.open
+
+    def fake_open(path, _flags):
+        opened.append(path)
+        return real_open(os.devnull, os.O_RDONLY)
+
+    monkeypatch.setattr(mod.os, "open", fake_open)
+    monkeypatch.setattr(mod.select, "select", lambda *_a: ([], [], []))
+
+    reader = ChatMixReader(lambda _v: None, detect=lambda: devices)
+    reader._stopping.set()          # tek tur dönsün, sonra çıksın
+    reader._listen(devices)
+
+    assert opened == [d.device for d in devices], "üç düğüm de açılmalı"

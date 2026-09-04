@@ -316,6 +316,11 @@ class SonarDBusInterface(QObject):
         """Mikrofonu yayın miksine de gönderir. **Canlı** (gönderi loopback'i hep kurulu)."""
         return reply(lambda: self.api.set_mic_stream_send(chain, enabled))
 
+    @Slot(bool, result=str)
+    def SetChatMixInvert(self, enabled: bool) -> str:
+        """Donanım ChatMix tekerinin yönünü ters çevirir."""
+        return reply(lambda: self.api.set_chatmix_invert(enabled))
+
     @Slot(result=str)
     def StreamSetup(self) -> str:
         """Yayın kurulumunun canlı tanısı — OBS ne dinliyor, mikrofon yayında mı."""

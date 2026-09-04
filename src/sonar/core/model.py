@@ -466,6 +466,13 @@ class Settings:
     #: Teker yönetirken slider salt okunur olur; iki kaynağın birbirini ezmesi
     #: kullanıcının istemediği şeydi.
     chatmix_source: str = "auto"
+    #: Donanım tekerinin yönünü ters çevir.
+    #:
+    #: Rapor iki kazanç veriyor (`headset.decode_chatmix`) ama hangi ucun Game hangisinin
+    #: Chat olduğu kayıttan çıkmıyor — kullanıcının tekeri hangi yöne çevirdiğini bilmenin
+    #: yolu yok. Ters geliyorsa tek anahtarla düzeliyor; tahmin edip yanlış yapmaktansa
+    #: kullanıcının bir kez söylemesi daha iyi.
+    chatmix_invert: bool = False
 
 
 # --------------------------------------------------------------------------- kök

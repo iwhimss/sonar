@@ -1060,6 +1060,16 @@ class SonarApi:
         self.config.chatmix.value = max(0.0, min(100.0, float(value)))
         self._live_volumes({"kind": "chatmix", "value": self.config.chatmix.value})
 
+    def set_chatmix_invert(self, enabled: bool) -> None:
+        """Donanım tekerinin yönünü ters çevirir.
+
+        Hangi ucun Game olduğu HID raporundan çıkmıyor (`headset.decode_chatmix`), o
+        yüzden yönü kullanıcı söylüyor. Yalnızca **teker** okumasını etkiler; yazılım
+        slider'ına dokunmaz.
+        """
+        self.config.settings.chatmix_invert = bool(enabled)
+        self._touch_config({"kind": "chatmix_invert", "enabled": bool(enabled)})
+
     def set_chatmix_config(self, enabled: bool, left: str, right: str) -> None:
         """`left`/`right` virgülle birden fazla kanal alabilir ("chat,media")."""
         from sonar.core.model import _split_channels
@@ -1241,6 +1251,8 @@ class SonarApi:
         """Kulaklık tekeri döndü. Slider'ı sürer ve arayüze haber verir."""
         if self.config.settings.chatmix_source == "software":
             return
+        if self.config.settings.chatmix_invert:
+            value = 100.0 - value
         self.set_chatmix(value)
         self._emit({"kind": "chatmix_source", "hardware": True})
 
@@ -1296,6 +1308,12 @@ class SonarApi:
         if cached is not None and cached.name == name:
             return cached
         return self._load(target, name)
+
+    def _touch_config(self, delta: dict) -> None:
+        """Grafa dokunmayan bir ayar değişti: yalnızca kaydet ve haber ver."""
+        self._dirty_config = True
+        self._emit(delta)
+        self._save_soon()
 
     def _live_targets(self, delta: dict) -> None:
         self.supervisor.apply_targets(self.config)

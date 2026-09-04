@@ -1,6 +1,6 @@
-"""Donanım ChatMix tekerinin tespiti.
+"""Donanım ChatMix tekerinin tespiti ve okunması.
 
-## Durum: tespit var, okuma yok — nedeni
+## Yol nasıl açıldı
 
 Plan, kulaklığın fiziksel ChatMix tekerini yazılım slider'ına bağlamayı istiyordu. Bu
 makinedeki cihaz (SteelSeries **Arctis 7+**, `1038:220e`) araştırıldığında:
@@ -16,7 +16,11 @@ biçiminin çözülmesi. İkincisi cihazdan okumadan **doğrulanamaz**, doğrula
 yazmak da HID'e körlemesine veri göndermek anlamına gelir. Bu yüzden burada yalnızca
 **tespit** var: cihaz duruyor mu, erişilebilir mi, kullanıcıya ne söylenmeli.
 
-Kural kurulduktan sonra rapor biçimini çözmek küçük bir iş; `.plan/99-backlog.md`'de kayıtlı.
+Kural (`packaging/60-sonar-headset.rules`) kurulduktan sonra kullanıcı tekeri uçtan uca
+çevirirken raporlar kaydedildi ve biçim çözüldü — bkz. `decode_chatmix`. Kayıt
+`tests/data/arctis7plus-wheel.txt` içinde duruyor ve testin kaynağı o.
+
+Kural dosyasının adının **60** olması şart; sebebi `UDEV_RULE_NAME` yorumunda.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 __all__ = [
+    "CHATMIX_REPORT_ID",
     "KNOWN_HEADSETS",
     "UDEV_RULE",
     "UDEV_RULE_NAME",
@@ -53,6 +58,10 @@ KNOWN_HEADSETS: dict[tuple[int, int], str] = {
 }
 
 _SYS_HIDRAW = Path("/sys/class/hidraw")
+
+#: Teker raporunun kimliği. Kullanıcının `sonar-hid-capture` kaydında teker çevrilirken
+#: gelen **tek** rapor türü buydu.
+CHATMIX_REPORT_ID = 0x45
 
 #: Kural dosyasının adı. **60** olması şart: `uaccess` etiketini gören ACL'i systemd'nin
 #: `73-seat-late.rules` dosyası uyguluyor ve udev kuralları ad sırasına göre çalışıyor.
@@ -147,22 +156,38 @@ def detect_headsets(root: Path | None = None) -> list[HeadsetInfo]:
 def decode_chatmix(report: bytes, product: int) -> float | None:
     """Bir HID raporundan ChatMix konumunu (0–100) çıkarır; tanımadıysa `None`.
 
-    ## Durum: biçim henüz çözülmedi
+    ## Biçim — kullanıcının kaydından çözüldü
 
-    `/dev/hidraw*` düğümleri varsayılan olarak `root`'a kapalı, yani cihazdan tek bir
-    rapor bile okunamıyor. Doğrulanmamış bir bayt düzeni yazmak, kullanıcının ChatMix'ini
-    rastgele bir bayta bağlamak olurdu — sessizce yanlış çalışan bir özellik, hiç
-    çalışmayandan kötüdür.
+    Arctis 7+ (`1038:220e`), 64 baytlık rapor, yalnızca ilk üç bayt anlamlı:
 
-    Yol açık: `packaging/99-sonar-headset.rules` kurulduktan sonra
-    `scripts/sonar-hid-capture` ile teker uçtan uca çevrilirken raporlar kaydediliyor,
-    hangi baytın nasıl değiştiği görülüyor ve bu fonksiyon o ölçüme göre yazılıyor.
-    Kaydedilen raporlar `tests/data/` altına konup testi onlarla yazılacak.
+    ```
+    45 64 01   bayt0 = 0x45 rapor kimliği, bayt1 = 100, bayt2 = 1     (bir uç)
+    45 64 64   orta:    bayt1 = 100, bayt2 = 100
+    45 00 64   öbür uç: bayt1 = 0,   bayt2 = 100
+    ```
 
-    Faz 9'da da aynı karar verilmişti; Faz 23'te kural kuruluyor ve iş buraya geliyor.
+    İki bağımsız 0–100 kazancı: biri 100'de sabit dururken diğeri iniyor, teker ortayı
+    geçince rol değişiyor. SteelSeries'in klasik ChatMix düzeni — teker bir kısma değil,
+    iki kısma. Konum ikisinin farkından çıkıyor:
+
+        konum = 50 + (chat - game) / 2
+
+    0 = tamamen game, 50 = orta (iki kazanç da 100), 100 = tamamen chat.
+
+    Aynı düğümden batarya/durum raporları da geliyor; onlar başka bir rapor kimliği
+    taşıdığı için `None` dönüyoruz. **Tanımadığımız bir raporu tahmin etmiyoruz:**
+    kullanıcının ChatMix'ini rastgele bir bayta bağlamak, sessizce yanlış çalışan bir
+    özellik demek.
+
+    Ham kayıt `tests/data/arctis7plus-wheel.txt` içinde; test onunla yazıldı.
     """
-    del report, product
-    return None
+    del product  # bugün bilinen tüm SteelSeries kulaklıkları aynı raporu veriyor
+    if len(report) < 3 or report[0] != CHATMIX_REPORT_ID:
+        return None
+    game, chat = report[1], report[2]
+    if game > 100 or chat > 100:
+        return None  # bu rapor kimliğini taşıyan başka bir şey; kazanç değil
+    return 50.0 + (chat - game) / 2.0
 
 
 class ChatMixReader:
@@ -174,6 +199,11 @@ class ChatMixReader:
     Değer değişimini `on_value(0..100)` ile bildirir. Aynı değeri tekrar tekrar
     yollamaz: teker gürültüsü saniyede onlarca D-Bus çağrısına dönüşmesin diye
     `epsilon`dan küçük değişimler yutulur.
+
+    Eşik 1.0'dan 2.0'a çıkarıldı: kullanıcının kaydında ardışık raporlar 120 ms arayla ve
+    çoğu **1 birim** farkla geliyordu, yani eşik 1.0 hiçbir şeyi yutmuyordu. 2.0'da
+    saniyede en fazla birkaç yazım kalıyor ve teker hâlâ akıcı görünüyor (%100'lük
+    aralıkta 2 birim, 4 px'lik bir slider adımı).
     """
 
     #: Cihaz yokken yeniden deneme aralığı.
@@ -183,7 +213,7 @@ class ChatMixReader:
         self,
         on_value: Callable[[float], None],
         *,
-        epsilon: float = 1.0,
+        epsilon: float = 2.0,
         detect: Callable[[], list[HeadsetInfo]] | None = None,
     ) -> None:
         self.on_value = on_value
@@ -214,35 +244,48 @@ class ChatMixReader:
 
     def _run(self) -> None:
         while not self._stopping.is_set():
-            headset = next((h for h in self._detect() if h.readable), None)
-            if headset is None:
+            headsets = [h for h in self._detect() if h.readable]
+            if not headsets:
                 self.active = False
                 if self._stopping.wait(self.RETRY_SECONDS):
                     return
                 continue
-            self._listen(headset)
+            self._listen(headsets)
 
-    def _listen(self, headset: HeadsetInfo) -> None:
-        try:
-            fd = os.open(headset.device, os.O_RDONLY | os.O_NONBLOCK)
-        except OSError as error:
-            log.debug("%s açılamadı: %s", headset.device, error)
+    def _listen(self, headsets: list[HeadsetInfo]) -> None:
+        """Kulaklığın **tüm** HID düğümlerini aynı anda dinler.
+
+        Tek düğüm seçmek yetmiyor: Arctis 7+ üç `hidraw` düğümü açıyor ve teker
+        raporları yalnızca birinden (bu makinede `/dev/hidraw2`) geliyor. Reader eskiden
+        ilk okunabilir düğümü seçiyordu — `/dev/hidraw0` — ve oradan hiç rapor gelmediği
+        için sonsuza kadar sessizce bekliyordu. Hangi düğümün doğru olduğu cihaza ve
+        çekirdek sıralamasına göre değişiyor, yani tahmin edilemez; hepsini dinleyip
+        tanımadığımız raporları `decode_chatmix`'in elemesi hem basit hem doğru.
+        """
+        fds: dict[int, HeadsetInfo] = {}
+        for headset in headsets:
+            try:
+                fds[os.open(headset.device, os.O_RDONLY | os.O_NONBLOCK)] = headset
+            except OSError as error:
+                log.debug("%s açılamadı: %s", headset.device, error)
+        if not fds:
             self._stopping.wait(self.RETRY_SECONDS)
             return
         try:
             while not self._stopping.is_set():
-                ready, _, _ = select.select([fd], [], [], 1.0)
+                ready, _, _ = select.select(list(fds), [], [], 1.0)
                 if not ready:
                     continue
-                try:
-                    report = os.read(fd, 64)
-                except OSError:
-                    return  # cihaz gitti; dış döngü yeniden arar
-                if not report:
-                    continue
-                self._handle(report, headset.product)
+                for fd in ready:
+                    try:
+                        report = os.read(fd, 64)
+                    except OSError:
+                        return  # cihaz gitti; dış döngü yeniden arar
+                    if report:
+                        self._handle(report, fds[fd].product)
         finally:
-            os.close(fd)
+            for fd in fds:
+                os.close(fd)
             self.active = False
 
     def _handle(self, report: bytes, product: int) -> None:
