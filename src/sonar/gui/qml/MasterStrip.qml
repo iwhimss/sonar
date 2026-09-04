@@ -32,6 +32,16 @@ Item {
        yeniden değerlendirilsin — fonksiyon çağrısı tek başına bağlama kurmaz. Köprü
        çağrıyı yarım saniye önbellekliyor, yani bu okuma serbest. */
     readonly property var setup: bridge ? (bridge.revision, bridge.streamSetup()) : ({})
+    readonly property var setupProblems: setup.problems || []
+    readonly property var setupListeners: setup.listeners || []
+    readonly property bool setupOk: setupProblems.length === 0
+    readonly property string setupSummary: {
+        if (setupProblems.length > 0) return "⚠ " + setupProblems[0].message
+        if (setupListeners.length === 0) return "Henüz kimse dinlemiyor."
+        return setupListeners.length === 1
+            ? setupListeners[0].label + " dinliyor."
+            : setupListeners.length + " uygulama dinliyor."
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -78,7 +88,7 @@ Item {
         SonarPanel {
             Layout.fillWidth: true
             Layout.preferredHeight: root.devicesOpen
-                ? Math.min(devices.implicitHeight + Theme.s3 * 2, root.height - 34 - 200)
+                ? Math.min(devices.implicitHeight + Theme.s3 * 2, root.height - 34 - 240)
                 : 0
             visible: root.devicesOpen && Layout.preferredHeight > 40
             clip: true
@@ -94,6 +104,30 @@ Item {
                 id: devices
                 width: parent.width
                 spacing: Theme.s3
+
+                /* Yayın Miksi'nin fiziksel bir cihazı yok: çıkışı sanal bir kaynak.
+                   Burada eskiden sabit bir metin vardı ve kullanıcının makinesinde
+                   karşılığı olmayan bir cihaz adı yazıyordu. Artık tanı canlı: adı
+                   yapılandırmadan, dinleyicileri graftan okuyoruz. */
+                SonarSectionLabel { text: "Yayın Miksi (OBS)" }
+                /* Şeritte yalnızca **özet** duruyor: 240 px'lik bir kolona kurulum
+                   yönergesi, dinleyici listesi ve uyarılar sığmıyordu — bölüm kendi
+                   içinde kayıyordu ama kullanıcı kaydırılabildiğini görmüyordu.
+                   Ayrıntı `streamDialog`'da. */
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: root.setupSummary
+                    color: root.setupOk ? Theme.textDim : Theme.warn
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    renderType: Text.NativeRendering
+                }
+                SonarButton {
+                    width: parent.width
+                    text: "Yayın kurulumu…"
+                    onClicked: streamDialog.open()
+                }
 
                 SonarSectionLabel { text: "Kişisel Miks" }
                 SonarComboBox {
@@ -113,121 +147,6 @@ Item {
                     onActivated: (value) => root.bridge.setMicDevice("mic", value)
                 }
 
-                /* Yayın Miksi'nin fiziksel bir cihazı yok: çıkışı sanal bir kaynak.
-                   Burada eskiden sabit bir metin vardı ve kullanıcının makinesinde
-                   karşılığı olmayan bir cihaz adı yazıyordu. Artık tanı canlı: adı
-                   yapılandırmadan, dinleyicileri graftan okuyoruz. */
-                SonarSectionLabel { text: "Yayın Miksi (OBS)" }
-                Text {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    text: "OBS → Ayarlar → Ses → Masaüstü Sesi:"
-                    color: Theme.textFaint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSmall
-                    renderType: Text.NativeRendering
-                }
-                Row {
-                    width: parent.width
-                    spacing: Theme.s1
-                    Rectangle {
-                        width: parent.width - 24 - Theme.s1
-                        height: 26
-                        color: Theme.sunken
-                        border.width: 1
-                        border.color: Theme.border
-                        TextInput {
-                            id: deviceName
-                            anchors.fill: parent
-                            anchors.leftMargin: Theme.s2
-                            anchors.rightMargin: Theme.s2
-                            verticalAlignment: Text.AlignVCenter
-                            // Salt okunur ama seçilebilir: kullanıcı adı elle de kopyalayabilsin.
-                            readOnly: true
-                            selectByMouse: true
-                            text: root.setup.device || "Sonar Stream Mix"
-                            color: Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSmall
-                            renderType: Text.NativeRendering
-                        }
-                    }
-                    SonarIconButton {
-                        icon: "copy"
-                        accent: Theme.master
-                        onClicked: { deviceName.selectAll(); deviceName.copy(); deviceName.deselect() }
-                    }
-                }
-
-                /* Şu an kim dinliyor. Boşsa OBS kurulu değil demektir; iki yoldan birden
-                   dinleniyorsa aşağıdaki uyarı çıkar. */
-                Repeater {
-                    model: root.setup.listeners || []
-                    Text {
-                        required property var modelData
-                        width: devices.width
-                        wrapMode: Text.WordWrap
-                        text: "· " + modelData.label + " — "
-                            + (modelData.via === "monitor" ? "Masaüstü Sesi" : "alternatif giriş")
-                        color: Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSmall
-                        renderType: Text.NativeRendering
-                    }
-                }
-                Text {
-                    width: parent.width
-                    visible: (root.setup.listeners || []).length === 0
-                    wrapMode: Text.WordWrap
-                    text: "· henüz kimse dinlemiyor"
-                    color: Theme.textFaint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSmall
-                    renderType: Text.NativeRendering
-                }
-
-                /* Mikrofonun yayın gönderisi. Bu anahtar modelde baştan beri vardı ama
-                   hiçbir arayüzü yoktu; kullanıcı "yayında mikrofonum duyulmuyor" ve
-                   "mikrofonun yayın fader'ı hiçbir şey yapmıyor" diye bildirdi. */
-                Repeater {
-                    model: root.setup.mics || []
-                    Row {
-                        required property var modelData
-                        width: devices.width
-                        spacing: Theme.s2
-                        SonarIconButton {
-                            icon: "cast"
-                            accent: Theme.master
-                            active: modelData.in_stream === true
-                            onClicked: root.bridge.setMicStreamSend(modelData.id,
-                                                                    modelData.in_stream !== true)
-                        }
-                        Text {
-                            width: parent.width - 24 - Theme.s2
-                            anchors.verticalCenter: parent.verticalCenter
-                            wrapMode: Text.WordWrap
-                            text: modelData.name + (modelData.in_stream ? " yayında" : " yayında değil")
-                            color: modelData.in_stream ? Theme.textDim : Theme.textFaint
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSmall
-                            renderType: Text.NativeRendering
-                        }
-                    }
-                }
-
-                Repeater {
-                    model: root.setup.problems || []
-                    Text {
-                        required property var modelData
-                        width: devices.width
-                        wrapMode: Text.WordWrap
-                        text: "⚠ " + modelData.message
-                        color: Theme.warn
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSmall
-                        renderType: Text.NativeRendering
-                    }
-                }
             }
             }
         }
@@ -268,13 +187,12 @@ Item {
                             color: busColumn.mute ? Theme.textFaint : Theme.master
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
-                        Text {
+                        SonarValueField {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Theme.volumeText(busColumn.vol)
-                            color: busColumn.vol > 1.001 ? Theme.warn : Theme.textDim
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSmall
-                            renderType: Text.NativeRendering
+                            value: busColumn.vol
+                            maximum: Theme.maxVolume
+                            accent: Theme.master
+                            onEdited: (v) => root.bridge.setMasterVolume(busColumn.modelData.key, v)
                         }
                         SonarFader {
                             height: Math.max(60, faders.height - 130)
@@ -310,8 +228,9 @@ Item {
          */
         SonarPanel {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumHeight: 0
+            // `fillHeight` **değil**: fader paneli de doluyor ve ikisi alanı paylaşınca
+            // bu panel sıfır yüksekliğe düşüp görünmez kalıyordu.
+            Layout.preferredHeight: Math.min(24 + root.captures.length * 24, 96)
             visible: root.captures.length > 0
 
             Column {
@@ -367,6 +286,151 @@ Item {
                             renderType: Text.NativeRendering
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /* Yayın kurulumu, tam hâli. Şeritte yalnızca özeti duruyor; buradaki her satır
+       graftan okunuyor, sabit metin yok. */
+    SonarDialog {
+        id: streamDialog
+        objectName: "streamDialog"
+        title: "Yayın kurulumu (OBS)"
+        preferredWidth: 460
+
+        Column {
+            width: parent.width
+            spacing: Theme.s3
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "1. OBS → Ayarlar → Ses → Global Ses Aygıtları → Masaüstü Sesi:"
+                color: Theme.textDim
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+            Row {
+                width: parent.width
+                spacing: Theme.s1
+                Rectangle {
+                    width: parent.width - 26 - Theme.s1
+                    height: 28
+                    color: Theme.sunken
+                    border.width: 1
+                    border.color: Theme.border
+                    TextInput {
+                        id: deviceName
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.s2
+                        anchors.rightMargin: Theme.s2
+                        verticalAlignment: Text.AlignVCenter
+                        // Salt okunur ama seçilebilir: kullanıcı adı elle de kopyalayabilsin.
+                        readOnly: true
+                        selectByMouse: true
+                        text: root.setup.device || "Sonar Stream Mix"
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        renderType: Text.NativeRendering
+                    }
+                }
+                SonarIconButton {
+                    icon: "copy"
+                    accent: Theme.master
+                    onClicked: { deviceName.selectAll(); deviceName.copy(); deviceName.deselect() }
+                }
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "2. Aynı ekranda Mikrofon/AUX Sesi → Devre dışı. Başka kaynak eklemeyin — "
+                    + "aynı miksi ikinci kez almak her şeyi iki kez duyurur."
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+
+            SonarSectionLabel { width: parent.width; text: "Şu an kim dinliyor" }
+            Repeater {
+                model: root.setupListeners
+                Text {
+                    required property var modelData
+                    width: streamDialog.bodyWidth
+                    wrapMode: Text.WordWrap
+                    text: "· " + modelData.label + " — "
+                        + (modelData.via === "monitor" ? "Masaüstü Sesi" : "alternatif giriş")
+                    color: Theme.textDim
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    renderType: Text.NativeRendering
+                }
+            }
+            Text {
+                width: parent.width
+                visible: root.setupListeners.length === 0
+                text: "· henüz kimse dinlemiyor"
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+
+            /* Mikrofonun yayın gönderisi. Bu anahtar modelde baştan beri vardı ama
+               hiçbir arayüzü yoktu; kullanıcı "yayında mikrofonum duyulmuyor" ve
+               "mikrofonun yayın fader'ı hiçbir şey yapmıyor" diye bildirdi. */
+            SonarSectionLabel { width: parent.width; text: "Mikrofon yayın miksinde" }
+            Repeater {
+                model: root.setup.mics || []
+                Row {
+                    required property var modelData
+                    width: streamDialog.bodyWidth
+                    spacing: Theme.s2
+                    SonarIconButton {
+                        icon: "cast"
+                        accent: Theme.master
+                        active: modelData.in_stream === true
+                        onClicked: root.bridge.setMicStreamSend(modelData.id,
+                                                                modelData.in_stream !== true)
+                    }
+                    Text {
+                        width: parent.width - 26 - Theme.s2
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.WordWrap
+                        text: modelData.name
+                            + (modelData.in_stream ? " — yayın miksinde" : " — yayın miksinde değil")
+                        color: modelData.in_stream ? Theme.textDim : Theme.textFaint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        renderType: Text.NativeRendering
+                    }
+                }
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Açıkken tek kaynak yeter. OBS'e ayrı bir mikrofon kaynağı "
+                    + "eklediyseniz bunu kapatın, yoksa sesiniz iki kez gider."
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+
+            Repeater {
+                model: root.setupProblems
+                Text {
+                    required property var modelData
+                    width: streamDialog.bodyWidth
+                    wrapMode: Text.WordWrap
+                    text: "⚠ " + modelData.message
+                    color: Theme.warn
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    renderType: Text.NativeRendering
                 }
             }
         }

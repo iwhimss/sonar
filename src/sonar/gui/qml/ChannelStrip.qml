@@ -255,14 +255,14 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             color: busColumn.mute ? Theme.textFaint : root.accent
                         }
-                        Text {
+                        /* Yüzde artık salt okunur değil: tıklayınca yazılabiliyor,
+                           yanındaki ↺ birim kazanca döndürüyor (test turu 4 isteği). */
+                        SonarValueField {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Theme.volumeText(busColumn.vol)
-                            // %100 üstü dijital kazanç; kırpma riskini renk söylüyor.
-                            color: busColumn.vol > 1.001 ? Theme.warn : Theme.textDim
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSmall
-                            renderType: Text.NativeRendering
+                            value: busColumn.vol
+                            maximum: Theme.maxVolume
+                            accent: root.accent
+                            onEdited: (v) => root.setVolume(busColumn.bus, v)
                         }
                         /* ChatMix bu kanalı kısıyorsa söyle: fader taban değeri gösteriyor,
                            duyulan ses taban × ChatMix çarpanı. */

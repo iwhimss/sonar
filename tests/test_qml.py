@@ -85,3 +85,65 @@ def test_main_window_loads_offscreen():
     # QML hataları stderr'e "TypeError"/"is not defined" olarak düşer.
     assert "TypeError" not in result.stderr, result.stderr
     assert "is not defined" not in result.stderr, result.stderr
+
+
+def test_value_field_parses_and_never_writes_its_own_value():
+    """Fader yüzdesi artık elle girilebiliyor (test turu 4).
+
+    İki şey doğrulanıyor:
+
+    * Ayrıştırma: "%150", "150,5", boş metin, sınır aşımı. Türkçe klavyede ondalık ayracı
+      virgül ve `parseFloat` onu tanımıyor — sessizce 150 okunurdu.
+    * Bileşen `value`'ya **yazmıyor**. Yazmak modelden gelen bağlamayı kalıcı olarak
+      koparıyor; test turu 3'te fader'lar tam bu yüzden daemon'ı takip etmeyi bırakmıştı.
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    script = textwrap.dedent(
+        """
+        import sys
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlComponent, QQmlEngine
+        from sonar.gui.app import qml_dir
+
+        app = QGuiApplication([])
+        engine = QQmlEngine()
+        engine.addImportPath(str(qml_dir()))
+        component = QQmlComponent(
+            engine, QUrl.fromLocalFile(str(qml_dir() / "ui" / "SonarValueField.qml"))
+        )
+        field = component.create()
+        if field is None:
+            print("ERRORS", component.errorString())
+            sys.exit(1)
+
+        seen = []
+        field.edited.connect(seen.append)
+        field.setProperty("value", 1.0)
+        field.setProperty("maximum", 3.0)
+
+        for text in ("250", "%150", "150,5", "", "abc", "999"):
+            field.commit(text)
+
+        print("EMITTED", [round(v, 4) for v in seen])
+        print("VALUE", round(field.property("value"), 4))
+        print("DISPLAY", field.property("display"))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        check=False,
+    )
+    out = result.stdout + result.stderr
+    # %250 → 2.5, %150 → 1.5, "150,5" → 1.505, geçersizler yutuluyor, %999 → maximum
+    assert "EMITTED [2.5, 1.5, 1.505, 3.0]" in out, out
+    # Bileşen kendi değerine dokunmadı: bağlama sağlam.
+    assert "VALUE 1.0" in out, out
+    assert "DISPLAY 100%" in out, out

@@ -11,6 +11,7 @@ SonarTabBar 1.0 SonarTabBar.qml
 SonarSectionLabel 1.0 SonarSectionLabel.qml
 SonarIcon 1.0 SonarIcon.qml
 SonarNumberField 1.0 SonarNumberField.qml
+SonarValueField 1.0 SonarValueField.qml
 SonarParamRow 1.0 SonarParamRow.qml
 SonarFilterPanel 1.0 SonarFilterPanel.qml
 SonarDragProxy 1.0 SonarDragProxy.qml

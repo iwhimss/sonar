@@ -199,6 +199,7 @@ Item {
     // --- kanal ekleme --------------------------------------------------------
     SonarDialog {
         id: addDialog
+        objectName: "addDialog"
         title: "Yeni kanal"
         preferredWidth: 420
 
