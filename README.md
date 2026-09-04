@@ -165,8 +165,13 @@ Her kanal bir sanal ses cihazı üretir ve adı yönünü söyler:
 |---|---|
 | `Sonar Game — Virtual Output` | Uygulamalar buraya çalar (çıkış kanalı) |
 | `Sonar Mic — Virtual Input` | İşlenmiş mikrofon (giriş kanalı) — Discord bunu seçer |
-| `Sonar Stream Mix — Virtual Input` | Yayın miksi — **OBS bunu seçer** |
-| `Sonar Personal Mix — Virtual Output` | Kulaklığına giden miks |
+| `Sonar Stream Mix` | Yayın miksi — **OBS'te Masaüstü Sesi olarak bunu seç** |
+| `Sonar Stream Mix (alternatif giriş)` | Aynı miksin ikinci yolu; ikisini birden ekleme |
+| `Sonar Personal Mix` | Kulaklığına giden miks |
+
+Mikrofon **varsayılan olarak yayın miksinin içinde**, yani OBS'te tek kaynak yeter.
+Ayrı track isteyenler master şeridindeki "Yayın kurulumu…" penceresinden kapatabilir.
+Ayrıntı: [`docs/OBS.md`](docs/OBS.md).
 
 Kanal eklerken **çıkış** mı **giriş** mi olduğunu seçersin; buna göre sink mi source mu
 oluşturulacağı belirlenir. Her kanal silinebilir — kullanmadığın Aux'u atabilirsin.
@@ -284,18 +289,20 @@ systemctl --user disable --now sonar-daemon
 * **EasyEffects ile birlikte çalışmaz.** İkisi de sistem geneli ses işlemeye çalışıyor;
   EasyEffects servis kipindeyken Sonar'ın çıkışını kendi zincirine çekiyor. Sonar zaten
   aynı eklentilerle aynı işi kanal başına yapıyor.
-* **Donanım ChatMix tekeri henüz okunmuyor.** Sürücü ve udev kuralı hazır, HID rapor
-  biçimi çözülmedi — `/dev/hidraw*` root'a kapalı olduğu için cihazdan tek rapor bile
-  okunamıyor. Kural kurulduktan sonra:
+* **Donanım ChatMix tekeri bir udev kuralı istiyor.** `/dev/hidraw*` varsayılan olarak
+  root'a kapalı:
 
   ```bash
-  sudo cp packaging/99-sonar-headset.rules /etc/udev/rules.d/
+  sudo cp packaging/60-sonar-headset.rules /etc/udev/rules.d/
   sudo udevadm control --reload && sudo udevadm trigger
-  ./scripts/sonar-hid-capture     # tekeri uçtan uca çevir
   ```
 
+  Dosya adının **60** olması şart: `uaccess` etiketini gören ACL'i `73-seat-late.rules`
+  uyguluyor ve udev kuralları ad sırasına göre çalışıyor. Bir dönem `99-` adıyla
+  duruyordu ve kural kurulmasına rağmen düğümler erişilemez kalıyordu.
+
   Teker okunmaya başlayınca mikserdeki slider salt okunur olur; iki kaynağın birbirini
-  ezmesi istenmiyordu.
+  ezmesi istenmiyordu. Yön ters geliyorsa `sonar-cli chatmix --invert on`.
 * Yeniden inşa gerektiren tek işlem **kanal ekleme/silme** ve kanal başına OBS kaynağı
   (~200 ms sessizlik). Cihaz değiştirmek, sidetone, ses seviyesi, EQ bandı ekleme/silme,
   filtre ve profil değişimi **kesintisizdir**.

@@ -7,12 +7,19 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 4 bekleniyor)
-**Son güncelleme:** 2026-09-04
-**Sonraki adım:** Kullanıcı dördüncü test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/32-verify.md` içinde işaretsiz duruyor; ChatMix tekeri tek seferlik bir
-`sudo` bekliyor. Sonra Faz 11 — Paketleme. Sonra kullanıcı dördüncü
-test turunu yapar; Faz 11 (Paketleme) ondan sonra.
+**Aktif faz:** — (test turu 5 bekleniyor)
+**Son güncelleme:** 2026-09-05
+**Sonraki adım:** Kullanıcı beşinci test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/36-verify.md` içinde; ChatMix tekerinin yönü kullanıcının bir kez
+çevirmesini bekliyor. Sonra **Faz 11 — Paketleme**.
+
+> **Test turu 4 (2026-09-05).** Tek yeni özellik istendi (fader sıfırlama + sayısal
+> giriş); geri kalan her şey **OBS** etrafında toplandı. Ölçüldü: OBS aslında doğru
+> kuruluydu (Masaüstü Sesi `sonar_stream`'in monitörünü dinliyordu), yanlış olduğunu
+> söyleyen bizim dokümanımızdı. Asıl eksikler: `MasterStrip` hiçbir uygulama listesi
+> çizmiyordu, `MicChain.send_to_stream_bus` varsayılan kapalıydı ve hiçbir arayüzü
+> yoktu, doküman kullanıcının silmiş olduğu bir zincirin adını yazıyordu. Kullanıcı
+> ChatMix tekerinin ham kayıtlarını da getirdi; protokol çözüldü.
 
 > **Test turu 3 (2026-09-03).** Kullanıcı ekran görüntüleriyle (`görsel-bug/`) ve
 > loglarla geldi. Bu tur **yeni özellik değil onarım** turu: yerleşim birçok yerde
@@ -54,7 +61,7 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 20 | [Çoklu çıkış bus'ı](20-outputs.md) | 🟢 Tamamlandı |
 | 21 | [Mikrofon yönlendirme](21-mic-routing.md) | 🟢 Tamamlandı |
 | 22 | [Spatial / Boost / Smart Volume](22-dsp.md) | 🟢 Tamamlandı |
-| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟡 udev sırası düzeldi, protokol bekliyor |
+| 23 | [ChatMix donanım tekeri](23-chatmix-hid.md) | 🟢 Tamamlandı (protokol Faz 35'te çözüldü) |
 | 24 | [Doğrulama ve dokümantasyon](24-verify.md) | 🟢 Tamamlandı |
 | 25 | [Kırık kontroller](25-broken-controls.md) | 🟢 Tamamlandı |
 | 26 | [Yerleşim onarımı](26-layout.md) | 🟢 Tamamlandı |
@@ -63,14 +70,18 @@ test turunu yapar; Faz 11 (Paketleme) ondan sonra.
 | 29 | [Smart Volume profile taşınıyor](29-smart-volume.md) | 🟢 Tamamlandı |
 | 30 | [DSP: crossfeed, Boost, mikrofon zinciri](30-dsp.md) | 🟢 Tamamlandı |
 | 31 | [EQ nokta ekleme/silme](31-eq-points.md) | 🟢 Tamamlandı |
-| 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | 🟡 Ekran testleri ve udev kullanıcıda |
-| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 3'ten sonra) |
+| 32 | [ChatMix tekeri, doğrulama, dokümantasyon](32-verify.md) | 🟢 Tamamlandı |
+| 33 | [OBS görünürlüğü ve yayın kurulumu](33-obs.md) | 🟢 Tamamlandı |
+| 34 | [Fader sıfırlama ve sayısal giriş](34-fader-input.md) | 🟢 Tamamlandı |
+| 35 | [ChatMix teker protokolü](35-chatmix-wheel.md) | 🟢 Tamamlandı |
+| 36 | [Doğrulama ve dokümantasyon](36-verify.md) | 🟡 Ekran testleri kullanıcıda |
+| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 4'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 829 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (51 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+**Test durumu:** 839 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (53 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
 başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi
 kesintisiz.
@@ -102,7 +113,7 @@ Tasarım referansı: `docs/reference/steelseries-gg/` (SteelSeries GG ekran gör
 | Teknoloji | Python 3 + PySide6 (Qt6/QML) | DSP PipeWire içinde çalışır; bizim tarafta realtime kod yok |
 | DSP | PipeWire `filter-chain` + LSP/Calf LV2 eklentileri | EasyEffects ile **birebir aynı** eklentiler, aynı kalite |
 | Mimari | Daemon (systemd user service) + D-Bus + GUI istemci | GUI kapalıyken ses düzeni ayakta kalır |
-| Yayın düzeni | Birleşik `Sonar Stream Mix` **+** kanal başına ayrı OBS çıkışı | OBS'de hem tek track hem kanal başına ayrı track mümkün |
+| Yayın düzeni | OBS'te **Masaüstü Sesi = `Sonar Stream Mix`**, mikrofon miksin içinde | Kullanıcının Windows'taki alışkanlığının aynısı; tek kaynak, tek karar. Kanal başına ayrı track isteyen açabiliyor |
 | v1 kapsamı | AI gürültü engelleme (DeepFilterNet) + ChatMix | Global kısayollar ve otomatik profil değişimi → v1.1+ |
 | Lisans | GPL-3.0 | LV2 eklenti ekosistemiyle uyumlu |
 
@@ -162,9 +173,12 @@ Faz 20'de kanal başına ayrı çıkış cihazı eklenebiliyordu; kullanıcı i�
 
 **OBS erişim noktaları** (Faz 12'de sadeleşti):
 
-1. `Sonar Stream Mix — Virtual Input` — stream fader'larıyla mikslenmiş birleşik ses.
-   Varsayılan ve çoğu kurulum için tek gereken.
-2. `Sonar Stream Mic — Virtual Input` — mikrofonun yayına özel zinciri.
+1. `Sonar Stream Mix` (sink) — OBS'te **Masaüstü Sesi**. Stream fader'larıyla mikslenmiş
+   birleşik ses; mikrofon da varsayılan olarak içinde. Resmî yol ve çoğu kurulum için
+   tek gereken.
+2. `Sonar Stream Mix (alternatif giriş)` — aynı miksin `Audio/Source` kopyası. Masaüstü
+   Sesi başka bir şeye ayrılmışsa. **İkisi birden eklenirse her şey iki kez duyulur**;
+   `api.stream_setup()` bunu graftan okuyup uyarıyor.
 3. `sonar_<kanal>_fx` — **yalnızca `stream_source` açıksa.** Kanal başına ayrı track.
 
 `_fx` node'u varsayılan olarak `media.class` taşımaz: zincirin çıkışıdır ama bir *cihaz*

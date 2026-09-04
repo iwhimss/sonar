@@ -25,3 +25,11 @@ graph.conf
 
 # venv
 .venv/
+
+# Kullanıcının test turu raporları — bana verilen materyal, proje dosyası değil.
+# İçlerinden kalıcı olması gerekenler (ör. teker kaydı) tests/data/ altına süzülüyor.
+görsel-bug/
+spatial audio/
+chatmix.txt
+script-gui.txt
+tekerlek.txt

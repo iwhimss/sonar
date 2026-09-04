@@ -99,14 +99,20 @@ kapalıyken bulunduğu için geri alındı (Faz 27). `MasterBus.kind` duruyor �
 | `sonar_<kanal>_fx` | *(yok)* | `Sonar <Ad> FX` | DSP çıkışı — **cihaz değil** |
 | `sonar_<kanal>_fx` | `Audio/Source` | `Sonar <Ad> — Stream Source (Virtual Input)` | `stream_source` açıkken: OBS kanal track'i |
 | `sonar_<kanal>_to_<bus>` | loopback | — | O bus'a giden fader; kanal başına her bus için bir tane |
-| `sonar_personal` | `Audio/Sink` | `Sonar Personal Mix — Virtual Output` | Varsayılan çıkış bus'ı |
+| `sonar_personal` | `Audio/Sink` | `Sonar Personal Mix` | Varsayılan çıkış bus'ı |
 | `sonar_<bus>_out` | *(akış)* | `Sonar <Ad> Output` | Çıkış bus'ının fiziksel cihaza giden akışı |
-| `sonar_stream` | `Audio/Sink` | `Sonar Stream Mix — Virtual Output` | Yayın miksi (uygulamalar doğrudan da hedefleyebilir) |
-| `sonar_stream_out` | `Audio/Source` | `Sonar Stream Mix — Virtual Input` | **OBS bunu seçer** |
+| `sonar_stream` | `Audio/Sink` | `Sonar Stream Mix` | Yayın miksi — **OBS'te Masaüstü Sesi olarak bu seçilir** |
+| `sonar_stream_out` | `Audio/Source` | `Sonar Stream Mix (alternatif giriş)` | Aynı miksin ikinci yolu |
 | `sonar_<giriş>` | `Audio/Source` | `Sonar <Ad> — Virtual Input` | İşlenmiş mikrofon |
 
 Adlar İngilizce ve yönü söylüyor: bir cihaz listesinde "Sonar Media" görmek onun sink mi
 source mu olduğunu anlatmıyordu.
+
+**Bus'lar bu kuralın dışında.** Sink'in adı tam olarak `Sonar <Ad>`, çünkü OBS'in
+Masaüstü Sesi listesinde görünen ad budur ve dokümanın söylediğiyle birebir aynı olmak
+zorunda. Çıkış node'u aynı miksin ikinci kopyası; adı eskiden "— Virtual Input"tı ve
+sink'in "— Virtual Output"una o kadar benziyordu ki kullanıcı ikisini birden ekleyip
+aynı miksi iki kez aldı. `api.stream_setup()` bu durumu graftan okuyup uyarıyor.
 
 ### Kanal başına OBS kaynağı — varsayılan kapalı
 

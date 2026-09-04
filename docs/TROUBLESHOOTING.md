@@ -209,15 +209,47 @@ Kural `uaccess` etiketi kullanır: erişimi o an oturum açmış kullanıcıya v
 gruba yazmaktan daha dardır. Kurduktan sonra kulaklığı çıkarıp takmak gerekebilir —
 ACL cihaz eklendiğinde uygulanıyor.
 
-Kural kurulduktan sonra rapor biçiminin çözülmesi gerekiyor (cihaza özel):
-
-```bash
-./scripts/sonar-hid-capture     # tekeri yavaşça uçtan uca çevir, Ctrl+C
-```
-
 Teker okunmaya başlayınca mikserdeki slider salt okunur olur ve başlığı "kulaklık tekeri
 yönetiyor" der. Elle sürmeye devam etmek isterseniz `config.toml` içinde
 `settings.chatmix_source = "software"`.
+
+**Teker ters yönde çalışıyor.** Rapor iki kazanç veriyor ama hangi ucun Game olduğu
+raporda yazmıyor. Tek komutla çevirin:
+
+```bash
+sonar-cli chatmix --invert on
+```
+
+**Kulaklık listede ama teker hiçbir şey yapmıyor.** Kulaklığınız `KNOWN_HEADSETS`
+listesinde olmayabilir ya da rapor biçimi farklı olabilir. Raporları kaydedip
+(`./scripts/sonar-hid-capture`, tekeri yavaşça uçtan uca çevirin, Ctrl+C) bir issue
+açın; biçimi çözmek küçük bir iş.
+
+## OBS'te her şey iki kez duyuluyor
+
+Yayın miksini iki farklı yoldan alıyorsunuz: OBS'in **Masaüstü Sesi** ayarı
+`Sonar Stream Mix`'i dinlerken bir yandan da "Ses Girişi Yakalama" kaynağıyla
+`Sonar Stream Mix (alternatif giriş)` eklenmiş. İkisi aynı miks.
+
+```bash
+sonar-cli doctor        # "Yayın miksi" satırı kimin, hangi yoldan dinlediğini yazar
+```
+
+Birini kaldırın. Resmî yol Masaüstü Sesi; bkz. [`OBS.md`](OBS.md).
+
+## OBS'te mikrofonum duyulmuyor
+
+Mikrofon varsayılan olarak yayın miksinin içinde. Kapalıysa yayında sesiniz duyulmaz ve
+mikrofon şeridindeki fader yayına hiçbir şey yapmaz — şeritte "yayında değil" yazar.
+
+```bash
+sonar-cli mic mic stream on
+```
+
+Arayüzden: Master şeridi → dişli → **Yayın kurulumu…** → mikrofonun yanındaki düğme.
+
+Tersi de olur: gönderi açıkken OBS'e ayrı bir mikrofon kaynağı da eklerseniz sesiniz iki
+kez gider. O durumda gönderiyi kapatın.
 
 ## Uygulama yanlış kanalda
 
