@@ -32,6 +32,8 @@ Item {
     required property bool personalMuted
     required property real streamVolume
     required property bool streamMuted
+    //: Giriş kanalı yayın miksine katılıyor mu (`MicChain.send_to_stream_bus`).
+    required property bool inStream
     required property string kind
 
     property var bridge
@@ -204,11 +206,20 @@ Item {
                 spacing: Theme.s4
 
                 Repeater {
-                    model: [
-                        // "output" = kanalın seçili çıkış bus'ı; daemon çözüyor.
-                        { bus: "output", icon: "headset" },
-                        { bus: "stream", icon: "cast" }
-                    ]
+                    /* Giriş şeridinde iki fader **yayın/kulaklık** değil: 🎧 sidetone
+                       (kendini duyma), 📡 mikrofonun kendi seviyesi — yani Discord'a
+                       giden sesle aynı fader. Eskiden etiketsizdi ve kullanıcı 📡'yi
+                       "yayın fader'ı" sanıyordu. */
+                    model: root.isMic
+                        ? [
+                            { bus: "output", icon: "headset", label: "Kendini duy" },
+                            { bus: "stream", icon: "mic", label: "Mikrofon" }
+                          ]
+                        : [
+                            // "output" = kanalın seçili çıkış bus'ı; daemon çözüyor.
+                            { bus: "output", icon: "headset", label: "" },
+                            { bus: "stream", icon: "cast", label: "" }
+                          ]
 
                     Column {
                         id: busColumn
@@ -222,6 +233,17 @@ Item {
                             ? root.personalMuted : root.streamMuted
                         readonly property int barHeight: Math.max(80, faderPanel.height - 100)
 
+                        Text {
+                            visible: busColumn.modelData.label !== ""
+                            width: busColumn.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: busColumn.modelData.label
+                            color: Theme.textFaint
+                            elide: Text.ElideRight
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
                         SonarIcon {
                             name: busColumn.modelData.icon
                             color: busColumn.mute ? Theme.textFaint : root.accent
@@ -248,6 +270,17 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             visible: busColumn.bus === "output" && root.chatmixGain < 0.99
                             text: "ChatMix " + Math.round(root.chatmixGain * 100) + "%"
+                            color: Theme.warn
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                        /* Yayın gönderisi kapalıyken bu fader yayına hiçbir şey
+                           yapmıyor. Anahtar master şeridinde; burada yalnızca durum. */
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: root.isMic && busColumn.bus === "stream" && !root.inStream
+                            text: "yayında değil"
                             color: Theme.warn
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall

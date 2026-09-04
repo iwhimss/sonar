@@ -71,6 +71,7 @@ def test_optional_mic_sends_are_always_present_but_muted_when_off():
     kesiyordu (test turu 2).
     """
     config = default_config()
+    config.mic("mic").send_to_stream_bus = False
     off = live_volumes(config)
     assert off["sonar_mic_monitor"][1] is True
     assert off["sonar_mic_to_stream"][1] is True
@@ -80,6 +81,15 @@ def test_optional_mic_sends_are_always_present_but_muted_when_off():
     on = live_volumes(config)
     assert on["sonar_mic_monitor"] == (0.5, False)
     assert on["sonar_mic_to_stream"][1] is False
+
+
+def test_mic_reaches_the_stream_mix_by_default():
+    """Test turu 4: varsayılan **açık**.
+
+    Resmî OBS kurulumu tek kaynak (yayın miksinin monitörü); o kaynakta mikrofon yoksa
+    yayında ses duyulmuyor ve mikrofonun yayın fader'ı ölü görünüyor.
+    """
+    assert live_volumes(default_config())["sonar_mic_to_stream"][1] is False
 
 
 def test_mute_travels_with_the_volume():

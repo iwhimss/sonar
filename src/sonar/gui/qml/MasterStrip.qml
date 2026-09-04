@@ -28,6 +28,11 @@ Item {
        gidiş-dönüşü ve şema alanı eklemeye değmiyor. */
     property bool devicesOpen: true
 
+    /* Yayın kurulumunun canlı tanısı. `bridge.revision` okunuyor ki graf değişince
+       yeniden değerlendirilsin — fonksiyon çağrısı tek başına bağlama kurmaz. Köprü
+       çağrıyı yarım saniye önbellekliyor, yani bu okuma serbest. */
+    readonly property var setup: bridge ? (bridge.revision, bridge.streamSetup()) : ({})
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -109,22 +114,62 @@ Item {
                 }
 
                 /* Yayın Miksi'nin fiziksel bir cihazı yok: çıkışı sanal bir kaynak.
-                   Burada eskiden bir cihaz açılırı vardı ve hiçbir şey yapmıyordu. */
-                SonarSectionLabel { text: "Yayın Miksi" }
-                Rectangle {
+                   Burada eskiden sabit bir metin vardı ve kullanıcının makinesinde
+                   karşılığı olmayan bir cihaz adı yazıyordu. Artık tanı canlı: adı
+                   yapılandırmadan, dinleyicileri graftan okuyoruz. */
+                SonarSectionLabel { text: "Yayın Miksi (OBS)" }
+                Text {
                     width: parent.width
-                    height: 26
-                    color: Theme.sunken
-                    border.width: 1
-                    border.color: Theme.border
+                    wrapMode: Text.WordWrap
+                    text: "OBS → Ayarlar → Ses → Masaüstü Sesi:"
+                    color: Theme.textFaint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    renderType: Text.NativeRendering
+                }
+                Row {
+                    width: parent.width
+                    spacing: Theme.s1
+                    Rectangle {
+                        width: parent.width - 24 - Theme.s1
+                        height: 26
+                        color: Theme.sunken
+                        border.width: 1
+                        border.color: Theme.border
+                        TextInput {
+                            id: deviceName
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.s2
+                            anchors.rightMargin: Theme.s2
+                            verticalAlignment: Text.AlignVCenter
+                            // Salt okunur ama seçilebilir: kullanıcı adı elle de kopyalayabilsin.
+                            readOnly: true
+                            selectByMouse: true
+                            text: root.setup.device || "Sonar Stream Mix"
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                    }
+                    SonarIconButton {
+                        icon: "copy"
+                        accent: Theme.master
+                        onClicked: { deviceName.selectAll(); deviceName.copy(); deviceName.deselect() }
+                    }
+                }
+
+                /* Şu an kim dinliyor. Boşsa OBS kurulu değil demektir; iki yoldan birden
+                   dinleniyorsa aşağıdaki uyarı çıkar. */
+                Repeater {
+                    model: root.setup.listeners || []
                     Text {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.s2
-                        anchors.rightMargin: Theme.s2
-                        verticalAlignment: Text.AlignVCenter
-                        text: "Sonar Stream Mix — Virtual Input"
+                        required property var modelData
+                        width: devices.width
+                        wrapMode: Text.WordWrap
+                        text: "· " + modelData.label + " — "
+                            + (modelData.via === "monitor" ? "Masaüstü Sesi" : "alternatif giriş")
                         color: Theme.textDim
-                        elide: Text.ElideRight
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
                         renderType: Text.NativeRendering
@@ -132,13 +177,56 @@ Item {
                 }
                 Text {
                     width: parent.width
+                    visible: (root.setup.listeners || []).length === 0
                     wrapMode: Text.WordWrap
-                    text: "OBS'e yalnızca bu aygıtı ekleyin — aynı miksi bir de "
-                        + "\"Ses Çıkışı Yakalama\" ile almak sesi iki kez verir."
+                    text: "· henüz kimse dinlemiyor"
                     color: Theme.textFaint
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSmall
                     renderType: Text.NativeRendering
+                }
+
+                /* Mikrofonun yayın gönderisi. Bu anahtar modelde baştan beri vardı ama
+                   hiçbir arayüzü yoktu; kullanıcı "yayında mikrofonum duyulmuyor" ve
+                   "mikrofonun yayın fader'ı hiçbir şey yapmıyor" diye bildirdi. */
+                Repeater {
+                    model: root.setup.mics || []
+                    Row {
+                        required property var modelData
+                        width: devices.width
+                        spacing: Theme.s2
+                        SonarIconButton {
+                            icon: "cast"
+                            accent: Theme.master
+                            active: modelData.in_stream === true
+                            onClicked: root.bridge.setMicStreamSend(modelData.id,
+                                                                    modelData.in_stream !== true)
+                        }
+                        Text {
+                            width: parent.width - 24 - Theme.s2
+                            anchors.verticalCenter: parent.verticalCenter
+                            wrapMode: Text.WordWrap
+                            text: modelData.name + (modelData.in_stream ? " yayında" : " yayında değil")
+                            color: modelData.in_stream ? Theme.textDim : Theme.textFaint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: root.setup.problems || []
+                    Text {
+                        required property var modelData
+                        width: devices.width
+                        wrapMode: Text.WordWrap
+                        text: "⚠ " + modelData.message
+                        color: Theme.warn
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        renderType: Text.NativeRendering
+                    }
                 }
             }
             }
@@ -208,6 +296,91 @@ Item {
                 }
             }
         }
+
+        /* --- miksi yakalayan uygulamalar ---------------------------------
+         *
+         * OBS'in "Masaüstü Sesi", `cava` gibi görselleştiriciler ve ekran kaydediciler
+         * bir kanalda değil bir **bus**'ta duruyorlar: yayın ya da kişisel miksin
+         * monitörünü dinliyorlar. Köprü satırları baştan beri üretiyordu
+         * (`bridge.stream_rows`, bus kimliğine eşleyerek) ama çizen kimse yoktu; ekranda
+         * hiçbir yere düşmüyorlardı ve kullanıcı dört tur boyunca "OBS görünmüyor" dedi.
+         *
+         * Kanal kutucuklarının aksine bunlar **sürüklenemez**: bir bus'ı dinliyorlar,
+         * bir kanala taşınmalarının anlamı yok.
+         */
+        SonarPanel {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
+            visible: root.captures.length > 0
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: Theme.s2
+                spacing: Theme.s1
+
+                SonarSectionLabel {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: "Miksi yakalayanlar  (" + root.captures.length + ")"
+                }
+
+                ListView {
+                    id: captureList
+                    width: parent.width
+                    height: Math.max(0, parent.height - 16)
+                    clip: true
+                    spacing: 2
+                    model: root.captures
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: captureList.width
+                        height: 22
+                        color: Theme.raised
+                        border.width: 1
+                        border.color: Theme.border
+
+                        SonarIcon {
+                            id: captureIcon
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.s1
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "record"
+                            color: Theme.master
+                            font.pixelSize: Theme.fontSmall
+                        }
+                        Text {
+                            anchors.left: captureIcon.right
+                            anchors.leftMargin: Theme.s1
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.s1
+                            anchors.verticalCenter: parent.verticalCenter
+                            // Hangi miksi dinlediği yazıyor: OBS'in yanlış olanı
+                            // dinlemesi kullanıcının en sık düştüğü hata.
+                            text: modelData.label + " — " + root.busLabel(modelData.channel)
+                            color: Theme.textDim
+                            elide: Text.ElideRight
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            renderType: Text.NativeRendering
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* Bus'ları dinleyen akışlar. `bridge.revision` okunuyor ki liste canlı kalsın. */
+    readonly property var captures: {
+        if (!bridge) return []
+        const _ = bridge.revision
+        return bridge.streamsFor("stream").concat(bridge.streamsFor(root.outputId))
+    }
+
+    function busLabel(id) {
+        return id === "stream" ? "Yayın Miksi" : "Kişisel Miks"
     }
 
     function deviceList(source) {

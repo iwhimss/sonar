@@ -313,8 +313,13 @@ class SonarDBusInterface(QObject):
 
     @Slot(str, bool, result=str)
     def SetMicStreamSend(self, chain: str, enabled: bool) -> str:
-        """Mikrofonu yayın miksine de gönderir. **Yapısal**."""
+        """Mikrofonu yayın miksine de gönderir. **Canlı** (gönderi loopback'i hep kurulu)."""
         return reply(lambda: self.api.set_mic_stream_send(chain, enabled))
+
+    @Slot(result=str)
+    def StreamSetup(self) -> str:
+        """Yayın kurulumunun canlı tanısı — OBS ne dinliyor, mikrofon yayında mı."""
+        return reply(self.api.stream_setup)
 
     @Slot(str, bool, result=str)
     def SetChannelStreamSource(self, channel: str, enabled: bool) -> str:

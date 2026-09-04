@@ -47,7 +47,7 @@ __all__ = [
     "default_profile",
 ]
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 #: Varsayılan EQ bandlarının yayıldığı aralık. 31.25 Hz – 16 kHz tam 9 oktav olduğu için
 #: 10 bandda tam oktav aralıklı klasik grafik ekolayzer frekansları çıkar.
@@ -376,8 +376,16 @@ class MicChain:
     #: Yan ton — kendi sesini kulaklıktan duyma.
     monitor_enabled: bool = False
     monitor_volume: float = 0.5
-    #: Mikrofonu yayın miksine de gönder (OBS ayrı kaynak kullanıyorsa gereksizdir).
-    send_to_stream_bus: bool = False
+    #: Mikrofonu yayın miksine de gönder.
+    #:
+    #: Test turu 4'te varsayılan **açık** oldu. Gerekçe ölçüldü: resmî OBS kurulumu
+    #: tek kaynak (yayın miksinin monitörü) ve o kaynakta mikrofon yoksa yayında ses
+    #: duyulmuyor. Kapalıyken mikrofonun yayın fader'ı da hiçbir şey yapmıyor gibi
+    #: görünüyordu — kullanıcının üçüncü turda bildirdiği hata buydu.
+    #:
+    #: OBS'e ayrı bir mikrofon kaynağı ekleyenler bunu kapatmalı; açık bırakırlarsa
+    #: ses iki kez gider. `api.stream_setup()` bu durumu tespit edip uyarıyor.
+    send_to_stream_bus: bool = True
 
     @property
     def source_node(self) -> str:

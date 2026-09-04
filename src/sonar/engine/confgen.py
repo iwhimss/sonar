@@ -267,13 +267,24 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
     """Bir bus: `sonar_<id>` (Audio/Sink) → master DSP → çıkış.
 
     Personal bus'ın çıkışı fiziksel cihaza giden bir akıştır. Stream bus'ın çıkışı ise
-    `Audio/Source` olarak açığa çıkar; OBS onu "Sonar Stream Mix" adlı bir giriş cihazı
-    olarak görür. Böylece yayın miksi hoparlöre gitmez.
+    `Audio/Source` olarak açığa çıkar; OBS onu bir giriş cihazı olarak görür. Böylece
+    yayın miksi hoparlöre gitmez.
+
+    ## Adlandırma — test turu 4'te değişti
+
+    Bus'ın **sink**'i tam olarak `Sonar {bus.name}` adını taşır, çünkü OBS'te
+    Ayarlar → Ses → Masaüstü Sesi listesinde görünen ad budur ve resmî kurulum o listeden
+    seçilmesini söylüyor. Doküman ile listedeki ad birebir aynı olmalı.
+
+    Çıkış node'u ise **ikinci bir yol**: aynı miksi bir de `Audio/Source` olarak sunuyor.
+    Adı eskiden "— Virtual Input"tı ve sink'in "— Virtual Output"una o kadar benziyordu ki
+    kullanıcı ikisini birden ekleyip aynı miksi iki kez aldı (test turu 3). Artık adı
+    ikincil olduğunu söylüyor.
     """
     if bus.is_stream:
         playback = {
             "node.name": bus.out_node,
-            "node.description": f"Sonar {bus.name} — Virtual Input",
+            "node.description": f"Sonar {bus.name} (alternatif giriş)",
             "node.nick": bus.name,
             "media.class": VIRTUAL_SOURCE_CLASS,
             "device.icon-name": SOURCE_ICON,
@@ -295,7 +306,7 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
         graph=_graph(rate, bands, channels=2),
         capture={
             "node.name": bus.sink_node,
-            "node.description": f"Sonar {bus.name} — Virtual Output",
+            "node.description": f"Sonar {bus.name}",
             "node.nick": bus.name,
             "media.class": "Audio/Sink",
             "device.icon-name": SINK_ICON,

@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import time
 from typing import Any, ClassVar
 
 from PySide6.QtCore import (
@@ -92,6 +93,9 @@ def channel_rows(state: dict) -> list[dict]:
                 "personalMuted": _send(sends, output_bus)["muted"],
                 "streamVolume": _send(sends, "stream")["volume"],
                 "streamMuted": _send(sends, "stream")["muted"],
+                # Çıkış kanalları her zaman yayın miksinde; alan yalnızca giriş
+                # kanallarında anlamlı ama model rolü her satırda tanımlı olmalı.
+                "inStream": True,
                 "kind": "channel",
             }
         )
@@ -111,6 +115,10 @@ def channel_rows(state: dict) -> list[dict]:
                 "personalMuted": not mic.get("monitor_enabled", False),
                 "streamVolume": mic["volume"],
                 "streamMuted": mic["muted"],
+                # Mikrofon yayın miksine katılıyor mu. Katılmıyorsa şeritteki 📡 fader'ı
+                # yayına hiçbir şey yapmıyor demektir ve bunu şeritte söylüyoruz —
+                # kullanıcı üçüncü turda tam bu yüzden "fader ölü" dedi.
+                "inStream": bool(mic.get("send_to_stream_bus", True)),
                 "kind": "mic",
             }
         )
@@ -263,7 +271,7 @@ class ChannelModel(_DictModel):
     keys = (
         "id", "name", "color", "icon", "builtin", "activeProfile", "profiles",
         "personalVolume", "personalMuted", "streamVolume", "streamMuted",
-        "kind",
+        "inStream", "kind",
     )  # fmt: skip
 
 
@@ -314,6 +322,11 @@ class SonarBridge(QObject):
         self._levels: dict[str, dict] = {}
         self._sinks = DeviceModel(self)
         self._sources = DeviceModel(self)
+        #: `StreamSetup` tanısının önbelleği. Ayrı bir D-Bus çağrısı ve QML bağlaması her
+        #: `revision` artışında yeniden değerlendiriliyor; fader sürüklerken bu saniyede
+        #: onlarca çağrı demek olurdu. Yarım saniyelik pencere tanı için fazlasıyla taze.
+        self._setup: dict = {}
+        self._setup_at = 0.0
 
         self._reconnect = QTimer(self)
         self._reconnect.setInterval(RECONNECT_MS)
@@ -578,6 +591,23 @@ class SonarBridge(QObject):
     def setMicMute(self, chain: str, muted: bool) -> None:
         self._optimistic(chain, "streamMuted", muted)
         self._call("SetMicMute", chain, muted)
+
+    @Slot(str, bool)
+    def setMicStreamSend(self, chain: str, enabled: bool) -> None:
+        """Mikrofon yayın miksine katılsın mı — OBS tek kaynak kullanıyorsa açık olmalı."""
+        self._setup_at = 0.0  # tanı hemen tazelensin
+        self._call("SetMicStreamSend", chain, enabled)
+
+    @Slot(result="QVariant")
+    def streamSetup(self) -> dict:
+        """Yayın kurulumu tanısı; `api.stream_setup()`in önbelleklenmiş hâli."""
+        now = time.monotonic()
+        if not self._setup or now - self._setup_at > 0.5:
+            result = self._call("StreamSetup")
+            if isinstance(result, dict):
+                self._setup = result
+                self._setup_at = now
+        return self._setup
 
     @Slot(str, bool)
     def setMicMonitor(self, chain: str, enabled: bool) -> None:

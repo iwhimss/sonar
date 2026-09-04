@@ -42,11 +42,13 @@ Her mutasyon ikisinden biridir:
 
 * **Canlı** — fader, mute, EQ, filtre, profil, ChatMix, kural. Yalnızca ilgili node'a yazılır,
   ses kesilmez.
-* **Yapısal** — kanal ekle/sil, cihaz değiştir, mikrofon monitörü/yayın gönderisi aç-kapa,
-  band sayısı. `graph.conf` değişir, süreç yeniden başlar (~200 ms).
+* **Yapısal** — kanal ekle/sil, kanal başına OBS kaynağı. `graph.conf` değişir, süreç
+  yeniden başlar (~200 ms).
 
-Mikrofon monitörü ve yayına gönderi bilinçli olarak **yapısal** listede: ikisi de conf'a
-birer `loopback` modülü ekliyor.
+Mikrofon monitörü (sidetone) ve yayına gönderi bir dönem yapısaldı; her ikisinin
+`loopback` modülü artık conf'ta **koşulsuz** kurulu olduğu için açma/kapama tek bir mute
+yazımı, yani canlı. Cihaz değişimi de canlı: hedef conf'a yazılmıyor, `pw-metadata` ile
+veriliyor.
 """
 
 from __future__ import annotations
@@ -64,6 +66,7 @@ from sonar.core.model import (
     DEFAULT_FILTER_PARAMS,
     EQ_FREQ_MAX,
     EQ_FREQ_MIN,
+    STREAM_BUS,
     Channel,
     EqBand,
     EqBandType,
@@ -253,6 +256,108 @@ class SonarApi:
                 and not stream.target_node.startswith("sonar_")
                 and (stream.serial or stream.id) not in self.router.decided
             ],
+        }
+
+    def stream_setup(self) -> dict:
+        """Yayın kurulumunun canlı tanısı — "OBS'i nasıl kuracağım?"ın cevabı.
+
+        Kullanıcının en çok takıldığı yer burası ve takılma hep aynı iki şekilde oluyor:
+        ya OBS yayın miksini **hiç** dinlemiyor, ya da **iki kez** dinliyor. İkisi de
+        graftan okunabiliyor, tahmine gerek yok.
+
+        Yayın miksine iki yoldan erişilebilir:
+
+        * `sonar_stream` sink'inin **monitörü** — OBS'te *Ayarlar → Ses → Masaüstü Sesi*.
+          Akış `stream.capture.sink = True` ve `target.object = sonar_stream` taşır.
+          **Resmî yol budur**; Windows'ta "SteelSeries GG Stream"i Masaüstü Sesi seçmenin
+          birebir karşılığı.
+        * `sonar_stream_out` (`Audio/Source`) — OBS'te *Ses Girişi Yakalama*. Aynı miksin
+          ikinci kopyası; ikisi birden eklenirse her şey iki kez duyulur.
+
+        Dönen sözlük arayüzdeki panelin ve `doctor`'ın tek kaynağı.
+        """
+        bus = self.config.bus(STREAM_BUS)
+        sink = bus.sink_node if bus is not None else f"sonar_{STREAM_BUS}"
+        out_node = bus.out_node if bus is not None else f"sonar_{STREAM_BUS}_out"
+        device = f"Sonar {bus.name}" if bus is not None else "Sonar Stream Mix"
+
+        listeners: list[dict] = []
+        for stream in self.supervisor.state.streams.values():
+            if stream.is_internal or not stream.is_capture:
+                continue
+            if stream.target_node == sink and stream.captures_sink:
+                via = "monitor"
+            elif stream.target_node == out_node:
+                via = "source"
+            else:
+                continue
+            listeners.append(
+                {
+                    "id": stream.id,
+                    "label": stream.label,
+                    "binary": stream.app_binary,
+                    "via": via,
+                }
+            )
+
+        mics = [
+            {
+                "id": mic.id,
+                "name": mic.name,
+                "in_stream": bool(mic.send_to_stream_bus),
+                "muted": bool(mic.muted),
+            }
+            for mic in self.config.mic_chains
+        ]
+
+        problems: list[dict] = []
+        if not listeners:
+            problems.append(
+                {
+                    "code": "no_stream_listener",
+                    "message": (
+                        f"Hiçbir uygulama yayın miksini dinlemiyor. OBS → Ayarlar → Ses → "
+                        f"Masaüstü Sesi → “{device}” seçin."
+                    ),
+                }
+            )
+        # Aynı uygulamanın iki yoldan da dinlemesi: üçüncü turdaki "iki kaynak da her şeyi
+        # çalıyor" tam olarak buydu. Uygulama adına göre eşleştiriyoruz çünkü OBS'in iki
+        # kaynağı iki ayrı node olarak doğuyor.
+        by_app: dict[str, set[str]] = {}
+        for row in listeners:
+            by_app.setdefault(row["binary"] or row["label"], set()).add(row["via"])
+        for app, ways in sorted(by_app.items()):
+            if len(ways) > 1:
+                problems.append(
+                    {
+                        "code": "duplicate_capture",
+                        "message": (
+                            f"{app} yayın miksini iki kez alıyor (hem “{device}” monitörü "
+                            f"hem “{device} (alternatif giriş)”). Birini kaldırın; aksi "
+                            f"hâlde her şey iki kez duyulur."
+                        ),
+                    }
+                )
+        if listeners and not any(m["in_stream"] and not m["muted"] for m in mics):
+            problems.append(
+                {
+                    "code": "mic_not_in_stream",
+                    "message": (
+                        "Mikrofon yayın miksine gitmiyor; yayında sesiniz duyulmaz. "
+                        "Master şeridindeki “Mikrofon yayında” anahtarını açın veya OBS'e "
+                        "ayrı bir mikrofon kaynağı ekleyin."
+                    ),
+                }
+            )
+
+        return {
+            "device": device,
+            "sink_node": sink,
+            "source_node": out_node,
+            "listeners": listeners,
+            "mics": mics,
+            "problems": problems,
         }
 
     def sync_routing(self) -> list[Decision]:

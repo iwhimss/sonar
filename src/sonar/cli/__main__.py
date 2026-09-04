@@ -98,14 +98,20 @@ def _print_status(state: dict) -> None:
     for bus in config["buses"]:
         mark = "M" if bus["muted"] else " "
         if bus.get("kind") == "stream":
-            where = "→ Sonar Stream Mix — Virtual Input (OBS)"
+            # Sabit metin değil: OBS'te seçilecek ad bus'ın adından üretiliyor ve
+            # doküman ile birebir aynı olmalı.
+            where = f"→ OBS: Masaüstü Sesi = “Sonar {bus['name']}”"
         else:
             where = f"→ {bus['device'] or '(sistem varsayılanı)'}"
         print(f"{bus['name']:<24} {mark} {_bar(bus['volume'])} {_pct(bus['volume'])}  {where}")
     for mic in config["mic_chains"]:
         mark = "M" if mic["muted"] else " "
         device = mic["source_device"] or "(sistem varsayılanı)"
-        print(f"{mic['name']:<24} {mark} {_bar(mic['volume'])} {_pct(mic['volume'])}  ← {device}")
+        stream = "" if mic.get("send_to_stream_bus", True) else "  [yayında değil]"
+        print(
+            f"{mic['name']:<24} {mark} {_bar(mic['volume'])} {_pct(mic['volume'])}  "
+            f"← {device}{stream}"
+        )
 
     chatmix = config["chatmix"]
     if chatmix["enabled"]:
@@ -179,6 +185,22 @@ def _cmd_doctor(client: Client, args) -> int:
 
     for conflict in report["conflicts"]:
         print(f"  ⚠ {conflict['message']}")
+
+    # Yayın kurulumu: kullanıcının en çok takıldığı yer, o yüzden doctor'da da duruyor.
+    setup = client.call("StreamSetup")
+    listeners = setup["listeners"]
+    print(f"\nYayın miksi        : {setup['device']}")
+    if listeners:
+        for row in listeners:
+            way = "Masaüstü Sesi" if row["via"] == "monitor" else "alternatif giriş"
+            print(f"  · #{row['id']} {row['label']} — {way}")
+    else:
+        print("  · dinleyen yok")
+    for mic in setup["mics"]:
+        state = "yayında" if mic["in_stream"] else "yayında DEĞİL"
+        print(f"  · mikrofon {mic['name']}: {state}")
+    for problem in setup["problems"]:
+        print(f"  ⚠ {problem['message']}")
 
     print("\nSorun bulunamadı." if problems == 0 else f"\n{problems} sorun bulundu.")
     return 0 if problems == 0 else 1
@@ -447,6 +469,17 @@ def _meter_bar(db: float, width: int = 30) -> str:
     return "█" * filled + "·" * (width - filled)
 
 
+def _cmd_mic(client: Client, args) -> int:
+    """Mikrofon zincirinin yayın ve sidetone anahtarları."""
+    if args.what == "stream":
+        client.call("SetMicStreamSend", args.chain, args.state == "on")
+        print(f"{args.chain}: yayın miksine {'katılıyor' if args.state == 'on' else 'katılmıyor'}")
+    else:
+        client.call("SetMicMonitor", args.chain, args.state == "on")
+        print(f"{args.chain}: sidetone {'açık' if args.state == 'on' else 'kapalı'}")
+    return 0
+
+
 def _cmd_reload(client: Client, _args) -> int:
     client.call("Reload")
     print("yapılandırma yeniden okundu")
@@ -576,6 +609,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("meters", help="seviye metrelerini canlı göster")
     p.add_argument("--seconds", type=float, default=10.0, help="kaç saniye izlensin")
 
+    p = sub.add_parser("mic", help="mikrofonun yayın gönderisi ve sidetone'u")
+    p.add_argument("chain", help="giriş kanalının kimliği (örn. mic)")
+    p.add_argument("what", choices=["stream", "sidetone"])
+    p.add_argument("state", choices=["on", "off"])
+
     sub.add_parser("reload", help="config.toml'u diskten yeniden oku")
     return parser
 
@@ -604,6 +642,7 @@ _COMMANDS = {
     "export": _cmd_export,
     "reset": _cmd_reset,
     "meters": _cmd_meters,
+    "mic": _cmd_mic,
     "reload": _cmd_reload,
 }
 

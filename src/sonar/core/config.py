@@ -174,9 +174,24 @@ class ConfigStore:
             self._migrate_favorites(config)
         if config.schema_version < 4:
             self._migrate_ducking(raw, config)
+        if config.schema_version < 5:
+            self._migrate_mic_stream_send(config)
         if config.schema_version != SCHEMA_VERSION:
             config.schema_version = SCHEMA_VERSION
         return config
+
+    def _migrate_mic_stream_send(self, config: SonarConfig) -> None:
+        """Şema 4 → 5: mikrofon yayın miksine katılır.
+
+        Varsayılan `False`'tan `True`'ya döndü ve dataclass varsayılanı yalnızca **yeni**
+        yapılandırmaları etkiliyor; mevcut dosyada `false` yazılı duruyor. Bu göç olmadan
+        kullanıcı yeni davranışı hiç görmezdi — üstelik göçün düzelttiği şey tam da onun
+        bildirdiği hata (yayında mikrofon duyulmuyor).
+
+        Kullanıcı kapatırsa şema artık 5 olduğu için bir daha açılmaz.
+        """
+        for mic in config.mic_chains:
+            mic.send_to_stream_bus = True
 
     def _migrate_ducking(self, raw: dict, config: SonarConfig) -> None:
         """Şema 3 → 4: Smart Volume ayarlardan profillere taşınır.

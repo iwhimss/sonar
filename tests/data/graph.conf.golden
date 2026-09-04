@@ -1163,7 +1163,7 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_personal"
-                node.description = "Sonar Personal Mix — Virtual Output"
+                node.description = "Sonar Personal Mix"
                 node.nick = "Personal Mix"
                 media.class = "Audio/Sink"
                 device.icon-name = "audio-card"
@@ -1393,7 +1393,7 @@ context.modules = [
             }
             capture.props = {
                 node.name = "sonar_stream"
-                node.description = "Sonar Stream Mix — Virtual Output"
+                node.description = "Sonar Stream Mix"
                 node.nick = "Stream Mix"
                 media.class = "Audio/Sink"
                 device.icon-name = "audio-card"
@@ -1405,7 +1405,7 @@ context.modules = [
             }
             playback.props = {
                 node.name = "sonar_stream_out"
-                node.description = "Sonar Stream Mix — Virtual Input"
+                node.description = "Sonar Stream Mix (alternatif giriş)"
                 node.nick = "Stream Mix"
                 media.class = "Audio/Source"
                 device.icon-name = "audio-input-microphone"

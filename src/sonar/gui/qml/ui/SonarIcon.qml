@@ -20,7 +20,10 @@ Text {
         "close":    "✕",
         "warn":     "⚠",
         "star":     "☆",
-        "star-on":  "★"
+        "star-on":  "★",
+        "reset":    "↺",
+        "copy":     "⧉",
+        "record":   "◉"
     })
     text: glyphs[name] !== undefined ? glyphs[name] : "■"
     color: Theme.textDim

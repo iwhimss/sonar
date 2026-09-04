@@ -360,11 +360,18 @@ def test_channel_fx_becomes_a_source_when_asked(portable):
 
 
 def test_device_names_state_their_direction(portable):
+    """Bus sink'inin adı OBS'te seçilecek addır; doküman ile birebir aynı olmalı.
+
+    Çıkış node'u aynı miksin ikinci kopyası; adı eskiden "— Virtual Input"tı ve sink'in
+    "— Virtual Output"una o kadar benziyordu ki kullanıcı ikisini birden ekleyip aynı
+    miksi iki kez aldı (test turu 3).
+    """
     cfg = default_config()
     assert _capture_props(cfg, "sonar_game")["node.description"] == "Sonar Game — Virtual Output"
+    assert _capture_props(cfg, "sonar_stream")["node.description"] == "Sonar Stream Mix"
     assert (
         _playback_props(cfg, "sonar_stream_out")["node.description"]
-        == "Sonar Stream Mix — Virtual Input"
+        == "Sonar Stream Mix (alternatif giriş)"
     )
     assert _playback_props(cfg, "sonar_mic")["node.description"] == "Sonar Mic — Virtual Input"
 
