@@ -476,10 +476,20 @@ Item {
             }
         }
 
+        /* Pencere yalnızca profil **gerçekten** oluşturulunca kapanıyor. Aynı ad zaten
+           varsa daemon reddediyor ve mesaj bildirim şeridine düşüyor; pencere açık
+           kalırsa kullanıcı adı düzeltebiliyor. Eskiden her hâlükârda kapanıyor ve
+           hiçbir şey olmuyordu — test turu 7'nin şikâyeti buydu. */
         function commit() {
             const name = nameInput.text.trim()
-            if (name.length > 0) root.bridge.newProfile(root.target, name)
-            visible = false
+            if (name.length === 0) return
+            if (root.bridge.newProfile(root.target, name)) {
+                nameInput.text = ""
+                visible = false
+            } else {
+                nameInput.forceActiveFocus()
+                nameInput.selectAll()
+            }
         }
     }
 

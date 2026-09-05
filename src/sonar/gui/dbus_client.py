@@ -16,13 +16,28 @@ from PySide6.QtDBus import QDBus, QDBusConnection, QDBusInterface
 
 from sonar.daemon.dbus_iface import BUS_NAME, INTERFACE, OBJECT_PATH
 
-__all__ = ["DBusClient", "DaemonUnavailableError"]
+__all__ = ["ApiRejectedError", "DBusClient", "DaemonUnavailableError"]
 
 log = logging.getLogger(__name__)
 
 
 class DaemonUnavailableError(RuntimeError):
     """Daemon'a ulaşılamıyor. Köprü bunu 'bağlı değil' olarak yorumlar."""
+
+
+class ApiRejectedError(RuntimeError):
+    """Daemon çağrıyı **reddetti**: bağlantı sağlam, istek geçersiz.
+
+    Eskiden bu durum yalnızca loga düşüyordu ve çağıran `None` alıyordu; kullanıcı
+    hiçbir şey görmüyordu. Test turu 7'de somutlaştı: aynı adla ikinci bir profil
+    oluşturmayı denemek sessizce hiçbir şey yapmıyordu (daemon doğru davranıp
+    `duplicate_profile` diyordu, mesaj ekrana ulaşmıyordu).
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
 
 
 class DBusClient(QObject):
@@ -68,7 +83,9 @@ class DBusClient(QObject):
         if not payload.get("ok"):
             # Beklenen bir API hatası: bağlantı sağlam, çağrı reddedildi.
             log.warning("%s reddedildi: %s", method, payload.get("message"))
-            return None
+            raise ApiRejectedError(
+                str(payload.get("code", "error")), str(payload.get("message", ""))
+            )
         return payload.get("result")
 
     def connect_signals(self, bridge: QObject) -> bool:

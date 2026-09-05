@@ -45,6 +45,7 @@ from sonar.core.names import (
     display_name,
     preset_label,
 )
+from sonar.gui.dbus_client import ApiRejectedError
 
 __all__ = [
     "BUILTIN_NAMES",
@@ -1077,10 +1078,17 @@ class SonarBridge(QObject):
         self._bump()
         self._call("ReorderFavorites", target, [str(name) for name in names])
 
-    @Slot(str, str)
-    def newProfile(self, target: str, name: str) -> None:
-        self._call("NewProfile", target, name)
+    @Slot(str, str, result=bool)
+    def newProfile(self, target: str, name: str) -> bool:
+        """Yeni profil oluşturur; **başarılı mı** olduğunu döndürür.
+
+        Pencere sonuca bakıyor: ad zaten kullanılıyorsa (daemon `duplicate_profile`
+        diyor) açık kalmalı ki kullanıcı adı düzeltebilsin. Hata metni `_call` üzerinden
+        bildirim şeridine düşüyor.
+        """
+        created = self._call("NewProfile", target, name)
         self.refresh()
+        return created is not None
 
     @Slot()
     def refresh(self) -> None:
@@ -1205,10 +1213,19 @@ class SonarBridge(QObject):
         return True
 
     def _call(self, method: str, *args: Any) -> Any:
+        """Daemon'a çağrı. Reddedilirse kullanıcıya **söylenir**.
+
+        Eskiden reddedilen çağrı sessizce `None` dönüyordu ve kullanıcı hiçbir şey
+        görmüyordu — "aynı adla profil eklemiyor ama uyarı da yapmıyor" şikâyeti bundandı
+        (test turu 7). Mesaj daemon'ın ürettiği metin; o zaten kullanıcının dilinde.
+        """
         if self._client is None:
             return None
         try:
             return self._client.call(method, *args)
+        except ApiRejectedError as rejected:
+            self.errorRaised.emit(rejected.code, rejected.message)
+            return None
         except Exception as error:  # daemon gitmiş olabilir
             log.debug("D-Bus çağrısı başarısız (%s): %s", method, error)
             self._set_connected(False)

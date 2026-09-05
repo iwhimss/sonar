@@ -740,3 +740,57 @@ def test_deprovision_passes_the_purge_flag(bridge, qt_app):
     qt_app.processEvents()
 
     assert ("Deprovision", (True,)) in bridge._client.calls
+
+
+# --------------------------------------------------------------------------- reddedilen çağrılar
+
+
+class RejectingClient(FakeClient):
+    """Daemon çağrıyı reddediyor: bağlantı sağlam, istek geçersiz."""
+
+    def __init__(self, state: dict, code: str = "duplicate_profile") -> None:
+        super().__init__(state)
+        self.code = code
+
+    def call(self, method, *args):
+        from sonar.gui.dbus_client import ApiRejectedError
+
+        if method == "GetState":
+            return self.state
+        self.calls.append((method, args))
+        raise ApiRejectedError(self.code, "bu profil zaten var: CS2")
+
+
+def test_a_rejected_call_reaches_the_user(qt_app):
+    """Reddedilen çağrı eskiden yalnızca loga düşüyordu; kullanıcı hiçbir şey görmüyordu.
+
+    Test turu 7: aynı adla ikinci bir profil oluşturmayı denemek sessizce hiçbir şey
+    yapmıyordu — daemon doğru davranıp `duplicate_profile` diyordu, mesaj ekrana
+    ulaşmıyordu.
+    """
+    obj = SonarBridge(RejectingClient(make_state()))
+    obj.apply_state(make_state())
+    seen: list[tuple[str, str]] = []
+    obj.errorRaised.connect(lambda code, message: seen.append((code, message)))
+
+    created = obj.newProfile("game", "CS2")
+
+    assert created is False, "pencere açık kalabilsin diye sonuç bildiriliyor"
+    assert seen and seen[0][0] == "duplicate_profile"
+    assert "CS2" in seen[0][1]
+
+
+def test_a_missing_daemon_is_not_reported_as_an_api_error(qt_app):
+    """Bağlantı kopması bir kullanıcı hatası değil; bildirim şeridine düşmemeli."""
+    client = FakeClient(make_state())
+    obj = SonarBridge(client)
+    obj.apply_state(client.state)
+    obj._set_connected(True)
+    seen: list[tuple[str, str]] = []
+    obj.errorRaised.connect(lambda code, message: seen.append((code, message)))
+
+    client.fail = True
+    obj.setChannelVolume("game", "personal", 0.5)
+
+    assert seen == []
+    assert obj.connected is False
