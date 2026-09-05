@@ -263,7 +263,10 @@ Item {
                         profile: root.profile
                         movable: true
                         removable: true
+                        resettable: true
                         onRemoveRequested: root.bridge.removeEffect(
+                            root.target, effectItem.modelData.slot)
+                        onResetRequested: root.bridge.resetEffect(
                             root.target, effectItem.modelData.slot)
                     }
 
@@ -277,11 +280,14 @@ Item {
                         active: effectItem.modelData.enabled === true
                         movable: true
                         removable: true
+                        resettable: true
                         note: (root.isMic && effectItem.modelData.kind === "gate"
                                && root.stageOn("df")) ? I18n.t("fx.gate.disabled_by_df") : ""
                         onToggled: (v) => root.bridge.setFilterEnabled(
                             root.target, effectItem.modelData.slot, v)
                         onRemoveRequested: root.bridge.removeEffect(
+                            root.target, effectItem.modelData.slot)
+                        onResetRequested: root.bridge.resetEffect(
                             root.target, effectItem.modelData.slot)
 
                         Column {

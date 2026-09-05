@@ -7,12 +7,20 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 7 bekleniyor)
+**Aktif faz:** — (test turu 8 bekleniyor)
 **Son güncelleme:** 2026-09-06
-**Sonraki adım:** Kullanıcı yedinci test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/45-verify.md` içinde: efekt ekleme/sıralama, yeni efektlerin sesi,
-düzeltilen yedi hata. ChatMix tekerinin yönü hâlâ kullanıcının bir kez çevirmesini
-bekliyor. Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
+**Sonraki adım:** Kullanıcı sekizinci test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/50-verify.md` içinde: ekolayzer alanları, filtre sıfırlama, profil
+pencereleri. ChatMix tekerinin yönü hâlâ kullanıcının bir kez çevirmesini bekliyor.
+Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
+
+> **Test turu 7 (2026-09-06).** Bir istek (filtre başına sıfırlama) ve yedi hata.
+> Hataların çoğu **iki** ortak kökten çıktı: `SonarComboBox` bağladığı `currentValue`'ya
+> yazıyordu (favorilerden profil seçmek dropdown'ı güncellemiyor, bir bandın filtre tipi
+> bütün bandlarda görünüyordu) ve `SonarNumberField` Enter'da odağı bırakmıyordu
+> (ekolayzerde değerlerin bandlar arasında karışması). Üçüncü kök: reddedilen D-Bus
+> çağrıları sessizce yutuluyordu, bu yüzden "aynı adlı profil eklenmedi" uyarısı hiç
+> görünmüyordu.
 
 > **Test turu 6 (2026-09-06).** İki istek, yedi hata. Hataların **üçü tek satırdı**:
 > `Main.qml`'de `SettingsDialog { bridge: bridge }` — QML'de sağdaki ad bileşenin kendi
@@ -105,14 +113,19 @@ bekliyor. Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
 | 42 | [Efekt zinciri dinamikleşiyor](42-effect-chain.md) | 🟢 Tamamlandı |
 | 43 | [Efekt kataloğu](43-effects.md) | 🟢 Tamamlandı |
 | 44 | [FX sayfası yeniden](44-fx-page.md) | 🟢 Tamamlandı |
-| 45 | [Doğrulama ve dokümantasyon](45-verify.md) | 🟡 Ekran testleri kullanıcıda |
-| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | ⚪ Bekliyor (test turu 6'dan sonra) |
+| 45 | [Doğrulama ve dokümantasyon](45-verify.md) | 🟢 Tamamlandı |
+| 46 | [Bağlama ve giriş onarımı](46-input-fixes.md) | 🟢 Tamamlandı |
+| 47 | [Hatalar görünür olsun](47-visible-errors.md) | 🟢 Tamamlandı |
+| 48 | [Dosya pencereleri](48-file-dialogs.md) | 🟢 Tamamlandı |
+| 49 | [Filtre başına sıfırlama](49-effect-reset.md) | 🟢 Tamamlandı |
+| 50 | [Yanlış alarm ve doğrulama](50-verify.md) | 🟡 Ekran testleri kullanıcıda |
+| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | ⚪ Bekliyor (test turu 7'den sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 998 test geçiyor (2 atlanıyor), `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (62 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+**Test durumu:** 1026 test geçiyor (2 atlanıyor), `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (63 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Daemon açılışta **kanal kurmuyor**: kurulum kullanıcının onayına
 bağlı (`Provision`). Zincir profilin efekt listesinden kuruluyor; katalogda **16 efekt**. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
 başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi
@@ -319,6 +332,16 @@ Hepsi 1 kHz sinüs basılıp çıkış kaydedilerek, numpy ile ölçüldü — k
 * **Ölçüm maliyeti %3–5** (hedef %2'ydi, tutturulamadı). Yalnızca mikser açıkken oluşuyor;
   abone yokken sıfır süreç. Çözüm yolu backlog'da.
 * Peak-hold canlı doğrulandı: 1.5 s tutup 20 dB/s düşüyor.
+
+### QML'in üç sessiz tuzağı
+
+Hiçbiri hata vermiyor; arayüz sessizce yanlış çalışıyor. Üçü de `tests/test_qml.py`'de
+kurala bağlandı, çünkü üçüne de birden fazla kez düşüldü.
+
+* **Bağlı bir özelliğe yazmak** bağlamayı kalıcı olarak koparır. `SonarFader` (turu 3),
+  `SonarComboBox` (turu 7). Doğrusu: sinyal yayınla, değeri sahibi güncellesin.
+* **`x: x` biçiminde atama** nesnenin kendi (tanımsız) özelliğine çözülür (turu 6).
+* **Fonksiyon çağrıları binding'i tazelemez**; yalnızca özellik okumaları izlenir.
 
 ### Faz 7'de yakalanan PySide6 tuzakları
 

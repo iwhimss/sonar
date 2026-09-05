@@ -686,6 +686,33 @@ class SonarApi:
         profile.effects = remaining
         self._structural({"kind": "effect_moved", "target": target, "slot": slot})
 
+    def reset_effect(self, target: str, slot: str) -> None:
+        """Bir efektin parametrelerini tanımdaki varsayılana döndürür.
+
+        **Canlı**: zincir değişmiyor, yalnızca parametre yazımı — ses kesintisi yok.
+        Efektin açık/kapalı olması da değişmiyor; kullanıcı "sıfırla" derken kapatmayı
+        değil, ayarları geri almayı kastediyor.
+
+        Ekolayzerde varsayılan "düz": tüm bandların kazancı 0 dB, tipi tepe, Q band
+        sayısına göre hesaplanan değer, ön kazanç 0 dB. **Band sayısı korunuyor** —
+        eğriye sağ tıklayarak eklenen noktalar silinmiyor (kullanıcı kararı).
+        """
+        profile = self._editable(target)
+        effect = self._slot(target, profile, slot)
+        if effect.kind is FilterStage.EQ:
+            eq = profile.eq
+            eq.preamp_db = 0.0
+            q = default_band_q(eq.band_count)
+            for band in eq.bands:
+                band.gain_db = 0.0
+                band.band_type = EqBandType.PEAK
+                band.q = q
+                band.slope = 0
+                band.enabled = True
+        else:
+            effect.params = dict(DEFAULT_FILTER_PARAMS.get(effect.kind, {}))
+        self._live_target(target, {"kind": "effect_reset", "target": target, "slot": slot})
+
     def list_effects(self, target: str) -> list[dict]:
         """Hedefin zincirindeki efektler, sinyal sırasıyla."""
         profile = self._editable(target)

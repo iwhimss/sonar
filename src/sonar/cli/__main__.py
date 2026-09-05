@@ -397,6 +397,10 @@ def _cmd_effect(client: Client, args) -> int:
         client.call("RemoveEffect", args.target, args.value)
         print(i18n.t("cli.effect.removed", slot=args.value))
         return 0
+    if args.action == "reset":
+        client.call("ResetEffect", args.target, args.value)
+        print(i18n.t("cli.effect.reset", slot=args.value))
+        return 0
     if args.index is None:
         raise SystemExit(i18n.t("cli.effect.move_usage"))
     client.call("MoveEffect", args.target, args.value, args.index)
@@ -733,7 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("state", choices=["on", "off"])
 
     p = sub.add_parser("effect", help=i18n.t("cli.help.effect"))
-    p.add_argument("action", choices=("list", "add", "remove", "move"))
+    p.add_argument("action", choices=("list", "add", "remove", "move", "reset"))
     p.add_argument("target")
     p.add_argument("value", nargs="?", default="", help=i18n.t("cli.help.effect_value"))
     p.add_argument("--index", type=int, help=i18n.t("cli.help.effect_index"))

@@ -17,10 +17,14 @@ SonarPanel {
     //: sürükleme mantığı listeye ait, panele değil.
     property bool movable: false
     property bool removable: false
+    //: Ayarları varsayılana döndüren ↺ düğmesi. Mikserdeki fader sıfırlamasıyla aynı
+    //: ikon ve aynı davranış.
+    property bool resettable: false
     readonly property alias grip: gripArea
     default property alias body: holder.data
     signal toggled(bool value)
     signal removeRequested()
+    signal resetRequested()
 
     Column {
         anchors.fill: parent
@@ -34,7 +38,7 @@ SonarPanel {
             Row {
                 id: headerRow
                 anchors.left: parent.left
-                anchors.right: removeButton.left
+                anchors.right: resetButton.left
                 anchors.rightMargin: Theme.s2
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.s2
@@ -108,10 +112,26 @@ SonarPanel {
             }
 
             SonarIconButton {
+                id: resetButton
+                visible: root.resettable
+                width: visible ? 20 : 0
+                icon: "reset"
+                tooltip: I18n.t("fx.reset_effect")
+                accent: root.accent
+                implicitWidth: 20
+                implicitHeight: 18
+                anchors.right: removeButton.left
+                anchors.rightMargin: root.removable ? Theme.s1 : 0
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: root.resetRequested()
+            }
+
+            SonarIconButton {
                 id: removeButton
                 visible: root.removable
                 width: visible ? 20 : 0
                 icon: "close"
+                tooltip: I18n.t("fx.remove_effect")
                 accent: Theme.danger
                 implicitWidth: 20
                 implicitHeight: 18

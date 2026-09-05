@@ -51,6 +51,17 @@ HEALTH_INTERVAL = 2.0
 #: verilir. Sessizce susan bir kanal, kullanıcının bulabileceği en zor hata.
 LINK_FAILURE_LIMIT = 3
 
+#: Yeniden kurulumdan sonra bağlantıların yerleşmesi için tanınan süre.
+#:
+#: Yeniden kurulumda **tüm** linkler bir an için yok oluyor; node'lar conf'un kurduğu
+#: sırayla, birbirinden bağımsız anlarda doğuyor. Bekçi bu aralıkta üst üste "eksik"
+#: ölçüyor ve eşiği aşınca kullanıcıya "ses yolu koptu", ardından da "ses yolu onarıldı"
+#: diyor. Test turu 7'de kullanıcı efekt ekledikçe bu yanlış alarmı aldı.
+#:
+#: Pencere yalnızca **sayacı** susturuyor: gerçekten kopan bir bağlantı pencere
+#: dolduktan sonra yine bildiriliyor.
+REBUILD_SETTLE_SECONDS = 2.5
+
 #: Yeniden inşadan hemen sonraki uzlaştırma denemesi. Node'lar doğmuş görünse de
 #: portları biraz sonra beliriyor; ilk turda `pw-link` 255 dönebiliyor.
 REBUILD_LINK_ATTEMPTS = 5
@@ -215,6 +226,8 @@ class Supervisor:
         #: Bağlantı bekçisinin son sonucu: eksik kalan (çıkış, giriş) çiftleri.
         self._broken_links: list[tuple[str, str]] = []
         self._link_failures = 0
+        #: Yeniden kurulumun yerleşme penceresinin bittiği an (`time.monotonic`).
+        self._settle_until = 0.0
         #: Bağlantı yolu bozulduğunda/düzeldiğinde çağrılır: `(eksik çiftler)`.
         self.on_links_changed: list[Callable[[list[tuple[str, str]]], None]] = []
         self._link_timer: threading.Timer | None = None
@@ -328,6 +341,11 @@ class Supervisor:
 
     def _rebuild(self, text: str, cfg: SonarConfig) -> None:
         self._stopping.clear()  # önceki bir stop() sonrası yeniden kurulabilmeli
+        # Yerleşme penceresini **baştan** aç: linkler birazdan hep birden yok olacak ve
+        # bekçinin bunu gerçek bir kopukluk sanması kullanıcıya yanlış alarm demek.
+        with self._lock:
+            self._link_failures = 0
+            self._settle_until = time.monotonic() + REBUILD_SETTLE_SECONDS
         self.paths.graph_conf.parent.mkdir(parents=True, exist_ok=True)
         config_mod.write_atomic(self.paths.graph_conf, text)
 
@@ -417,14 +435,21 @@ class Supervisor:
     def _note_links(self, missing: list[tuple[str, str]]) -> None:
         """Bekçinin sonucunu kaydeder; durum değişmişse dinleyicileri uyarır."""
         with self._lock:
+            settling = time.monotonic() < self._settle_until
             was_broken = bool(self._broken_links)
             self._broken_links = list(missing)
-            if missing:
+            if missing and not settling:
                 self._link_failures += 1
+                failures = self._link_failures
+            elif missing:
+                # Yeniden kurulum yerleşiyor: eksiklik beklenen, sayaca yazmıyoruz.
                 failures = self._link_failures
             else:
                 self._link_failures = 0
                 failures = 0
+
+        if settling:
+            return
 
         if missing and failures == LINK_FAILURE_LIMIT:
             log.error(

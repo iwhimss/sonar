@@ -882,6 +882,12 @@ class SonarBridge(QObject):
         self._call("RemoveEffect", target, slot)
         self.refresh()
 
+    @Slot(str, str)
+    def resetEffect(self, target: str, slot: str) -> None:
+        """Efektin ayarlarını varsayılana döndürür. Canlı: ses kesilmiyor."""
+        self._call("ResetEffect", target, slot)
+        self.refresh()
+
     @Slot(str, str, int)
     def moveEffect(self, target: str, slot: str, index: int) -> None:
         self._call("MoveEffect", target, slot, index)

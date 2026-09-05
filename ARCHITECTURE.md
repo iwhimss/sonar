@@ -222,6 +222,26 @@ Bu ayrım için yeni bir mekanizma yok: `supervisor.reconcile` "üretilen conf m
 mi" diye bakıyor ve efekt listesi conf'un içinde. Aç/kapa bypass portuna yazıyor, o da
 conf'u değiştirmiyor.
 
+### Neden efekt eklemek ~200 ms sessizlik yaratıyor
+
+DSP, PipeWire'ın `libpipewire-module-filter-chain` modülünün **içinde** çalışıyor ve o
+modülün grafı çalışırken değiştirilemiyor: node eklemek/çıkarmak modülü yeniden yüklemeyi,
+yani `pipewire -c graph.conf` sürecini yeniden başlatmayı gerektiriyor.
+
+EasyEffects'te bu yok, çünkü eklentileri **kendi** sürecinde barındırıyor ve zinciri
+kendisi yönetiyor. Sonar'da DSP'yi PipeWire'ın taşımasının bedeli bu; karşılığında arayüz
+kapalıyken de ses düzeni ayakta kalıyor ve CPU'yu tek bir süreç harcıyor.
+
+Alternatif ölçüldü (Faz 3): kanal başına ayrı `pipewire -c` süreci kesintiyi yalnızca
+değişen kanala indirirdi ama ~18 süreç ve ~150 MB RSS demek (bugün tek süreç, ~15 MB).
+Kullanıcı test turu 7'de takılmanın kalmasını seçti.
+
+**Yeniden kurulum yanlış alarm üretmemeli.** Kurulum sırasında tüm `pw-link` bağlantıları
+bir an yok oluyor ve bağlantı bekçisi bunu gerçek bir kopukluk sanıp kullanıcıya "ses yolu
+koptu / onarıldı" diyordu. `supervisor.REBUILD_SETTLE_SECONDS` kadar bir yerleşme
+penceresi bu sayacı susturuyor; pencere dolduktan sonra gerçekten kopan bir bağlantı yine
+bildiriliyor.
+
 ### Katalog (16 efekt)
 
 | Efekt | Eklenti | Bypass |
@@ -465,7 +485,7 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (62)
+### Metotlar (63)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
@@ -496,6 +516,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
 | `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
+| `ResetEffect` | `s target, s slot` | Efektin parametrelerini varsayılana döndürür. **Canlı**. |
 | `RemoveEffect` | `s target, s slot` | Efekti zincirden çıkarır. **Yapısal**. |
 | `RemoveEqBand` | `s target, i index` | Bir EQ bandını siler. **Canlı**. |
 | `RemoveRule` | `s match_key, s pattern, s direction` | Kuralı kaldırır. `direction` boşsa desenin her iki yönü de silinir. |

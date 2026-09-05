@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from sonar.core.model import FilterStage
+from sonar.core.model import DEFAULT_FILTER_PARAMS, EqBandType, FilterStage
 from sonar.daemon.api import ApiError, SonarApi
 from sonar.engine import confgen
 from sonar.engine.pwstate import GraphState
@@ -1302,3 +1302,48 @@ def test_effect_kinds_drop_what_cannot_be_built(api, monkeypatch):
     assert "eq" in kinds
     # Boost ve Spatial PipeWire'ın kendi blokları: eklenti olmadan da kurulabiliyorlar.
     assert {"boost", "spatial"} <= set(kinds)
+
+
+def test_reset_effect_restores_the_defaults_without_rebuilding(api):
+    """Sıfırlama **canlı**: zincir değişmiyor, yalnızca parametre yazımı."""
+    slot = api.add_effect("game", "comp")
+    api.set_filter_param("game", slot, "ratio", 12.0)
+    api.set_filter_param("game", slot, "threshold_db", -3.0)
+    api.supervisor.calls.clear()
+
+    api.reset_effect("game", slot)
+
+    state = api.profile("game").state(slot)
+    assert state.params["ratio"] == DEFAULT_FILTER_PARAMS[FilterStage.COMP]["ratio"]
+    assert state.params["threshold_db"] == DEFAULT_FILTER_PARAMS[FilterStage.COMP]["threshold_db"]
+    assert "reconcile" not in api.supervisor.kinds, "sıfırlama grafı yeniden kurmamalı"
+
+
+def test_reset_effect_keeps_the_effect_enabled(api):
+    """"Sıfırla" ayarları geri alır, efekti kapatmaz."""
+    slot = api.add_effect("game", "comp")
+    api.reset_effect("game", slot)
+    assert api.profile("game").state(slot).enabled is True
+
+
+def test_resetting_the_equalizer_flattens_it_but_keeps_the_bands(api):
+    """Kullanıcı kararı: eğriye sağ tıkla eklenen noktalar silinmesin."""
+    api.set_eq_preamp("game", -4.0)
+    api.set_eq_band("game", 2, "gain_db", 8.0)
+    api.set_eq_band("game", 3, "band_type", "high_shelf")
+    api.add_eq_band("game", 5000.0, 3.0)
+    before = len(api.profile("game").eq.bands)
+
+    api.reset_effect("game", "eq")
+
+    eq = api.profile("game").eq
+    assert len(eq.bands) == before, "band sayısı korunmalı"
+    assert eq.preamp_db == 0.0
+    assert all(band.gain_db == 0.0 for band in eq.bands)
+    assert all(band.band_type is EqBandType.PEAK for band in eq.bands)
+
+
+def test_reset_effect_rejects_an_unknown_slot(api):
+    with pytest.raises(ApiError) as excinfo:
+        api.reset_effect("game", "yok")
+    assert excinfo.value.code == "unknown_stage"

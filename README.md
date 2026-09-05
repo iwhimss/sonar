@@ -236,9 +236,13 @@ sürükleyerek sıralarsın. Sinyal listedeki sırayla akar.
 
 EasyEffects'in kullandığı LSP, Calf ve Zam eklentileriyle — yani aynı DSP, kanal başına.
 
+Her panelin başlığında **↺** var: o efektin tüm ayarlarını varsayılana döndürür. Ekolayzerde
+bandları düzler, sayılarını korur.
+
 **Ne kesinti yaratır:** efekt eklemek, silmek ve sıralamak ses grafını yeniden kurar
-(~200 ms sessizlik). Efekti açıp kapatmak, parametre çevirmek ve aynı efekt listesine
-sahip profiller arasında geçmek **kesintisiz**.
+(~200 ms sessizlik) — nedeni `ARCHITECTURE.md`'de. Efekti açıp kapatmak, parametre
+çevirmek, **sıfırlamak** ve aynı efekt listesine sahip profiller arasında geçmek
+**kesintisiz**.
 
 Zincire girmeyenler: Convolver (IR dosyası desteği henüz yok), çok bandlı kompresör/gate,
 Auto Gain, tek bandlı Filtre. Nedenleri `ARCHITECTURE.md`'de.

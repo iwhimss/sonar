@@ -16,8 +16,10 @@ SonarPanel {
     //: Zincirdeki diğer paneller gibi sürüklenip silinebilsin diye (şema 7).
     property bool movable: false
     property bool removable: false
+    property bool resettable: false
     readonly property alias grip: eqGrip
     signal removeRequested()
+    signal resetRequested()
 
     readonly property var eq: profile.eq !== undefined ? profile.eq : ({})
     readonly property int bandCount: eq.band_count !== undefined ? eq.band_count : 10
@@ -106,14 +108,27 @@ SonarPanel {
             /* Sil düğmesi sağa yaslı: başlık satırı bir `Row` olduğu için araya esnek
                bir boşluk konuyor. */
             Item {
-                width: Math.max(0, parent.width - eqRemove.width - x - Theme.s2)
+                width: Math.max(0, parent.width - eqRemove.width - eqReset.width - x - Theme.s2)
                 height: 1
+            }
+            SonarIconButton {
+                id: eqReset
+                visible: root.resettable
+                width: visible ? 20 : 0
+                icon: "reset"
+                tooltip: I18n.t("fx.reset_effect")
+                accent: root.accent
+                implicitWidth: 20
+                implicitHeight: 18
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: root.resetRequested()
             }
             SonarIconButton {
                 id: eqRemove
                 visible: root.removable
                 width: visible ? 20 : 0
                 icon: "close"
+                tooltip: I18n.t("fx.remove_effect")
                 accent: Theme.danger
                 implicitWidth: 20
                 implicitHeight: 18

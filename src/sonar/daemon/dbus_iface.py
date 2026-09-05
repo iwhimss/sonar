@@ -209,6 +209,11 @@ class SonarDBusInterface(QObject):
         """Efekti listede taşır — sinyal listedeki sırayla akıyor. **Yapısal**."""
         return reply(lambda: self.api.move_effect(target, slot, index))
 
+    @Slot(str, str, result=str)
+    def ResetEffect(self, target: str, slot: str) -> str:
+        """Bir efektin parametrelerini varsayılana döndürür. **Canlı**."""
+        return reply(lambda: self.api.reset_effect(target, slot))
+
     @Slot(str, result=str)
     def ListEffects(self, target: str) -> str:
         """Hedefin zincirindeki efektler, sinyal sırasıyla."""

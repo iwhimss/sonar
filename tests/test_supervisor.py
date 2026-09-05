@@ -469,11 +469,41 @@ def test_link_keeper_reports_what_it_cannot_fix(supervisor, config_store):
     supervisor._link_ok["value"] = False  # bağlantı kurulamıyor
     lost = confgen.send_links(config)[0]
     supervisor._linked.remove(lost)
+    # Yeniden kurulumun yerleşme penceresi kapansın: orada eksiklik **beklenen** ve
+    # bilinçli olarak sayılmıyor (bkz. `REBUILD_SETTLE_SECONDS`).
+    supervisor._settle_until = 0.0
     for _ in range(3):
         supervisor.reconcile_links(config)
 
     assert supervisor.broken_links == [lost]
     assert seen == [[lost]]  # eşik aşılınca **bir kez** haber verilir
+    supervisor.stop(restore_default_sink=False)
+
+
+def test_a_rebuild_does_not_raise_a_false_alarm(supervisor, config_store):
+    """Yeniden kurulumda tüm linkler bir an yok olur; bu bir kopukluk değil.
+
+    Test turu 7: kullanıcı efekt ekledikçe "ses yolu koptu" ve ardından "Ses yolu
+    onarıldı." bildirimi alıyordu. Bekçi yeniden kurulumun geçici eksikliğini gerçek bir
+    kopukluk sanıyordu.
+    """
+    config = config_store.load()
+    supervisor.reconcile(config)
+    seen: list[list[tuple[str, str]]] = []
+    supervisor.on_links_changed.append(seen.append)
+
+    supervisor._link_ok["value"] = False
+    lost = confgen.send_links(config)[0]
+    supervisor._linked.remove(lost)
+    for _ in range(5):  # eşiğin iki katı
+        supervisor.reconcile_links(config)
+
+    assert seen == [], "yerleşme penceresinde uyarı çıkmamalı"
+    # Pencere dolunca gerçek bir kopukluk yine bildirilir.
+    supervisor._settle_until = 0.0
+    for _ in range(3):
+        supervisor.reconcile_links(config)
+    assert seen == [[lost]]
     supervisor.stop(restore_default_sink=False)
 
 
