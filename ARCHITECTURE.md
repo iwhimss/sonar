@@ -324,12 +324,58 @@ uygulanması garanti edilir.
 
 ---
 
+## Kurulum durumu ve dil
+
+İki karar bu iki başlıkta toplanıyor; ikisi de `config.toml`'un `[settings]` bloğunda.
+
+### `provisioned` — sanal kanallar kuruldu mu
+
+`false` iken daemon D-Bus'ta ayakta durur ama **PipeWire'a hiç dokunmaz**: graf kurulmaz,
+varsayılan çıkış devralınmaz, kulaklık tekeri okunmaz. Graf izleyicisi yine de çalışır;
+salt okunurdur ve cihaz listesi karşılama ekranında da lazımdır.
+
+Kurulum `api.provision()` ile olur (arayüzdeki düğme veya `sonar-cli install`), kaldırma
+`api.deprovision()` ile. Şema 5 → 6 göçü diskte `config.toml` bulunan kullanıcıları
+"kurulu" sayar: onların grafı zaten ayaktadır ve bir güncelleme kanallarını söktürmemeli.
+
+Daemon SIGTERM'de grafı zaten düşürüyor; `deprovision` ondan farklı olarak **kalıcı**dır —
+`graph.conf` silinir ve daemon bir daha kurmaz.
+
+### `language` — arayüz ve mesaj dili
+
+Metinler `src/sonar/i18n/<kod>.json` altında düz anahtar–metin sözlükleri. Üç süreç de
+(`daemon`, `sonar-cli`, GUI) `sonar.core.i18n` üzerinden aynı katalogu okur; böylece
+daemon'ın ürettiği hata metniyle arayüzün gösterdiği metin aynı kaynaktan gelir.
+
+Kim nereden okuyor:
+
+| Süreç | Kaynak | Neden |
+|---|---|---|
+| daemon | `config.toml` | Hata mesajlarını o üretiyor |
+| `sonar-cli` | `config.toml` (diskten, açılışta) | `--help` ve "daemon'a ulaşılamadı" bağlantı kurulmadan basılıyor |
+| GUI | `ui.json`, sonra daemon'ın değeri | "Servis çalışmıyor" paneli ve karşılama ekranının ilk sayfası daemon olmadan çiziliyor |
+
+Dil değişimi anında diske yazılır (gecikmeli kaydetme yetmiyordu: dil değiştirdikten
+hemen sonra çalışan bir `sonar-cli` eski dili okuyordu).
+
+**Adlar çevrilmez.** `channel.name` / `bus.name` aynı anda PipeWire cihaz açıklamasıdır
+(`confgen` `node.description`'ı ondan üretir); dile göre değişseydi OBS'te seçili
+`Sonar Stream Mix` her dil değişiminde kaybolurdu. Çeviri yalnızca **gösterilen** ada
+uygulanır (`core/names.py`) ve kullanıcı adı değiştirmişse hiç uygulanmaz.
+
+QML tarafında tazeleme iki katmanlı: `ui/I18n.qml` singleton'ı `t()` içinde kendi
+`language` özelliğini okuyor, o okuma binding'e bağımlılık olarak yazılıyor. Python
+tarafında bir öznitelik okumak QML'de hiçbir bağımlılık kurmaz — dil değişince metinler
+eski kalırdı.
+
+---
+
 ## Yapılandırma
 
 ```
 ~/.config/sonar/
-├── config.toml                  # kanallar, fader'lar, kurallar, ayarlar
-├── ui.json                      # pencere durumu
+├── config.toml                  # kanallar, fader'lar, kurallar, ayarlar (dil, kurulum)
+├── ui.json                      # pencere durumu + dil (daemon'dan bağımsız kopya)
 └── profiles/
     ├── game/
     │   ├── Default.json
@@ -380,7 +426,7 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (51)
+### Metotlar (57)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
@@ -388,6 +434,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `AddEqBand` | `s target, d freq, d gain_db` | Verilen frekansa yeni bir EQ bandı ekler. Sonuç: bandın indeksi. **Canlı**. |
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
+| `Deprovision` | `b purge_settings` | Sanal kanalları söker, varsayılan cihazı geri verir. `purge_settings` → yapılandırma dizini de silinir. **Yapısal**. |
 | `Diagnose` | `—` | Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar. |
 | `ExportProfile` | `s target, s name, b autoeq` | Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde. |
 | `GetDevices` | `—` | Fiziksel ses cihazları (Sonar'ın kendi sanal node'ları hariç). |
@@ -402,6 +449,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `LoadProfile` | `s target, s name` | Profili veya gömülü preset'i yükler. Anında ve kesintisiz. |
 | `MoveStream` | `i stream_id, s channel, b remember` | `remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir. |
 | `NewProfile` | `s target, s name` | Sıfırdan düz bir profil oluşturur ve ona geçer. |
+| `Provision` | `—` | Sanal kanalları kurar ve ne kurulduğunu döndürür. **Yapısal**. |
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
 | `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
@@ -433,7 +481,11 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `SetMicVolume` | `s chain, d value` | Mikrofon zincirinin çıkış seviyesi. |
 | `SetProfileFavorite` | `s target, s name, b favorite` | Profili favorilere ekler veya çıkarır. Sayı sınırı yok. |
 | `SetRule` | `s match_key, s pattern, s channel, b is_regex, s direction` | Uygulama → hedef kuralı ekler veya günceller. |
+| `SetLanguage` | `s code` | Arayüz ve mesaj dili (`tr`/`en`). Grafa dokunmaz. |
 | `SetTakeOverDefaultSink` | `b enabled` | Sistem varsayılan çıkışını Sonar'a al (varsayılan kapalı). |
+| `SetChatMixInvert` | `b enabled` | Donanım ChatMix tekerinin yönünü ters çevirir. Yalnızca teker okumasını etkiler. |
+| `SetupSummary` | `—` | Kurulacak (veya kurulmuş) sanal cihazların listesi. Kurulumdan önce de çağrılabilir. |
+| `StreamSetup` | `—` | Yayın kurulumunun canlı tanısı: miksi kim dinliyor, mikrofon yayında mı, ne ters gitmiş. |
 | `SubscribeMeters` | `b enabled` | Seviye ölçümünü açar/kapatır. Sonuç: kalan abone sayısı. |
 
 ### Sinyaller

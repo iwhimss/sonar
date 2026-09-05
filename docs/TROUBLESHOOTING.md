@@ -141,6 +141,66 @@ yeniden inşa gerçekten olmuştur ve başka bir sebep vardır.
 Yeniden inşa gerektiren işlemler yalnızca şunlar: kanal/çıkış ekleme-silme, band sayısı,
 kanal başına OBS kaynağı ve Spatial Audio.
 
+## Kanallar hiç görünmüyor, karşılama ekranı açılıyor
+
+Sanal kanallar henüz **kurulmadı**. Sonar ilk açılışta PipeWire'a hiçbir şey yazmaz;
+kurulum kullanıcının onayına bağlıdır.
+
+Karşılama akışının son sayfasındaki **Sanal kanalları kur** düğmesine basın. Terminalden:
+
+```bash
+sonar-cli install
+```
+
+Kurulu olup olmadığını `sonar-cli status` da söyler: kurulu değilse çıktının ilk satırı
+bunu yazar.
+
+Bu ekran daha önce kurmuş olmanıza rağmen çıkıyorsa yapılandırma silinmiş olabilir
+(`~/.config/sonar/config.toml`). Kurmak zarar vermez; kanallar varsayılan ayarlarla
+yeniden oluşur.
+
+---
+
+## Kaldırdım ama sanal cihazlar hâlâ duruyor
+
+`sonar-cli uninstall` (veya **Ayarlar → Sonar'ı kaldır**) graf sürecini durdurur.
+Cihazlar hâlâ görünüyorsa:
+
+```bash
+pw-dump | grep '"node.name": "sonar_'     # gerçekten kaldı mı
+pgrep -af 'pipewire -c'                    # graf süreci ayakta mı
+```
+
+Süreç ayakta kalmışsa daemon'ı da durdurun (`systemctl --user stop sonar-daemon` veya
+`./scripts/sonar-dev stop`). İnatçı bir kalıntı için son çare:
+
+```bash
+systemctl --user restart pipewire
+```
+
+Kaldırma **ayarları silmez**; `~/.config/sonar/` yerinde durur ve yeniden kurmak tek
+tıktır. Onları da silmek için kaldırma penceresindeki kutucuğu işaretleyin veya
+`sonar-cli uninstall --purge` kullanın.
+
+udev kuralı, systemd unit'i ve paketin kendisi root'a veya paket yöneticisine ait; Sonar
+onlara dokunmaz, kaldırma sonrası komutlarını yazar.
+
+---
+
+## Arayüz yarı Türkçe yarı İngilizce
+
+Bu bir hata; **Ayarlar → Dil**'den seçtiğiniz dil arayüzün tamamını kapsamalı. Kalan bir
+metin varsa hangi ekranda olduğunu bildirin.
+
+Kanal ve cihaz adları bilinçli olarak dilden bağımsızdır: `Sonar Stream Mix` her dilde
+aynı kalır ki OBS'te seçili aygıt kaybolmasın. Arayüzdeki "Oyun / Sohbet / Medya"
+yalnızca **gösterilen** addır. Kanalı kendiniz adlandırdıysanız sizin adınız her dilde
+geçerli olur.
+
+Ham anahtar metni görüyorsanız (`mixer.chatmix` gibi) çeviri eksik demektir; bildirin.
+
+---
+
 ## Sanal cihazları göremiyorum
 
 Önce gerçekten var mı bakın:

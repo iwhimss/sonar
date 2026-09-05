@@ -7,11 +7,21 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 5 bekleniyor)
+**Aktif faz:** — (test turu 6 bekleniyor)
 **Son güncelleme:** 2026-09-05
-**Sonraki adım:** Kullanıcı beşinci test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/36-verify.md` içinde; ChatMix tekerinin yönü kullanıcının bir kez
-çevirmesini bekliyor. Sonra **Faz 11 — Paketleme**.
+**Sonraki adım:** Kullanıcı altıncı test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/40-verify.md` içinde: karşılama akışı, kaldırıcı, iki dil. ChatMix
+tekerinin yönü hâlâ kullanıcının bir kez çevirmesini bekliyor. Sonra **Faz 11 —
+Paketleme**.
+
+> **Test turu 5 (2026-09-05).** İki istek geldi, ikisi de **ilk temas** ile ilgili:
+> kurulum bir adım olsun (tanıtım ekranı + "sanal kanalları kur" düğmesi + kaldırıcı)
+> ve arayüz tek dilde olsun (Türkçe/İngilizce, varsayılan Türkçe). Bildirilen hata yok.
+> Ölçülen kök nedenler: `SonarApi.start()` koşulsuz `reconcile()` çağırıyordu — kurulum
+> ile ilk çalıştırma aynı şeydi ve onay hiç sorulmuyordu; çeviri altyapısı hiç yoktu
+> (tek bir `qsTr` bile), metinler dört ayrı yerde gömülüydü ve `Game/Chat/Media/Aux`,
+> `Noise Gate`, `Compressor`, `Flat`, `Bass Boost` gibi adlar Türkçe arayüzün içinde
+> İngilizce duruyordu.
 
 > **Test turu 4 (2026-09-05).** Tek yeni özellik istendi (fader sıfırlama + sayısal
 > giriş); geri kalan her şey **OBS** etrafında toplandı. Ölçüldü: OBS aslında doğru
@@ -74,15 +84,20 @@ maddeler `.plan/36-verify.md` içinde; ChatMix tekerinin yönü kullanıcının 
 | 33 | [OBS görünürlüğü ve yayın kurulumu](33-obs.md) | 🟢 Tamamlandı |
 | 34 | [Fader sıfırlama ve sayısal giriş](34-fader-input.md) | 🟢 Tamamlandı |
 | 35 | [ChatMix teker protokolü](35-chatmix-wheel.md) | 🟢 Tamamlandı |
-| 36 | [Doğrulama ve dokümantasyon](36-verify.md) | 🟡 Ekran testleri kullanıcıda |
-| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 4'ten sonra) |
+| 36 | [Doğrulama ve dokümantasyon](36-verify.md) | 🟢 Tamamlandı |
+| 37 | [Çeviri altyapısı](37-i18n.md) | 🟢 Tamamlandı |
+| 38 | [Metinlerin çevrilmesi](38-strings.md) | 🟢 Tamamlandı |
+| 39 | [Kurulum sihirbazı ve kaldırıcı](39-onboarding.md) | 🟢 Tamamlandı |
+| 40 | [Doğrulama ve dokümantasyon](40-verify.md) | 🟡 Ekran testleri kullanıcıda |
+| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 5'ten sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 839 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (53 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
-tam kontrol çalışıyor. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
+**Test durumu:** 907 test geçiyor, `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (57 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+tam kontrol çalışıyor. Daemon açılışta **kanal kurmuyor**: kurulum kullanıcının onayına
+bağlı (`Provision`). Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
 başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi
 kesintisiz.
 
@@ -116,6 +131,8 @@ Tasarım referansı: `docs/reference/steelseries-gg/` (SteelSeries GG ekran gör
 | Yayın düzeni | OBS'te **Masaüstü Sesi = `Sonar Stream Mix`**, mikrofon miksin içinde | Kullanıcının Windows'taki alışkanlığının aynısı; tek kaynak, tek karar. Kanal başına ayrı track isteyen açabiliyor |
 | v1 kapsamı | AI gürültü engelleme (DeepFilterNet) + ChatMix | Global kısayollar ve otomatik profil değişimi → v1.1+ |
 | Lisans | GPL-3.0 | LV2 eklenti ekosistemiyle uyumlu |
+| Kurulum | Karşılama ekranındaki düğme (`provisioned` bayrağı) | Daemon açılır açılmaz PipeWire'a yazmak, kullanıcıya sormadan sistemin sesini değiştirmek demekti |
+| Dil | JSON katalog, Türkçe + İngilizce, varsayılan Türkçe | Derleme adımı yok; daemon ve CLI de aynı katalogu okuyor. Kanal/cihaz **adları** çevrilmiyor: OBS'teki seçim kırılmasın |
 
 ---
 

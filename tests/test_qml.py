@@ -151,3 +151,47 @@ def test_value_field_parses_and_never_writes_its_own_value():
     # Bileşen kendi değerine dokunmadı: bağlama sağlam.
     assert "VALUE 1.0" in out, out
     assert "DISPLAY 100%" in out, out
+
+
+#: Kullanıcıya görünen metin taşıyan QML özellikleri.
+TEXT_PROPERTIES = ("text", "title", "label", "hint", "note", "placeholder")
+
+#: Çeviri gerektirmeyen metinler: ürün adı, simgeler, birimler, komutlar, biçim ekleri.
+ALLOWED_LITERALS = frozenset(
+    {
+        "", "Sonar", "Q", "MASTER", "ChatMix", "AutoEQ", "OBS",
+        "—", "·", "→", "←", "★", "✓", "▴", "▾", "■", "⚠", "＋", "%",
+        "dB", "ms", "Hz", ": 1", "IN", "OUT", "monospace",
+        "systemctl --user start sonar-daemon",
+        "±6 dB", "±15 dB", "±24 dB", "±36 dB",
+        "AutoEQ / EqualizerAPO (*.txt)", "EasyEffects (*.json)", "AutoEQ (*.txt)",
+    }
+)
+
+#: `text: "..."` biçiminde **tek** bir düz metin ataması. Birleştirme (`"a" + b`) veya
+#: `I18n.t(...)` içeren satırlar burada eşleşmiyor; onları ayrıca eliyoruz.
+LITERAL_ASSIGN = re.compile(
+    r"^\s*(?:readonly\s+)?(?:property\s+string\s+)?(" + "|".join(TEXT_PROPERTIES) + r")\s*:\s*"
+    r'"([^"]*)"\s*$'
+)
+
+
+@pytest.mark.parametrize("path", QML_FILES, ids=lambda p: p.name)
+def test_user_visible_text_goes_through_the_catalog(path):
+    """Kullanıcıya görünen çıplak metin kalmasın — "yuvarlatılmış köşe yok"un kardeşi.
+
+    Kullanıcının şikâyeti "yarısı İngilizce yarısı Türkçe"ydi; kural kendiliğinden
+    korunmazsa bir sonraki eklemede aynı yere geri dönülür.
+    """
+    offenders = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        match = LITERAL_ASSIGN.match(line)
+        if match is None:
+            continue
+        value = match.group(2)
+        if value in ALLOWED_LITERALS:
+            continue
+        offenders.append(f"{number}: {line.strip()}")
+    assert offenders == [], (
+        f"{path.name} içinde katalogdan geçmeyen kullanıcı metni var: {offenders}"
+    )

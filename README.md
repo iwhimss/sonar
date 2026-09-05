@@ -16,7 +16,7 @@ yamalama yaptırıyor. İkisinde de "kanal" kavramı ve kişisel/yayın miks ayr
 
 Sonar bunları veriyor:
 
-* **Kanallar** — Game, Chat, Media, Aux (+ istediğin kadarını ekle). Uygulamalar açıldıkları
+* **Kanallar** — Oyun, Sohbet, Medya, Diğer (+ istediğin kadarını ekle). Uygulamalar açıldıkları
   anda doğru kanala düşer.
 * **Çift miks** — her kanalın iki bağımsız fader'ı var: 🎧 kulaklık, 📡 yayın. Telifli
   müziği kendin duyarsın, yayında duyulmaz.
@@ -55,6 +55,22 @@ git clone https://github.com/iwhimss/sonar && cd sonar
 pip install --user .
 ```
 
+### İlk açılış
+
+Uygulamayı aç. Daemon çalışmıyorsa arayüz onu kendisi başlatır (D-Bus etkinleştirmesi;
+depodan çalıştırıyorsan ekrandaki **Servisi başlat** düğmesi).
+
+İlk açılışta kısa bir tanıtım gelir: dil seçimi, Sonar'ın ne yaptığı, hangi sanal
+cihazların oluşturulacağı ve **Sanal kanalları kur** düğmesi. Düğmeye basana kadar
+PipeWire'a hiçbir şey yazılmaz — sistemin sesi olduğu gibi kalır.
+
+Terminalden yapmak istersen aynı iş:
+
+```bash
+sonar-cli install       # sanal kanalları kur
+sonar-cli uninstall     # kaldır (ayarlar diskte kalır)
+```
+
 ### Kurmadan denemek
 
 Sisteme hiçbir şey kurmadan, depodan çalıştırabilirsin:
@@ -63,8 +79,8 @@ Sisteme hiçbir şey kurmadan, depodan çalıştırabilirsin:
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-./scripts/sonar-dev start     # daemon
-./scripts/sonar-dev gui       # arayüz
+./scripts/sonar-dev start     # daemon (kanal kurmaz)
+./scripts/sonar-dev gui       # arayüz — karşılama ekranı buradan
 ./scripts/sonar-dev status
 ./scripts/sonar-dev stop      # her şeyi durdur
 ```
@@ -89,6 +105,18 @@ Arayüzü aç:
 ```bash
 sonar
 ```
+
+### Dil
+
+Arayüz Türkçe ve İngilizce. Varsayılan Türkçe; **Ayarlar → Dil**'den anında değişir,
+uygulamayı yeniden başlatmak gerekmez.
+
+Kanal ve cihaz adları dilden **bağımsız**: OBS'te seçtiğin `Sonar Stream Mix` aygıtı dil
+değiştirdiğinde kaybolmaz ve bu belgedeki adlar her dilde geçerli kalır. Arayüzde
+gördüğün "Oyun / Sohbet / Medya" yalnızca gösterilen ad; kanalı kendin adlandırırsan
+senin adın her dilde geçerli olur.
+
+Terminalden: `sonar-cli lang en`
 
 ### Gereksinimler
 
@@ -256,16 +284,18 @@ karşılaştırır, doğmamış node'ları ve çakışan ses işleyicilerini sö
 
 ## Sonar'ı bırakırken
 
-Projeyi bir süre kullanmayacaksan hiçbir şey silmene gerek yok — tek komut her şeyi
-eski hâline döndürür:
+**Ayarlar → Sonar'ı kaldır** sanal kanalları söker, varsayılan ses cihazını geri verir ve
+sistemi Sonar hiç kurulmamış hâle döndürür. Uygulamalar bundan sonra doğrudan fiziksel
+cihazlara çalar. Ayarların ve profillerin diskte kalır; pencerede bir kutucukla onları da
+silebilirsin.
+
+Terminalden aynısı:
 
 ```bash
-./scripts/sonar-dev reset
+sonar-cli uninstall             # kanallar gider, ayarlar kalır
+sonar-cli uninstall --purge     # ayarlar ve profiller de silinir
+./scripts/sonar-dev reset       # depodan çalıştırıyorsan
 ```
-
-Ne yapar: daemon'ı durdurur, sanal cihazları söker, varsayılan çıkış/giriş cihazını
-geri verir ve geriye bir şey kalıp kalmadığını doğrular. Uygulamalar bundan sonra
-doğrudan fiziksel cihazlara çalar.
 
 **EasyEffects'i tekrar açabilirsin** — Sonar durduğu için çakışma kalmaz:
 
@@ -273,13 +303,16 @@ doğrudan fiziksel cihazlara çalar.
 systemctl --user start easyeffects
 ```
 
-Ayarların ve profillerin `~/.config/sonar/` altında durur; `./scripts/sonar-dev start`
-ile kaldığın yerden devam edersin. Tamamen silmek istersen o dizini kaldırman yeterli.
+Ayarların ve profillerin `~/.config/sonar/` altında durur; geri dönmek istediğinde
+arayüzü açıp yeniden kurman yeterli.
 
-Sistem servisi olarak kurduysan (`systemctl --user enable sonar-daemon`) bırakırken:
+Kaldırma penceresi geri kalanları da yazar — bunlar root'a veya paket yöneticisine ait,
+Sonar onlara dokunmaz:
 
 ```bash
+sudo rm -f /etc/udev/rules.d/60-sonar-headset.rules
 systemctl --user disable --now sonar-daemon
+pip uninstall sonar-linux
 ```
 
 ---

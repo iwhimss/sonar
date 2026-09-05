@@ -36,6 +36,18 @@ dönüştürmek.
 - [ ] `.SRCINFO` üretimi, yerel `makepkg -si` testi
 - [ ] (Opsiyonel, sonra) AUR'a `sonar-linux` olarak gönderim
 
+### D-Bus etkinleştirme (Faz 39'dan devreden)
+- [ ] `packaging/io.github.iwhimss.Sonar.service` gerçekten kurulsun
+      (`/usr/share/dbus-1/services/`). Kuruluyken arayüz daemon'ı **kendisi** kaldırıyor;
+      kurulu değilken "Servisi başlat" düğmesi süreci doğrudan başlatıyor
+- [ ] `Exec=` yolu paketin kurduğu `sonar-daemon` ile eşleşmeli
+- [ ] Paket kaldırılırken (`post_remove`) uyarı: sanal kanallar kaldırılmadıysa
+      `sonar-cli uninstall` önerilsin
+
+### Çeviri katalogu
+- [ ] `src/sonar/i18n/*.json` pakete girdiği doğrulansın
+      (`pyproject.toml` `force-include` var; `makepkg` sonrası dosyalar yerinde mi)
+
 ### Masaüstü entegrasyonu
 - [ ] `packaging/io.github.iwhimss.Sonar.desktop`
       — kategori `AudioVideo;Audio;Mixer;`, `StartupWMClass` doğru ayarlı
