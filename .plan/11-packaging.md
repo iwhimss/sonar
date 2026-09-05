@@ -48,6 +48,20 @@ dönüştürmek.
 - [ ] `src/sonar/i18n/*.json` pakete girdiği doğrulansın
       (`pyproject.toml` `force-include` var; `makepkg` sonrası dosyalar yerinde mi)
 
+### `sonar-uninstall` — ayrı kaldırıcı (test turu 6 isteği)
+
+Kullanıcı: *"Kaldırma kısmını uygulama içerisine gömmüşsün. Fakat istediğim bu değil.
+Bunun yerine ayrı bir uygulama gibi olsun. Bu çalıştığında terminalde bir kod çalıştırsın.
+Kullanıcı eğer onay verirse sonar programıyla alakalı şeyleri tamamen silsin."*
+
+- [ ] Terminalde çalışan ayrı araç: ne silineceğini listeler, **onay ister**, sonra
+      sanal kanalları söker, `~/.config/sonar` ve `~/.local/state/sonar`'ı siler,
+      systemd unit'ini kapatır, udev kuralı ve paket için `sudo` komutlarını çalıştırır
+- [ ] Yedek **almaz** — kullanıcının açık isteği
+- [ ] `.desktop` girdisi (`Terminal=true`), uygulama menüsünden de açılabilsin
+- [ ] Uygulama içindeki pencere geri alınabilir "sanal kanalları kaldır"a indirgenir;
+      adı da onu söyler
+
 ### Masaüstü entegrasyonu
 - [ ] `packaging/io.github.iwhimss.Sonar.desktop`
       — kategori `AudioVideo;Audio;Mixer;`, `StartupWMClass` doğru ayarlı

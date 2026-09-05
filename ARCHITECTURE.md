@@ -202,26 +202,65 @@ akışları yönlendirilmeye başlayınca cava sessizce `sonar_mic`'e çekildi.
 
 ## DSP zinciri
 
-Topoloji **sabittir**; efektler açılıp kapanmaz, yalnızca bypass edilir. Bu sayede bir efekti
-açıp kapatmak graf değişikliği değil, tek bir parametre yazımıdır — ses kesintisi olmaz.
+Zincir **profilin efekt listesinden** kuruluyor (şema 7). Kullanıcı efekt ekliyor, siliyor
+ve sürükleyerek sıralıyor; sinyal listedeki sırayla akıyor. Yeni bir profilde yalnızca
+ekolayzer var.
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ spatial ─▶ boost ─▶ limiter ─▶ çıkış
-mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
+Oyun / CS2 profili:   giriş ─▶ eq ─▶ gate ─▶ comp ─▶ çıkış
+Oyun / Müzik profili: giriş ─▶ eq ─▶ bass ─▶ reverb ─▶ çıkış
 ```
 
-| Aşama | Eklenti | Bypass |
+**Ne kesinti yaratır:**
+
+| İşlem | Etki |
+|---|---|
+| Efekti aç/kapa, parametre değiştir, profil değiştir (aynı efekt listesi) | canlı, kesintisiz |
+| Efekt ekle / sil / sırala, efekt listesi **farklı** bir profile geç | conf değişir → ~200 ms |
+
+Bu ayrım için yeni bir mekanizma yok: `supervisor.reconcile` "üretilen conf metni değişti
+mi" diye bakıyor ve efekt listesi conf'un içinde. Aç/kapa bypass portuna yazıyor, o da
+conf'u değiştirmiyor.
+
+### Katalog (16 efekt)
+
+| Efekt | Eklenti | Bypass |
 |---|---|---|
-| DeepFilterNet | LADSPA `libdeep_filter_ladspa.so` (`deep_filter_mono` / `deep_filter_stereo`) | attenuation = 0 |
-| Gate | `http://lsp-plug.in/plugins/lv2/gate_stereo` | `enabled` = 0 |
-| EQ | `http://lsp-plug.in/plugins/lv2/para_equalizer_x16_stereo` | `enabled` = 0 |
-| Compressor | `http://lsp-plug.in/plugins/lv2/compressor_stereo` | `enabled` = 0 |
-| Spatial | PipeWire `builtin` `copy` + `delay` + `bq_lowpass` + `mixer` | sızıntı kazancı 0 |
-| Volume Boost | PipeWire `builtin` `linear` | `Mult` = 1.0 |
-| Limiter | `http://lsp-plug.in/plugins/lv2/limiter_stereo` | `enabled` = 0 |
+| AI Gürültü Engelleme | LADSPA `libdeep_filter_ladspa.so` | attenuation = 0 |
+| Gürültü Kapısı | `lsp gate_stereo` | `enabled` = 0 |
+| Genişletici | `lsp expander_stereo` | `enabled` = 0 |
+| Ekolayzer | `lsp para_equalizer_x32_stereo` | `enabled` = 0 |
+| Kompresör | `lsp compressor_stereo` | `enabled` = 0 |
+| De-esser | `calf Deesser` | `bypass` = 1 |
+| Bas Zenginleştirici | `calf BassEnhancer` | `bypass` = 1 |
+| Exciter | `calf Exciter` | `bypass` = 1 |
+| Stereo Araçları | `calf StereoTools` | `bypass` = 1 |
+| Gecikme | `lsp comp_delay_stereo` | `enabled` = 0 |
+| Yankı | `calf Reverb` | `on` = 0 |
+| Uzamsal Ses | PipeWire `builtin` `copy`+`delay`+`bq_lowpass`+`mixer` | sızıntı kazancı 0 |
+| Gürlük Dengeleme | `lsp loud_comp_stereo` | `enabled` = 0 |
+| Ses Yükseltme | PipeWire `builtin` `linear` | `Mult` = 1.0 |
+| Maximizer | LADSPA `ZaMaximX2` | tavan 0 dB + kazanç 0 dB |
+| Limitleyici | `lsp limiter_stereo` | `enabled` = 0 |
 
-Zincirdeki aşama adları sabittir (`df`, `gate`, `eq`, `comp`, `lim`), böylece parametre
-anahtarları da kararlı olur: `"eq:g_3"`, `"gate:at"` gibi.
+Bypass yolu üç desende ve yönü ters çevirmek "kullanıcı efekti hiç açmadan sesin
+değişmesi" demek olurdu; `params._STAGE_BYPASS`, `_STAGE_ACTIVE` ve `_NO_ENABLED_PORT`
+bunları ayırıyor. Her efektin conf'a bypass'ta doğduğu testle sabitleniyor.
+
+Port sınırları eklentilerin **kendi tanımlarından** geliyor; `scripts/sonar-lv2-ports`
+TTL'i (ve LADSPA descriptor'ını) okuyup katalog satırı basıyor. Katalog yine de
+kürasyonlu: betiğin çıktısı elle gözden geçirilip yalnızca kullanılan portlar alınıyor.
+
+**Kataloğa girmeyenler:** Convolver (IR dosyası bir *yol* parametresi ister, `params`
+yalnızca sayı tutuyor), çok bandlı kompresör/gate (247 kontrol portu; anlamı band başına,
+doğrusu ayrı bir arayüz), Auto Gain (yan zincirle çalışıyor ve kullanıcının fader'ıyla
+çekişiyor), Filtre (32 bandlık eğri editörünün zayıf kopyası olurdu).
+
+### Node adları
+
+Node adı **slot kimliğidir** (`eq`, `gate`, `comp2`) ve profil içinde benzersizdir; aynı
+efektten birden fazla eklenebiliyor. Canlı parametre anahtarı `"<slot>:<port>"` —
+`"eq:g_3"`, `"comp2:al"`.
 
 ### Çok node'lu aşamalar
 
@@ -426,7 +465,7 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (57)
+### Metotlar (62)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
@@ -435,12 +474,15 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
 | `Deprovision` | `b purge_settings` | Sanal kanalları söker, varsayılan cihazı geri verir. `purge_settings` → yapılandırma dizini de silinir. **Yapısal**. |
+| `AddEffect` | `s target, s kind, i index` | Zincire efekt ekler; sonuç slot kimliği. **Yapısal**. |
 | `Diagnose` | `—` | Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar. |
 | `ExportProfile` | `s target, s name, b autoeq` | Profili metin olarak verir; `autoeq` ise AutoEQ/APO biçiminde. |
 | `GetDevices` | `—` | Fiziksel ses cihazları (Sonar'ın kendi sanal node'ları hariç). |
 | `GetLevels` | `—` | Anlık seviyeler. Sürekli akış için `LevelsUpdated` sinyalini dinleyin. |
 | `GetState` | `—` | Tüm durum: yapılandırma, profiller, akışlar, cihazlar, çakışmalar. |
 | `ImportProfile` | `s target, s text, s name` | Dış EQ dosyasını içe aktarır. Biçim içerikten bulunur. |
+| `ListEffectKinds` | `s target` | Bu hedefe eklenebilecek efektler ve parametre meta verisi. |
+| `ListEffects` | `s target` | Hedefin zinciri, sinyal sırasıyla. |
 | `ListBuiltinProfiles` | `s target` | Hedefin gömülü (salt okunur) preset adları. |
 | `ListFavorites` | `s target` | Hedefin sıralı favori profilleri. |
 | `ListHeadsets` | `—` | Donanım ChatMix tekeri olduğu bilinen kulaklıklar. |
@@ -448,11 +490,13 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `ListRules` | `—` | Uygulama → kanal yönlendirme kuralları. |
 | `LoadProfile` | `s target, s name` | Profili veya gömülü preset'i yükler. Anında ve kesintisiz. |
 | `MoveStream` | `i stream_id, s channel, b remember` | `remember` → uygulamayı bundan sonra hep bu kanala gönderen bir kural üretir. |
+| `MoveEffect` | `s target, s slot, i index` | Efekti listede taşır. **Yapısal**. |
 | `NewProfile` | `s target, s name` | Sıfırdan düz bir profil oluşturur ve ona geçer. |
 | `Provision` | `—` | Sanal kanalları kurar ve ne kurulduğunu döndürür. **Yapısal**. |
 | `Ping` | `—` | İstemcinin daemon'ın ayakta olduğunu ucuzca doğrulaması için. |
 | `Reload` | `—` | `config.toml`'u diskten yeniden okur (elle düzenleme sonrası). |
 | `RemoveChannel` | `s channel` | Çıkış veya giriş kanalını siler. **Yapısal**. |
+| `RemoveEffect` | `s target, s slot` | Efekti zincirden çıkarır. **Yapısal**. |
 | `RemoveEqBand` | `s target, i index` | Bir EQ bandını siler. **Canlı**. |
 | `RemoveRule` | `s match_key, s pattern, s direction` | Kuralı kaldırır. `direction` boşsa desenin her iki yönü de silinir. |
 | `RenameProfile` | `s target, s old, s new` | Kullanıcı profilini yeniden adlandırır. |
@@ -469,8 +513,8 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `SetDucking` | `s target, s fields_json` | Bir kanalın **profilindeki** Smart Volume ayarları (şema 4). |
 | `SetEqBand` | `s target, i band, s field, s value` | `value` string taşınır: `band_type` metin, diğerleri sayı. |
 | `SetEqPreamp` | `s target, d value_db` | Ekolayzer öncesi kazanç. |
-| `SetFilterEnabled` | `s target, s stage, b enabled` | Bir DSP aşamasını açar/kapatır (canlı bypass). |
-| `SetFilterParam` | `s target, s stage, s name, d value` | Aşamanın bir parametresi; insan biriminde (dB, ms, oran). |
+| `SetFilterEnabled` | `s target, s slot, b enabled` | Bir efekti açar/kapatır (canlı bypass). |
+| `SetFilterParam` | `s target, s slot, s name, d value` | Efektin bir parametresi; insan biriminde (dB, ms, oran). |
 | `SetMasterMute` | `s bus, b muted` | Personal/Stream bus'ını susturur. |
 | `SetMasterVolume` | `s bus, d value` | Personal/Stream bus'ının master seviyesi. |
 | `SetMicDevice` | `s chain, s device` | Mikrofon zincirinin giriş cihazı. **Yapısal**. |

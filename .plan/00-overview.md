@@ -7,12 +7,24 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 6 bekleniyor)
-**Son güncelleme:** 2026-09-05
-**Sonraki adım:** Kullanıcı altıncı test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/40-verify.md` içinde: karşılama akışı, kaldırıcı, iki dil. ChatMix
-tekerinin yönü hâlâ kullanıcının bir kez çevirmesini bekliyor. Sonra **Faz 11 —
-Paketleme**.
+**Aktif faz:** — (test turu 7 bekleniyor)
+**Son güncelleme:** 2026-09-06
+**Sonraki adım:** Kullanıcı yedinci test turunu yapacak. Ekrana bakmayı gerektiren
+maddeler `.plan/45-verify.md` içinde: efekt ekleme/sıralama, yeni efektlerin sesi,
+düzeltilen yedi hata. ChatMix tekerinin yönü hâlâ kullanıcının bir kez çevirmesini
+bekliyor. Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
+
+> **Test turu 6 (2026-09-06).** İki istek, yedi hata. Hataların **üçü tek satırdı**:
+> `Main.qml`'de `SettingsDialog { bridge: bridge }` — QML'de sağdaki ad bileşenin kendi
+> tanımsız özelliğine çözülüyor. Dil değişmiyor, ayar kutucukları tıklanmıyor ve kaldırma
+> hiçbir şey yapmıyordu; kullanıcının gönderdiği `terminal.txt` dördünü de "of undefined"
+> olarak gösteriyordu. Yüzde metninin bir adım geride kalması, mute düğmesinin 18 px
+> kayması ve mikserin kaydırma tutamağının olmaması ayrı ayrı ölçüldü.
+>
+> Büyük iş EasyEffects'ti: sabit yedi aşamalı zincir, profil başına **sıralı efekt
+> listesine** dönüştü (şema 7) ve katalog **16 efekte** çıktı. Kullanıcı kararları: efekt
+> listesi profil başına (EasyEffects gibi, bedeli ~200 ms), sıra kullanıcının, tam
+> kaldırıcı ayrı bir araca taşınıyor.
 
 > **Test turu 5 (2026-09-05).** İki istek geldi, ikisi de **ilk temas** ile ilgili:
 > kurulum bir adım olsun (tanıtım ekranı + "sanal kanalları kur" düğmesi + kaldırıcı)
@@ -88,16 +100,21 @@ Paketleme**.
 | 37 | [Çeviri altyapısı](37-i18n.md) | 🟢 Tamamlandı |
 | 38 | [Metinlerin çevrilmesi](38-strings.md) | 🟢 Tamamlandı |
 | 39 | [Kurulum sihirbazı ve kaldırıcı](39-onboarding.md) | 🟢 Tamamlandı |
-| 40 | [Doğrulama ve dokümantasyon](40-verify.md) | 🟡 Ekran testleri kullanıcıda |
-| 11 | [Paketleme](11-packaging.md) | ⚪ Bekliyor (test turu 5'ten sonra) |
+| 40 | [Doğrulama ve dokümantasyon](40-verify.md) | 🟢 Tamamlandı |
+| 41 | [Bildirilen yedi hata](41-fixes.md) | 🟢 Tamamlandı |
+| 42 | [Efekt zinciri dinamikleşiyor](42-effect-chain.md) | 🟢 Tamamlandı |
+| 43 | [Efekt kataloğu](43-effects.md) | 🟢 Tamamlandı |
+| 44 | [FX sayfası yeniden](44-fx-page.md) | 🟢 Tamamlandı |
+| 45 | [Doğrulama ve dokümantasyon](45-verify.md) | 🟡 Ekran testleri kullanıcıda |
+| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | ⚪ Bekliyor (test turu 6'dan sonra) |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 907 test geçiyor, `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (57 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+**Test durumu:** 998 test geçiyor (2 atlanıyor), `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (62 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Daemon açılışta **kanal kurmuyor**: kurulum kullanıcının onayına
-bağlı (`Provision`). Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
+bağlı (`Provision`). Zincir profilin efekt listesinden kuruluyor; katalogda **16 efekt**. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
 başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi
 kesintisiz.
 
@@ -133,6 +150,8 @@ Tasarım referansı: `docs/reference/steelseries-gg/` (SteelSeries GG ekran gör
 | Lisans | GPL-3.0 | LV2 eklenti ekosistemiyle uyumlu |
 | Kurulum | Karşılama ekranındaki düğme (`provisioned` bayrağı) | Daemon açılır açılmaz PipeWire'a yazmak, kullanıcıya sormadan sistemin sesini değiştirmek demekti |
 | Dil | JSON katalog, Türkçe + İngilizce, varsayılan Türkçe | Derleme adımı yok; daemon ve CLI de aynı katalogu okuyor. Kanal/cihaz **adları** çevrilmiyor: OBS'teki seçim kırılmasın |
+| Efekt zinciri | Profil başına sıralı liste, kullanıcı ekler ve sıralar | EasyEffects'in preset davranışının aynısı. Bedeli: listesi farklı profiller arası geçişte ~200 ms |
+| Efekt kapsamı | Kurulu LSP/Calf/Zam eklentileriyle 16 efekt | Yeni bağımlılık yok. Convolver, çok bandlı komp./gate, Auto Gain ve Filtre bilinçli olarak dışarıda |
 
 ---
 
@@ -202,12 +221,15 @@ Faz 20'de kanal başına ayrı çıkış cihazı eklenebiliyordu; kullanıcı i�
 değildir, hiçbir listede görünmez. Açıkken `Audio/Source` olur. Sınıfsız bir node'u
 WirePlumber bağlamadığı için gönderiler `pw-link` ile daemon tarafından kuruluyor.
 
-### DSP zinciri (sabit topoloji, bypass ile açma/kapama)
+### DSP zinciri (profil başına liste, kullanıcı sıralar)
 
 ```
-kanal:  giriş ─▶ gate ─▶ eq ─▶ comp ─▶ spatial ─▶ boost ─▶ limiter ─▶ çıkış
-mic:    giriş ─▶ deepfilter ─▶ gate ─▶ eq ─▶ comp ─▶ boost ─▶ limiter ─▶ çıkış
+Oyun / CS2 profili   : giriş ─▶ eq ─▶ gate ─▶ comp ─▶ çıkış
+Oyun / Müzik profili : giriş ─▶ eq ─▶ bass ─▶ reverb ─▶ çıkış
 ```
+
+Efekt ekle/sil/sırala → conf değişir → ~200 ms. Aç/kapa ve parametre → canlı.
+Katalog ve bypass yolları `ARCHITECTURE.md`'de.
 
 | Aşama | Eklenti | Bypass |
 |---|---|---|

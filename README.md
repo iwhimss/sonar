@@ -223,17 +223,25 @@ kullanıcısı sayılmaz ve yönlendirilmez — `stream.capture.sink` bayrağıy
 
 ## Efektler
 
-Zincir: **gürültü engelleme → gate → EQ → kompresör → spatial → boost → limiter**
+Her kanalın kendi efekt zinciri var ve zinciri **sen kuruyorsun**. Yeni bir profil
+yalnızca ekolayzerle gelir; gerisini FX sayfasındaki **＋ Efekt ekle** ile eklersin,
+sürükleyerek sıralarsın. Sinyal listedeki sırayla akar.
 
-| | |
+| Grup | Efektler |
 |---|---|
-| **Spatial Audio** | Kulaklar arası sızıntı (crossfeed): sol kanalın sesi biraz geç ve tizleri kısılmış hâlde sağ kulağa da gider — gerçek hoparlörlerde olan, kulaklıkta hiç olmayan şey. Sahne kafanın dışına çıkar. **Gerçek surround değil**; rekabetçi FPS'te kapalı tutmak yön algısını keskin bırakır. İki ayar: *Sürükleyicilik* ve *Mesafe*. |
-| **Volume Boost** | Limiter'dan **önce** 0–12 dB düz kazanç, yani kırpma üretmez. |
-| **Smart Volume** | Bu kanalda ses olunca diğer kanalları kısar, susunca geri verir. Ayar **profilin içinde**: Chat'in oyun profilinde açık, müzik profilinde kapalı olabilir. Bir DSP aşaması değil, daemon tarafında bir zarf takipçisi. |
+| Dinamikler | Gürültü Kapısı, Genişletici, Kompresör, De-esser, Maximizer, Limitleyici |
+| Tını | Ekolayzer (32 band, sürüklenebilir eğri), Bas Zenginleştirici, Exciter, Gürlük Dengeleme |
+| Uzam | Stereo Araçları, Gecikme, Yankı, Uzamsal Ses (crossfeed) |
+| Yardımcı | Ses Yükseltme, AI Gürültü Engelleme (yalnızca mikrofon) |
 
-Hepsi kesintisiz: açıp kapatmak grafı yeniden kurmuyor. Ölçüldü — Spatial kapalıyken
-çıkış girişe bit-eş, açıkken karşı kulakta -18…-5 dB kopya ve 0.3–1.2 ms gecikme;
-maliyeti altı zincir için tek çekirdeğin **~%1.8'i**.
+EasyEffects'in kullandığı LSP, Calf ve Zam eklentileriyle — yani aynı DSP, kanal başına.
+
+**Ne kesinti yaratır:** efekt eklemek, silmek ve sıralamak ses grafını yeniden kurar
+(~200 ms sessizlik). Efekti açıp kapatmak, parametre çevirmek ve aynı efekt listesine
+sahip profiller arasında geçmek **kesintisiz**.
+
+Zincire girmeyenler: Convolver (IR dosyası desteği henüz yok), çok bandlı kompresör/gate,
+Auto Gain, tek bandlı Filtre. Nedenleri `ARCHITECTURE.md`'de.
 
 ---
 

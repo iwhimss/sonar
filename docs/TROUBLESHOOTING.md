@@ -349,6 +349,36 @@ df -h ~/.config
 ls -ld ~/.config/sonar
 ```
 
+## Eklemek istediğim efekt listede yok
+
+"＋ Efekt ekle" penceresi yalnızca **bu makinede kurulu** eklentileri gösteriyor.
+Kurulu olmayan bir efekti listelemek, eklendiğinde zinciri düşürürdü.
+
+```bash
+sudo pacman -S lsp-plugins-lv2 calf zam-plugins
+```
+
+Bazı efektler hedefe göre de eleniyor: AI Gürültü Engelleme yalnızca mikrofon
+zincirinde, Uzamsal Ses yalnızca oynatma kanallarında görünür. Ekolayzer zaten
+zincirdeyse ikincisi listelenmez — band modeli ve eğri profilde tek.
+
+Hiç eklenmemiş efektler de var (Convolver, çok bandlı kompresör/gate, Auto Gain);
+nedenleri `ARCHITECTURE.md`'nin "DSP zinciri" bölümünde.
+
+---
+
+## Profil değiştirince ses kısa süre kesiliyor
+
+Efekt listesi **farklı** iki profil arasında geçiyorsunuz demektir. Zincirin topolojisi
+değiştiği için ses grafı yeniden kuruluyor — yaklaşık 200 ms.
+
+Efekt listesi aynı olan profiller arasında geçiş kesintisizdir: EQ eğrisi, filtre
+ayarları ve fader'lar canlı yazılıyor. Kesinti istemiyorsanız iki profilde de aynı
+efektleri bulundurup birini kapalı bırakın; kapalı bir efekt zincirde durur ve
+**bit-şeffaftır** (ölçüldü).
+
+---
+
 ## Preset'i düzenleyemiyorum
 
 Gömülü presetler (`Flat`, `FPS Footsteps`, `Broadcast`…) salt okunurdur. Düzenlemeye
