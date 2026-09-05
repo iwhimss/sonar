@@ -82,6 +82,20 @@ def used_keys() -> dict[str, list[Path]]:
         found.setdefault(key, []).append(source)
     for key, _is_error in SonarBridge._NOTICES.values():
         found.setdefault(key, []).append(source)
+
+    # Efekt kataloğu anahtarları da veriden üretiliyor: `effect.<tür>`,
+    # `effect.category.<grup>`, `param.<tür>.<ad>` ve varsa ipucu anahtarı.
+    from sonar.core.dsp.effects import CATEGORIES, EFFECTS
+
+    catalog_source = Path(SOURCE_ROOT / "core" / "dsp" / "effects.py")
+    for kind, spec in EFFECTS.items():
+        found.setdefault(f"effect.{kind.value}", []).append(catalog_source)
+        if spec.hint:
+            found.setdefault(spec.hint, []).append(catalog_source)
+        for param in spec.params:
+            found.setdefault(f"param.{kind.value}.{param.name}", []).append(catalog_source)
+    for category in CATEGORIES:
+        found.setdefault(f"effect.category.{category.value}", []).append(catalog_source)
     return found
 
 

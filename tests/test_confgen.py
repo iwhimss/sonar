@@ -8,10 +8,10 @@ import pytest
 
 from sonar.core.dsp import registry
 from sonar.core.model import (
-    CHAIN_ORDER,
     DEFAULT_FILTER_PARAMS,
     Channel,
     EffectSlot,
+    FilterStage,
     default_config,
     default_profile,
 )
@@ -20,13 +20,24 @@ from sonar.engine import confgen
 GOLDEN = "tests/data/graph.conf.golden"
 
 
-def full_chain(target: str, name: str):
-    """Her aşamayı içeren bir profil sağlayıcısı.
+#: Altın dosyanın zinciri. Her **node türünü** kapsıyor: LADSPA (df), LV2 (gate/eq/comp/
+#: lim), çok node'lu builtin alt graf (spatial) ve kanal başına builtin (boost). Katalogdaki
+#: on altı efektin hepsini koymak dosyayı beş bin satıra çıkarır ve yeni bir efekt eklemek
+#: her seferinde altın dosyayı değiştirirdi; kapsam node türü düzeyinde tutuluyor.
+#: Efektlerin **kendi** kurulabilirliğini `test_every_effect_kind_builds_a_graph` sınıyor.
+GOLDEN_CHAIN = (
+    FilterStage.DEEPFILTER,
+    FilterStage.GATE,
+    FilterStage.EQ,
+    FilterStage.COMP,
+    FilterStage.SPATIAL,
+    FilterStage.BOOST,
+    FilterStage.LIMITER,
+)
 
-    Şema 7'de zincir profilden geliyor ve yeni profilde yalnızca ekolayzer var. Altın
-    dosya her node türünü kapsamalı, bu yüzden burada zincirin tamamı kuruluyor —
-    `CHAIN_ORDER` sırasıyla, yani şema 6'daki sabit topolojinin birebir aynısı.
-    """
+
+def full_chain(target: str, name: str):
+    """Altın dosyanın profil sağlayıcısı."""
     del target
     profile = default_profile(name)
     profile.effects = [
@@ -36,7 +47,7 @@ def full_chain(target: str, name: str):
             enabled=False,
             params=dict(DEFAULT_FILTER_PARAMS.get(kind, {})),
         )
-        for kind in CHAIN_ORDER
+        for kind in GOLDEN_CHAIN
     ]
     return profile
 

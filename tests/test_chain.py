@@ -18,6 +18,12 @@ def kinds(plan) -> tuple[FilterStage, ...]:
     return tuple(effect.kind for effect in plan.slots)
 
 
+#: Node **türlerinin** hepsini kapsayan temsili zincir: LADSPA, LV2, çok node'lu builtin
+#: alt graf (spatial) ve kanal başına builtin (boost). Katalogdaki on altı efektin hepsini
+#: her teste koymak, yeni bir efekt eklendiğinde ilgisiz testleri bozardı.
+CORE_CHAIN = (S.DEEPFILTER, S.GATE, S.EQ, S.COMP, S.SPATIAL, S.BOOST, S.LIMITER)
+
+
 @pytest.fixture
 def all_installed(monkeypatch):
     """Eklenti varlığından bağımsız test — makinede LSP kurulu olmayabilir."""
@@ -61,7 +67,7 @@ def test_spatial_is_dropped_from_a_mono_chain(all_installed):
 
 def test_plan_skips_missing_plugins(monkeypatch):
     monkeypatch.setattr(registry, "is_available", lambda key: not key.startswith("deepfilter"))
-    plan = plan_chain(slots(*CHAIN_ORDER))
+    plan = plan_chain(slots(*CORE_CHAIN))
     assert S.DEEPFILTER not in kinds(plan)
     assert [e.kind for e in plan.skipped] == [S.DEEPFILTER]
     assert kinds(plan)[0] is S.GATE
@@ -96,7 +102,7 @@ def test_graph_wires_stages_in_order(all_installed):
 
 def test_multi_node_stages_expose_a_single_pair_of_ports(all_installed):
     """Spatial sekiz node, Boost iki node; zincir bunu bilmek zorunda değil."""
-    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
+    graph = build_chain(plan_chain(slots(*CORE_CHAIN)))
     names = [node["name"] for node in graph["nodes"]]
     assert names == [
         "df", "gate", "eq", "comp",
@@ -116,7 +122,7 @@ def test_multi_node_stages_expose_a_single_pair_of_ports(all_installed):
 
 def test_missing_stage_is_relinked_not_left_dangling(monkeypatch):
     monkeypatch.setattr(registry, "is_available", lambda key: "para_eq" not in key)
-    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
+    graph = build_chain(plan_chain(slots(*CORE_CHAIN)))
     pairs = {(link["output"].split(":")[0], link["input"].split(":")[0]) for link in graph["links"]}
     assert ("gate", "comp") in pairs, "EQ düşünce gate doğrudan comp'a bağlanmalı"
     assert not any("eq" in name for name in {p for pair in pairs for p in pair})
@@ -149,7 +155,7 @@ def test_boost_survives_even_when_no_plugin_is_installed(monkeypatch):
     ve ses düz geçiyor.
     """
     monkeypatch.setattr(registry, "is_available", lambda _key: False)
-    plan = plan_chain(slots(*CHAIN_ORDER))
+    plan = plan_chain(slots(*CORE_CHAIN))
     assert kinds(plan) == (S.SPATIAL, S.BOOST), "ikisi de PipeWire'ın kendi blokları"
     graph = build_chain(plan)
     assert graph["inputs"] == ["spatial_copy_l:In", "spatial_copy_r:In"]
@@ -160,7 +166,7 @@ def test_boost_survives_even_when_no_plugin_is_installed(monkeypatch):
 
 def test_every_stage_starts_bypassed(all_installed):
     """Conf nötr doğar; gerçek profil canlı yazımla gelir. Bu kuralın testi."""
-    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
+    graph = build_chain(plan_chain(slots(*CORE_CHAIN)))
     controls = {node["name"]: node.get("control", {}) for node in graph["nodes"]}
     # Boost bypass'ı: çarpan 1. Spatial bypass'ı: sızıntı kazancı 0.
     assert controls["boost_l"]["Mult"] == 1.0
@@ -175,7 +181,7 @@ def test_every_stage_starts_bypassed(all_installed):
 
 def test_eq_analyzers_start_disabled(all_installed):
     """LSP'nin FFT'leri bypass'ta bile CPU yakar; kapalı doğmalılar."""
-    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
+    graph = build_chain(plan_chain(slots(*CORE_CHAIN)))
     control = next(n["control"] for n in graph["nodes"] if n["name"] == "eq")
     analyzers = registry.eq_analyzer_ports(registry.eq_plugin_for(10))
     assert analyzers, "analizör portları kataloğdan kaybolmuş"
@@ -183,7 +189,7 @@ def test_eq_analyzers_start_disabled(all_installed):
 
 
 def test_ladspa_node_carries_a_label_and_lv2_does_not(all_installed):
-    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
+    graph = build_chain(plan_chain(slots(*CORE_CHAIN)))
     nodes = {node["name"]: node for node in graph["nodes"]}
     assert nodes["df"]["type"] == "ladspa"
     assert nodes["df"]["label"] == "deep_filter_stereo"
@@ -196,3 +202,49 @@ def test_ladspa_plugin_is_an_absolute_path_when_installed():
     if not registry.is_available("deepfilter_stereo"):
         pytest.skip("deepfilter-ladspa kurulu değil")
     assert registry.plugin_reference(spec).startswith("/")
+
+
+# --------------------------------------------------------------------------- efekt kataloğu
+#
+# Test turu 6'da katalog yedi aşamadan on altıya çıktı. Aşağıdaki testler her efektin
+# gerçekten kurulabildiğini ve kapalıyken şeffaf olduğunu tek tek doğruluyor; altın conf
+# yalnızca node **türlerini** kapsıyor.
+
+
+@pytest.mark.parametrize("kind", list(CHAIN_ORDER), ids=lambda k: k.value)
+def test_every_effect_kind_builds_a_graph(kind, all_installed):
+    """Katalogdaki her efekt tek başına bir zincir kurabilmeli."""
+    graph = build_chain(plan_chain(slots(kind)))
+    assert graph["nodes"], f"{kind.value} hiç node üretmedi"
+    assert graph["inputs"] and graph["outputs"]
+
+
+@pytest.mark.parametrize("kind", list(CHAIN_ORDER), ids=lambda k: k.value)
+def test_every_effect_starts_bypassed(kind, all_installed):
+    """Conf nötr doğar: gerçek profil canlı yazımla geliyor.
+
+    Bypass yolu efektten efekte değişiyor — LSP'de `enabled = 0`, Calf'ta `bypass = 1`,
+    Calf Reverb'de `on = 0`, DeepFilterNet'te azaltma 0, ZaMaximX2'de tavan 0 dB.
+    Yanlış yön, kullanıcı efekti hiç açmadan sesin değişmesi demek olurdu.
+    """
+    from sonar.core.dsp.params import stage_bypass_ports
+
+    if kind in (S.SPATIAL, S.BOOST):
+        pytest.skip("builtin bloklar; bypass'ları kendi testlerinde")
+    graph = build_chain(plan_chain(slots(kind)))
+    control = graph["nodes"][0].get("control", {})
+    for port, value in stage_bypass_ports(kind).items():
+        assert control[port] == value, f"{kind.value}: {port} bypass değeri yazılmamış"
+
+
+@pytest.mark.parametrize("kind", list(CHAIN_ORDER), ids=lambda k: k.value)
+def test_every_effect_is_actually_installed(kind):
+    """Kataloğa girdiğimiz her eklenti bu makinede gerçekten kurulu olmalı.
+
+    Katalog kürasyonlu: bir eklentiyi listeye ekleyip kurulu olmadığını fark etmemek,
+    kullanıcıya listede görünen ama eklenince zinciri düşüren bir efekt vermek demekti.
+    """
+    plan = plan_chain(slots(kind))
+    if not plan.slots:
+        pytest.skip(f"{kind.value} bu makinede kurulu değil")
+    assert kinds(plan) == (kind,)

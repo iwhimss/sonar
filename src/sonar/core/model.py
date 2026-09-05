@@ -70,14 +70,26 @@ class FilterStage(StrEnum):
 
     DEEPFILTER = "df"
     GATE = "gate"
+    EXPANDER = "expander"
     EQ = "eq"
     COMP = "comp"
+    DEESSER = "deesser"
+    MAXIMIZER = "maximizer"
+    BASS_ENHANCER = "bass"
+    EXCITER = "exciter"
+    LOUDNESS = "loudness"
+    STEREO_TOOLS = "stereo"
+    DELAY = "delay"
+    REVERB = "reverb"
     SPATIAL = "spatial"
     BOOST = "boost"
     LIMITER = "lim"
 
 
-#: Zincirdeki sıralama — sinyal bu sırayla akar.
+#: Efekt eklerken kullanılan **varsayılan** sıralama ve arayüzdeki listenin düzeni.
+#:
+#: Şema 7'den beri gerçek sıra kullanıcınındır (`Profile.effects`); bu demet yalnızca
+#: "efekt ekle" listesinin sırasını ve şema 6 → 7 göçünün sırasını belirliyor.
 #:
 #: Spatial ve Boost, limiter'ın **öncesinde**: ikisi de sinyali büyütebiliyor ve
 #: limiter son savunma hattı olarak kalmalı. Spatial'ın boost'tan önce olması da
@@ -85,10 +97,19 @@ class FilterStage(StrEnum):
 CHAIN_ORDER: tuple[FilterStage, ...] = (
     FilterStage.DEEPFILTER,
     FilterStage.GATE,
+    FilterStage.EXPANDER,
     FilterStage.EQ,
     FilterStage.COMP,
+    FilterStage.DEESSER,
+    FilterStage.BASS_ENHANCER,
+    FilterStage.EXCITER,
+    FilterStage.STEREO_TOOLS,
+    FilterStage.DELAY,
+    FilterStage.REVERB,
     FilterStage.SPATIAL,
+    FilterStage.LOUDNESS,
     FilterStage.BOOST,
+    FilterStage.MAXIMIZER,
     FilterStage.LIMITER,
 )
 
@@ -687,6 +708,67 @@ DEFAULT_FILTER_PARAMS: dict[FilterStage, dict[str, float]] = {
         "lookahead_ms": 5.0,
         "attack_ms": 5.0,
         "release_ms": 5.0,
+    },
+    # --- EasyEffects karşılıkları (test turu 6) -----------------------------
+    #: Genişletici: kompresörün tersi. Eşiğin **altındaki** sessizliği daha da kısar.
+    FilterStage.EXPANDER: {
+        "threshold_db": -30.0,
+        "knee_db": -6.0,
+        "attack_ms": 20.0,
+        "release_ms": 100.0,
+        "makeup_db": 0.0,
+    },
+    #: De-esser: "s" seslerinin tizdeki sertliğini alır.
+    FilterStage.DEESSER: {
+        "threshold_db": -18.0,
+        "ratio": 3.0,
+        "split_hz": 6000.0,
+        "makeup_db": 0.0,
+    },
+    #: Bas zenginleştirici: alt uca harmonik ekler, gerçek bas eklemeden "dolgun" yapar.
+    FilterStage.BASS_ENHANCER: {
+        "amount": 1.0,
+        "harmonics": 8.5,
+        "scope_hz": 100.0,
+    },
+    #: Exciter: aynı iş, tiz uçta. Kayıtta kaybolan parlaklığı geri verir.
+    FilterStage.EXCITER: {
+        "amount": 1.0,
+        "harmonics": 8.5,
+        "scope_hz": 7500.0,
+    },
+    #: Stereo araçları: sahne genişliği, orta/yan dengesi.
+    FilterStage.STEREO_TOOLS: {
+        "width": 100.0,
+        "mid_db": 0.0,
+        "balance": 0.0,
+        "base": 0.0,
+    },
+    #: Gecikme: iki kanala da aynı gecikme. Kuru/ıslak karışımı ne kadar duyulacağını
+    #: belirliyor; %100 tamamen gecikmiş sinyal demek.
+    FilterStage.DELAY: {
+        "time_ms": 20.0,
+        "drywet": 50.0,
+    },
+    #: Reverb: oda simülasyonu.
+    FilterStage.REVERB: {
+        "decay_s": 1.5,
+        "room_size": 2.0,
+        "wet": 0.25,
+        "predelay_ms": 0.0,
+        "damp_hz": 5000.0,
+    },
+    #: Loudness: düşük seviyede dinlerken kaybolan bas ve tizi eşit-gürlük eğrisine göre
+    #: geri verir. `volume_db` **dinlediğiniz** seviyedir, bir kazanç değil.
+    FilterStage.LOUDNESS: {
+        "volume_db": 0.0,
+    },
+    #: Maximizer: limiter'ın "yükselt ve tavana yasla" hâli. Tavan 0 dB ve kazanç 0 dB
+    #: iken şeffaf — eklentinin bypass portu yok.
+    FilterStage.MAXIMIZER: {
+        "ceiling_db": -1.0,
+        "gain_db": 0.0,
+        "release_ms": 30.0,
     },
 }
 

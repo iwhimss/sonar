@@ -7,7 +7,6 @@ import pytest
 
 from sonar.core.dsp import params, registry
 from sonar.core.model import (
-    CHAIN_ORDER,
     DEFAULT_FILTER_PARAMS,
     EffectSlot,
     EqBand,
@@ -185,6 +184,18 @@ def test_eq_via_stage_params_is_rejected():
 
 # --------------------------------------------------------------------------- profil
 
+#: Node türlerini kapsayan temsili zincir; `CHAIN_ORDER`'ın tamamı değil.
+CORE_CHAIN = (
+    FilterStage.DEEPFILTER,
+    FilterStage.GATE,
+    FilterStage.EQ,
+    FilterStage.COMP,
+    FilterStage.SPATIAL,
+    FilterStage.BOOST,
+    FilterStage.LIMITER,
+)
+
+
 def full_profile(**kw):
     """Tüm aşamaları içeren bir profil. Şema 7'de varsayılan profilde yalnızca EQ var;
     zincirin tamamını sınayan testler efektleri kendisi ekliyor."""
@@ -195,7 +206,7 @@ def full_profile(**kw):
         EffectSlot(
             kind=k, slot=k.value, enabled=False, params=dict(DEFAULT_FILTER_PARAMS.get(k, {}))
         )
-        for k in CHAIN_ORDER
+        for k in CORE_CHAIN
     ]
     return profile
 

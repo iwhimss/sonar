@@ -300,6 +300,139 @@ PLUGINS[_DEEPFILTER_STEREO.key] = _DEEPFILTER_STEREO
 del _bands, _ch, _spec, _name, _ports_map
 
 
+# ------------------------------------------------------------------ EasyEffects karşılıkları
+#
+# Test turu 6'da kullanıcı EasyEffects'in efektlerini istedi. Aşağıdaki port tabloları
+# `scripts/sonar-lv2-ports` ile eklentilerin **kendi TTL dosyalarından** çıkarılıp elle
+# gözden geçirildi; betiğin çıktısı `_GATE_PORTS` gibi mevcut girdilerle birebir
+# eşleştiği doğrulandıktan sonra kullanıldı.
+#
+# Etiketler burada çeviri **anahtarı** değil, geliştirici notu: kullanıcıya görünen adlar
+# `core/dsp/effects.py` üzerinden katalogdan geliyor (`param.<efekt>.<ad>`).
+
+#: Calf eklentilerinin hepsi aynı ses portlarını kullanıyor.
+_CALF_IN = ("in_l", "in_r")
+_CALF_OUT = ("out_l", "out_r")
+
+
+def _calf(name: str, ports: dict[str, PortSpec]) -> PluginSpec:
+    return PluginSpec(
+        key=f"calf_{name.lower()}",
+        kind=PluginKind.LV2,
+        uri=f"http://calf.sourceforge.net/plugins/{name}",
+        audio_in=_CALF_IN,
+        audio_out=_CALF_OUT,
+        ports=ports,
+    )
+
+
+def _lsp(name: str, ports: dict[str, PortSpec]) -> PluginSpec:
+    return PluginSpec(
+        key=f"lsp_{name}",
+        kind=PluginKind.LV2,
+        uri=f"http://lsp-plug.in/plugins/lv2/{name}",
+        audio_in=("in_l", "in_r"),
+        audio_out=("out_l", "out_r"),
+        ports=ports,
+    )
+
+
+_BASS_ENHANCER_PORTS = _ports(
+    ("bypass", "Bypass", 0, 1, 0, "", False, True),
+    ("amount", "Miktar", 0.0, 64.0, 1.0),
+    ("drive", "Harmonikler", 0.1, 10.0, 8.5),
+    ("freq", "Kapsam", 10.0, 250.0, 100.0, "hz", True),
+    ("level_out", "Çıkış", 0.015625, 64.0, 1.0, "", True),
+)
+
+_EXCITER_PORTS = _ports(
+    ("bypass", "Bypass", 0, 1, 0, "", False, True),
+    ("amount", "Miktar", 0.0, 64.0, 1.0),
+    ("drive", "Harmonikler", 0.1, 10.0, 8.5),
+    ("freq", "Kapsam", 2000.0, 12000.0, 7500.0, "hz", True),
+    ("level_out", "Çıkış", 0.015625, 64.0, 1.0, "", True),
+)
+
+_DEESSER_PORTS = _ports(
+    ("bypass", "Bypass", 0, 1, 0, "", False, True),
+    ("threshold", "Eşik", 0.000976563, 1.0, 0.125),
+    ("ratio", "Oran", 1.0, 20.0, 3.0),
+    ("makeup", "Makyaj", 1.0, 64.0, 1.0),
+    ("f1_freq", "Ayrım", 10.0, 18000.0, 6000.0, "hz", True),
+)
+
+_REVERB_PORTS = _ports(
+    # `on` Calf'ın "Active" portu: 0 = bypass. `bypass` portu bu eklentide yok.
+    ("on", "Etkin", 0, 1, 1, "", False, True),
+    ("decay_time", "Sönüm süresi", 0.4, 15.0, 1.5, "s", True),
+    ("room_size", "Oda boyu", 0, 5, 2, "", False, True),
+    ("amount", "Islaklık", 0.0, 2.0, 0.25),
+    ("predelay", "Ön gecikme", 0.0, 500.0, 0.0, "ms"),
+    ("hf_damp", "Tiz sönümü", 2000.0, 20000.0, 5000.0, "hz", True),
+)
+
+_STEREO_TOOLS_PORTS = _ports(
+    ("bypass", "Bypass", 0, 1, 0, "", False, True),
+    ("slev", "Yan seviye", 0.015625, 64.0, 1.0),
+    ("mlev", "Orta seviye", 0.015625, 64.0, 1.0),
+    ("balance_out", "Denge", -1.0, 1.0, 0.0),
+    ("stereo_base", "Stereo taban", -1.0, 1.0, 0.0),
+)
+
+_EXPANDER_PORTS = _ports(
+    ("enabled", "Etkin", 0, 1, 1, "", False, True),
+    ("al", "Eşik", 0.001, 1.0, 0.25119, "", True),
+    ("kn", "Diz", 0.0631, 1.0, 0.50118, "", True),
+    ("at", "Atak", 0.0, 2000.0, 20.0, "ms", True),
+    ("rt", "Bırakma", 0.0, 5000.0, 100.0, "ms", True),
+    ("mk", "Makyaj kazancı", 0.001, 1000.0, 1.0, "", True),
+)
+
+_DELAY_PORTS = _ports(
+    ("enabled", "Etkin", 0, 1, 1, "", False, True),
+    ("time", "Süre", 0.0, 1000.0, 0.0, "ms"),
+    ("drywet", "Kuru/ıslak", 0.0, 100.0, 100.0, "pc"),
+)
+
+_LOUDNESS_PORTS = _ports(
+    ("enabled", "Etkin", 0, 1, 1, "", False, True),
+    ("volume", "Dinleme seviyesi", -83.0, 7.0, 0.0, "db"),
+)
+
+#: ZaMaximX2 bir LADSPA eklentisi ve TTL'i yok; port tablosu `ladspa_descriptor()`
+#: çağrılarak doğrulandı (`scripts/sonar-lv2-ports --ladspa`). **Bypass portu yok**:
+#: tavan 0 dB ve giriş kazancı 0 dB iken şeffaf.
+_MAXIMIZER_PORTS = _ports(
+    ("Release", "Bırakma", 1.0, 100.0, 30.0, "ms"),
+    ("Input Gain", "Giriş kazancı", -20.0, 20.0, 0.0, "db"),
+    ("Threshold", "Tavan", -30.0, 0.0, 0.0, "db"),
+)
+
+_MAXIMIZER = PluginSpec(
+    key="zam_maximizer_stereo",
+    kind=PluginKind.LADSPA,
+    uri="ZaMaximX2-ladspa.so",
+    label="ZaMaximX2",
+    audio_in=("Audio Input 1", "Audio Input 2"),
+    audio_out=("Audio Output 1", "Audio Output 2"),
+    ports=_MAXIMIZER_PORTS,
+)
+
+for _spec in (
+    _calf("BassEnhancer", _BASS_ENHANCER_PORTS),
+    _calf("Exciter", _EXCITER_PORTS),
+    _calf("Deesser", _DEESSER_PORTS),
+    _calf("Reverb", _REVERB_PORTS),
+    _calf("StereoTools", _STEREO_TOOLS_PORTS),
+    _lsp("expander_stereo", _EXPANDER_PORTS),
+    _lsp("comp_delay_stereo", _DELAY_PORTS),
+    _lsp("loud_comp_stereo", _LOUDNESS_PORTS),
+    _MAXIMIZER,
+):
+    PLUGINS[_spec.key] = _spec
+del _spec
+
+
 #: Zincir **her zaman** en büyük EQ varyantıyla kuruluyor.
 #:
 #: Eskiden band sayısı kapasiteyi seçiyordu (8/16/32) ve kapasite değişimi **yapısal**

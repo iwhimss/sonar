@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""LV2 eklentisinin kontrol portlarını TTL'den okuyup katalog satırı olarak basar.
+
+`core/dsp/registry.py` **kürasyonlu statik** bir katalog: çalışma zamanında lilv ile TTL
+okumuyoruz (bkz. modül başlığı). Ama on beş eklentinin port tablosunu elle yazmak hata
+üretir — bu betik aradaki köprü. Çıktısı doğrudan kopyalanmıyor; gözden geçirilip
+gerçekten kullanılan portlar seçiliyor.
+
+    scripts/sonar-lv2-ports http://calf.sourceforge.net/plugins/Reverb
+    scripts/sonar-lv2-ports --list calf          # eklentileri listele
+
+Basılan sıra `_ports()`'un beklediği demet: (sembol, ad, min, max, varsayılan, birim,
+logaritmik, tamsayı).
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+SEARCH = [Path("/usr/lib/lv2"), Path("/usr/local/lib/lv2"), Path.home() / ".lv2"]
+
+FIELD = re.compile(r"lv2:(\w+)\s+(\"[^\"]*\"|[-\d.eE+]+)")
+UNIT = re.compile(r"units:unit\s+units:(\w+)")
+#: `units:unit [ ... ]` gibi **iç içe** bloklar. Port bloğunu ayrıştırmadan önce
+#: atılıyorlar: aksi hâlde `lv2:minimum` gibi alanlar iç bloktan okunuyor ve yanlış
+#: aralık çıkıyor (ölçüldü: `loud_comp_stereo:input` 0–1 görünüyordu, gerçeği 0–3981).
+NESTED = re.compile(r"\[[^\[\]]*\]", re.DOTALL)
+
+
+def port_blocks(text: str) -> list[str]:
+    """TTL'deki en dış `[ ... ]` bloklarını köşeli parantez sayarak çıkarır."""
+    blocks: list[str] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(text):
+        if char == "[":
+            if depth == 0:
+                start = index + 1
+            depth += 1
+        elif char == "]" and depth:
+            depth -= 1
+            if depth == 0:
+                blocks.append(text[start:index])
+    return blocks
+
+
+def ttl_files(pattern: str) -> list[Path]:
+    out: list[Path] = []
+    for root in SEARCH:
+        if root.is_dir():
+            out.extend(p for p in root.rglob("*.ttl") if pattern in p.read_text(errors="replace"))
+    return out
+
+
+def parse_ports(text: str) -> list[dict]:
+    ports: list[dict] = []
+    for block in port_blocks(text):
+        if "ControlPort" not in block or "InputPort" not in block:
+            continue
+        unit_match = UNIT.search(block)
+        # İç bloklar (units:unit, scalePoint) dışarıdaki alanları gölgeliyor.
+        flat = NESTED.sub(" ", block)
+        while NESTED.search(flat):
+            flat = NESTED.sub(" ", flat)
+        fields = {key: value.strip('"') for key, value in FIELD.findall(flat)}
+        symbol = fields.get("symbol")
+        if not symbol:
+            continue
+        ports.append(
+            {
+                "symbol": symbol,
+                "name": fields.get("name", symbol),
+                "minimum": fields.get("minimum", "0"),
+                "maximum": fields.get("maximum", "1"),
+                "default": fields.get("default", "0"),
+                "unit": unit_match.group(1) if unit_match else "",
+                "integer": "pp:integer" in flat or "lv2:integer" in flat,
+                "logarithmic": "pp:logarithmic" in flat or "pprops:logarithmic" in flat,
+            }
+        )
+    return ports
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("uri", help="eklenti URI'si veya --list ile arama deseni")
+    parser.add_argument("--list", action="store_true", help="eşleşen URI'leri listele")
+    args = parser.parse_args(argv)
+
+    if args.list:
+        seen = set()
+        for path in ttl_files(args.uri):
+            for uri in re.findall(r"<(https?://[^>]+)>\s*\n?\s*a lv2:Plugin", path.read_text()):
+                seen.add(uri)
+        for uri in sorted(seen):
+            print(uri)
+        return 0
+
+    # LSP'nin TTL'leri URI'yi `plug:autogain_stereo` gibi önekli yazıyor, Calf'ınkiler
+    # tam URI ile. İkisini de tanıyalım: URI'nin son parçası dosya adıyla eşleşiyor.
+    tail = args.uri.rsplit("/", 1)[-1]
+    matches = [p for p in ttl_files(tail) if p.stem == tail] or ttl_files(args.uri)
+    if not matches:
+        print(f"TTL bulunamadı: {args.uri}", file=sys.stderr)
+        return 1
+
+    for path in matches:
+        text = path.read_text(errors="replace")
+        if f"<{args.uri}>" not in text and path.stem != tail:
+            continue
+        ports = parse_ports(text)
+        if not ports:
+            continue
+        print(f"# {path}  ({len(ports)} kontrol portu)")
+        for port in ports:
+            flags = ""
+            if port["logarithmic"] or port["integer"]:
+                flags = f', {port["logarithmic"]}, {port["integer"]}'
+            print(
+                f'    ("{port["symbol"]}", "{port["name"]}", '
+                f'{port["minimum"]}, {port["maximum"]}, {port["default"]}, '
+                f'"{port["unit"]}"{flags}),'
+            )
+        return 0
+
+    print(f"URI eşleşmedi: {args.uri}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

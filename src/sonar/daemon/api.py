@@ -63,6 +63,7 @@ from typing import Any
 
 from sonar.core import config as config_mod
 from sonar.core import i18n, importers, presets, serde
+from sonar.core.dsp import effects as dsp_effects
 from sonar.core.dsp import registry
 from sonar.core.dsp.chain import plan_chain
 from sonar.core.model import (
@@ -692,8 +693,13 @@ class SonarApi:
             {
                 "slot": effect.slot,
                 "kind": effect.kind.value,
-                "enabled": self.profile(target).state(effect.slot).enabled,
-                "params": dict(self.profile(target).state(effect.slot).params),
+                "enabled": profile.state(effect.slot).enabled,
+                "values": dict(profile.state(effect.slot).params),
+                "category": dsp_effects.effect_spec(effect.kind).category.value,
+                "hint": dsp_effects.effect_spec(effect.kind).hint,
+                # Arayüz parametre satırlarını **bu listeden** çiziyor; her yeni efekt
+                # için QML yazmak gerekmiyor.
+                "params": dsp_effects.params_of(effect.kind),
             }
             for effect in profile.effects
         ]
@@ -706,7 +712,6 @@ class SonarApi:
         onu graf kurulamadığında yalnız bırakır.
         """
         is_mic = bool(target) and self.config.mic(target) is not None
-        channels = 2
         out: list[dict] = []
         for stage in CHAIN_ORDER:
             if target:
@@ -715,12 +720,19 @@ class SonarApi:
                 if not is_mic and stage in MIC_ONLY_STAGES:
                     continue
             probe = EffectSlot(kind=stage, slot=stage.value)
-            plan = plan_chain((probe,), channels=channels,
-                              band_count=self.config.settings.default_band_count)  # fmt: skip
+            plan = plan_chain(
+                (probe,), channels=2, band_count=self.config.settings.default_band_count
+            )
             if not plan.slots:
                 continue
+            spec = dsp_effects.effect_spec(stage)
             out.append(
-                {"kind": stage.value, "params": sorted(DEFAULT_FILTER_PARAMS.get(stage, {}))}
+                {
+                    "kind": stage.value,
+                    "category": spec.category.value,
+                    "hint": spec.hint,
+                    "params": dsp_effects.params_of(stage),
+                }
             )
         return out
 

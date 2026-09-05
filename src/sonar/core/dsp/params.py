@@ -136,6 +136,8 @@ def _band_params(index: int, band: EqBand | None, spec: registry.PluginSpec) -> 
 _TO_LINEAR = "linear"
 _DIRECT = "direct"
 _BOOL = "bool"
+#: Kullanıcıya yüzde gösterilen, eklentide 0–1 (ya da 0–n) oranı olan portlar.
+_PERCENT = "percent"
 
 _STAGE_PORT_MAP: dict[FilterStage, dict[str, tuple[str, str]]] = {
     FilterStage.GATE: {
@@ -166,6 +168,55 @@ _STAGE_PORT_MAP: dict[FilterStage, dict[str, tuple[str, str]]] = {
         "post_filter_beta": ("Post Filter Beta", _DIRECT),
         "min_buffer_frames": ("Min Processing Buffer (frames)", _DIRECT),
     },
+    # --- EasyEffects karşılıkları -------------------------------------------
+    FilterStage.EXPANDER: {
+        "threshold_db": ("al", _TO_LINEAR),
+        "knee_db": ("kn", _TO_LINEAR),
+        "attack_ms": ("at", _DIRECT),
+        "release_ms": ("rt", _DIRECT),
+        "makeup_db": ("mk", _TO_LINEAR),
+    },
+    FilterStage.DEESSER: {
+        "threshold_db": ("threshold", _TO_LINEAR),
+        "ratio": ("ratio", _DIRECT),
+        "split_hz": ("f1_freq", _DIRECT),
+        "makeup_db": ("makeup", _TO_LINEAR),
+    },
+    FilterStage.BASS_ENHANCER: {
+        "amount": ("amount", _DIRECT),
+        "harmonics": ("drive", _DIRECT),
+        "scope_hz": ("freq", _DIRECT),
+    },
+    FilterStage.EXCITER: {
+        "amount": ("amount", _DIRECT),
+        "harmonics": ("drive", _DIRECT),
+        "scope_hz": ("freq", _DIRECT),
+    },
+    FilterStage.STEREO_TOOLS: {
+        "width": ("slev", _PERCENT),
+        "mid_db": ("mlev", _TO_LINEAR),
+        "balance": ("balance_out", _PERCENT),
+        "base": ("stereo_base", _PERCENT),
+    },
+    FilterStage.DELAY: {
+        "time_ms": ("time", _DIRECT),
+        "drywet": ("drywet", _DIRECT),
+    },
+    FilterStage.REVERB: {
+        "decay_s": ("decay_time", _DIRECT),
+        "room_size": ("room_size", _DIRECT),
+        "wet": ("amount", _DIRECT),
+        "predelay_ms": ("predelay", _DIRECT),
+        "damp_hz": ("hf_damp", _DIRECT),
+    },
+    FilterStage.LOUDNESS: {
+        "volume_db": ("volume", _DIRECT),
+    },
+    FilterStage.MAXIMIZER: {
+        "ceiling_db": ("Threshold", _DIRECT),
+        "gain_db": ("Input Gain", _DIRECT),
+        "release_ms": ("Release", _DIRECT),
+    },
 }
 
 #: Aşamanın kapalı olduğunda yazılacak portlar. Topoloji değişmediği için bypass böyle yapılır.
@@ -173,8 +224,43 @@ _STAGE_BYPASS: dict[FilterStage, dict[str, float]] = {
     FilterStage.GATE: {"enabled": 0.0},
     FilterStage.COMP: {"enabled": 0.0},
     FilterStage.LIMITER: {"enabled": 0.0},
+    FilterStage.EXPANDER: {"enabled": 0.0},
+    FilterStage.DELAY: {"enabled": 0.0},
+    FilterStage.LOUDNESS: {"enabled": 0.0},
     # DeepFilterNet'te `enabled` portu yok; sıfır azaltma sınırı fiilen bypass demektir.
     FilterStage.DEEPFILTER: {"Attenuation Limit (dB)": 0.0},
+    # Calf'ın `bypass` portu 1 = kapalı (LSP'nin `enabled`'ının tersi).
+    FilterStage.DEESSER: {"bypass": 1.0},
+    FilterStage.BASS_ENHANCER: {"bypass": 1.0},
+    FilterStage.EXCITER: {"bypass": 1.0},
+    FilterStage.STEREO_TOOLS: {"bypass": 1.0},
+    # Calf Reverb'de `bypass` yok; `on` (Active) portu 0 olunca devre dışı.
+    FilterStage.REVERB: {"on": 0.0},
+    # ZaMaximX2'de bypass portu **yok**: tavan 0 dB ve kazanç 0 dB iken şeffaf.
+    FilterStage.MAXIMIZER: {"Threshold": 0.0, "Input Gain": 0.0, "Release": 30.0},
+}
+
+#: `enabled = 1` yazılmayacak aşamalar: ya öyle bir portları yok, ya da bypass'ları
+#: başka bir portla yapılıyor ve açılışta o portun **gerçek** değeri yazılmalı.
+_NO_ENABLED_PORT: frozenset[FilterStage] = frozenset(
+    {
+        FilterStage.DEEPFILTER,
+        FilterStage.MAXIMIZER,
+        FilterStage.DEESSER,
+        FilterStage.BASS_ENHANCER,
+        FilterStage.EXCITER,
+        FilterStage.STEREO_TOOLS,
+        FilterStage.REVERB,
+    }
+)
+
+#: Aşama açıkken bypass portunun alacağı **ters** değer.
+_STAGE_ACTIVE: dict[FilterStage, dict[str, float]] = {
+    FilterStage.DEESSER: {"bypass": 0.0},
+    FilterStage.BASS_ENHANCER: {"bypass": 0.0},
+    FilterStage.EXCITER: {"bypass": 0.0},
+    FilterStage.STEREO_TOOLS: {"bypass": 0.0},
+    FilterStage.REVERB: {"on": 1.0},
 }
 
 #: Aşama **açıkken** her zaman sabitlenen portlar.
@@ -321,7 +407,8 @@ def stage_params(
     if not state.enabled:
         ports = dict(_STAGE_BYPASS[stage])
     else:
-        ports = {} if stage is FilterStage.DEEPFILTER else {"enabled": 1.0}
+        ports = {} if stage in _NO_ENABLED_PORT else {"enabled": 1.0}
+        ports.update(_STAGE_ACTIVE.get(stage, {}))
         ports.update(_STAGE_FIXED.get(stage, {}))
         defaults = _default_params(stage)
         for name, (port, kind) in mapping.items():
@@ -334,10 +421,12 @@ def stage_params(
 
 
 def _convert(value: float, kind: str) -> float:
-    if kind is _TO_LINEAR or kind == _TO_LINEAR:
+    if kind == _TO_LINEAR:
         return db_to_linear(value)
     if kind == _BOOL:
         return 1.0 if value else 0.0
+    if kind == _PERCENT:
+        return float(value) / 100.0
     return float(value)
 
 
@@ -378,10 +467,24 @@ def profile_to_params(
 
 def _dynamic_spec(stage: FilterStage, channels: int) -> registry.PluginSpec | None:
     suffix = "stereo" if channels == 2 else "mono"
-    key = {
-        FilterStage.GATE: f"lsp_gate_{suffix}",
-        FilterStage.COMP: f"lsp_compressor_{suffix}",
-        FilterStage.LIMITER: f"lsp_limiter_{suffix}",
-        FilterStage.DEEPFILTER: f"deepfilter_{suffix}",
-    }.get(stage)
+    key = _PLUGIN_KEYS.get(stage, "").format(suffix=suffix)
     return registry.PLUGINS.get(key) if key else None
+
+
+#: Aşama → eklenti anahtarı şablonu. Tek kaynak: `chain._plugin_key` de bunu okuyor,
+#: yoksa iki yerde birbirinden habersiz iki eşleme olurdu.
+_PLUGIN_KEYS: dict[FilterStage, str] = {
+    FilterStage.GATE: "lsp_gate_{suffix}",
+    FilterStage.COMP: "lsp_compressor_{suffix}",
+    FilterStage.LIMITER: "lsp_limiter_{suffix}",
+    FilterStage.DEEPFILTER: "deepfilter_{suffix}",
+    FilterStage.EXPANDER: "lsp_expander_stereo",
+    FilterStage.DELAY: "lsp_comp_delay_stereo",
+    FilterStage.LOUDNESS: "lsp_loud_comp_stereo",
+    FilterStage.DEESSER: "calf_deesser",
+    FilterStage.BASS_ENHANCER: "calf_bassenhancer",
+    FilterStage.EXCITER: "calf_exciter",
+    FilterStage.REVERB: "calf_reverb",
+    FilterStage.STEREO_TOOLS: "calf_stereotools",
+    FilterStage.MAXIMIZER: "zam_maximizer_stereo",
+}

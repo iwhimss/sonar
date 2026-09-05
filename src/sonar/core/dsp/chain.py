@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sonar.core.dsp import registry
-from sonar.core.dsp.params import eq_bypass_ports, stage_bypass_ports
+from sonar.core.dsp.params import _PLUGIN_KEYS, eq_bypass_ports, stage_bypass_ports
 from sonar.core.model import EffectSlot, FilterStage
 
 __all__ = ["ChainPlan", "StageBlock", "build_chain", "effect_block", "plan_chain"]
@@ -309,13 +309,12 @@ def _neutral_control(stage: FilterStage, spec: registry.PluginSpec) -> dict[str,
 
 
 def _plugin_key(stage: FilterStage, channels: int, band_count: int) -> str | None:
-    """Aşamanın eklenti anahtarı; katalogda karşılığı yoksa `None`."""
+    """Aşamanın eklenti anahtarı; katalogda karşılığı yoksa `None`.
+
+    Eşleme `core.dsp.params._PLUGIN_KEYS`'ten geliyor: iki yerde ayrı liste tutmak,
+    birinin diğerinden habersiz değişmesi demekti.
+    """
     if stage is FilterStage.EQ:
         return registry.eq_plugin_for(band_count, channels=channels).key
-    suffix = "mono" if channels == 1 else "stereo"
-    return {
-        FilterStage.DEEPFILTER: f"deepfilter_{suffix}",
-        FilterStage.GATE: f"lsp_gate_{suffix}",
-        FilterStage.COMP: f"lsp_compressor_{suffix}",
-        FilterStage.LIMITER: f"lsp_limiter_{suffix}",
-    }.get(stage)
+    template = _PLUGIN_KEYS.get(stage)
+    return template.format(suffix="mono" if channels == 1 else "stereo") if template else None
