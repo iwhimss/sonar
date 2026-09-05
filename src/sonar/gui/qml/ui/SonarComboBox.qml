@@ -178,11 +178,20 @@ Item {
         }
     }
 
+    /* `currentValue`'ya **yazmıyoruz**. QML'de bağlı bir özelliğe yazmak bağlamayı
+       kalıcı olarak koparır: bu kutu bir kez seçim yaptıktan sonra sahibinin ifadesini
+       bir daha takip etmezdi.
+
+       Test turu 7'de iki hata birden buradan çıktı — favorilerden profil seçince
+       dropdown değişmiyordu ve ekolayzerde bir bandın filtre tipini değiştirince
+       diğer bandlarda da o tip görünüyordu. (Aynı tuzağa `SonarFader` test turu 3'te
+       düşmüştü.)
+
+       Sahibi `activated`'ı alıp modeli günceller, bağlama da değeri geri getirir. */
     function pick(index) {
         if (!model || index < 0 || index >= model.length) return
         const option = model[index]
         if (option.header === true) return
-        root.currentValue = option.value
         root.activated(option.value)
         popup.close()
     }

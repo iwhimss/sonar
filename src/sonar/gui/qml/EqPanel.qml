@@ -211,10 +211,12 @@ SonarPanel {
                                                           "band_type", v)
             }
             Repeater {
+                //: Q üç ondalıkla: varsayılan 1.4142 ve kullanıcıların yazdığı 0.707
+                //: iki ondalıkta yuvarlanıyordu, kutuya girip çıkmak değeri bozuyordu.
                 model: [
                     { key: "freq",    label: I18n.t("eq.freq"), unit: "Hz", digits: 0 },
                     { key: "gain_db", label: I18n.t("eq.gain"),  unit: "dB", digits: 1 },
-                    { key: "q",       label: "Q",       unit: "",   digits: 2 }
+                    { key: "q",       label: "Q",       unit: "",   digits: 3 }
                 ]
                 Row {
                     required property var modelData
@@ -229,6 +231,10 @@ SonarPanel {
                         accent: root.accent
                         decimals: modelData.digits
                         unit: modelData.unit
+                        //: Seçili band yokken alan hiçbir şeye bağlı değil; o hâlde
+                        //: yazmak yanlış banda değer yazmak olurdu.
+                        committable: curve && curve.selectedBand >= 0
+                                     && curve.selectedBand < root.bands.length
                         value: parent.parent.band[modelData.key] !== undefined
                                ? parent.parent.band[modelData.key] : 0
                         onCommitted: (v) => root.bridge.setEqBand(
