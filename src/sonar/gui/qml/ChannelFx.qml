@@ -567,27 +567,39 @@ Item {
     }
 
     // --- içe / dışa aktarma --------------------------------------------------
+    /* İki pencere de **aynı** klasörde açılıyor ve son kullanılan klasör hatırlanıyor.
+       Eskiden dışa aktarma `currentFile`'a geçersiz bir URL veriyordu
+       (`"file://" + ad` — URL kurallarına göre bu bir *host* adı, yol boş), Qt onu yok
+       sayıyor ve her pencere kendi varsayılanında açılıyordu: kullanıcı belgelerine
+       kaydedip ev dizininde arıyordu (test turu 7). */
     Dialogs.FileDialog {
         id: importDialog
         title: I18n.t("profile.import.title")
+        currentFolder: root.bridge ? root.bridge.profileFolder : ""
         nameFilters: [
-            I18n.t("profile.filter.all_supported") + " (*.txt *.json *.sonarprofile)",
+            I18n.t("profile.filter.sonar") + " (*.sonarprofile)",
+            I18n.t("profile.filter.all_supported") + " (*.sonarprofile *.txt *.json)",
             "AutoEQ / EqualizerAPO (*.txt)",
             "EasyEffects (*.json)",
-            I18n.t("profile.filter.sonar") + " (*.sonarprofile)",
             I18n.t("profile.filter.any") + " (*)"
         ]
-        onAccepted: root.bridge.importProfile(root.target, selectedFile.toString())
+        onAccepted: {
+            root.bridge.rememberProfileFolder(currentFolder.toString())
+            root.bridge.importProfile(root.target, selectedFile.toString())
+        }
     }
 
     Dialogs.FileDialog {
         id: exportDialog
         title: I18n.t("profile.export.title")
         fileMode: Dialogs.FileDialog.SaveFile
-        currentFile: "file://" + root.activeName + ".sonarprofile"
+        currentFolder: root.bridge ? root.bridge.profileFolder : ""
+        //: Yalnızca dosya **adı**; klasörü `currentFolder` veriyor.
+        currentFile: root.activeName + ".sonarprofile"
         nameFilters: [I18n.t("profile.filter.sonar") + " (*.sonarprofile)", "AutoEQ (*.txt)"]
         onAccepted: {
             const path = selectedFile.toString()
+            root.bridge.rememberProfileFolder(currentFolder.toString())
             root.bridge.exportProfile(root.target, path, path.endsWith(".txt"))
         }
     }

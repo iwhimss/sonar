@@ -956,6 +956,50 @@ class SonarBridge(QObject):
         """Kanalın ChatMix çarpanı. 1.0 = dokunulmamış."""
         return float((self._state.get("chatmix_gains") or {}).get(channel, 1.0))
 
+    def _get_profile_folder(self) -> str:
+        """İçe/dışa aktarma pencerelerinin açılacağı klasör (`file://` URL'si).
+
+        Test turu 7: dışa aktarma penceresi `currentFile`'a **geçersiz** bir URL
+        veriyordu (`"file://" + ad`; URL kurallarına göre bu bir *host* adı, yol boş) ve
+        Qt onu yok sayıyordu. Sonuçta iki pencere birbirinden habersiz iki ayrı klasörde
+        açılıyor, kullanıcı belgelerine kaydedip ev dizininde arıyordu.
+
+        Artık ikisi de **aynı** klasörde açılıyor ve son kullanılan klasör `ui.json`'da
+        saklanıyor (pencere boyutunun durduğu yer).
+        """
+        from PySide6.QtCore import QStandardPaths
+
+        saved = str(self._ui_state().get("profile_folder") or "")
+        if saved:
+            return saved
+        documents = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DocumentsLocation
+        ) or QStandardPaths.writableLocation(QStandardPaths.StandardLocation.HomeLocation)
+        return f"file://{documents}"
+
+    profileFolder = Property(str, _get_profile_folder, notify=stateChanged)
+
+    @Slot(str)
+    def rememberProfileFolder(self, folder: str) -> None:
+        """Kullanıcının seçtiği klasörü hatırla — iki pencere de oradan devam etsin."""
+        if not folder:
+            return
+        state = self._ui_state()
+        if state.get("profile_folder") == folder:
+            return
+        state["profile_folder"] = folder
+        self._save_ui_state(state)
+
+    def _ui_state(self) -> dict:
+        from sonar.core import config as config_mod
+
+        return config_mod.ConfigStore().load_ui_state()
+
+    def _save_ui_state(self, state: dict) -> None:
+        from sonar.core import config as config_mod
+
+        config_mod.ConfigStore().save_ui_state(state)
+
     @Slot(str, str)
     def importProfile(self, target: str, path: str) -> None:
         """Bir EQ dosyasını profil olarak içe aktarır ve sonucu kullanıcıya söyler."""
@@ -995,7 +1039,7 @@ class SonarBridge(QObject):
                 i18n.t("notice.write_failed", error=error.strerror or error), True
             )
             return
-        self.noticeRaised.emit(i18n.t("notice.saved", name=target_path.name), False)
+        self.noticeRaised.emit(i18n.t("notice.saved", name=str(target_path)), False)
 
     @Slot(str)
     def resetProfile(self, target: str) -> None:

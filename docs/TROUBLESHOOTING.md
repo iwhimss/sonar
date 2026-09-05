@@ -379,6 +379,20 @@ efektleri bulundurup birini kapalı bırakın; kapalı bir efekt zincirde durur 
 
 ---
 
+## Dışa aktardığım profil içe aktarmada görünmüyor
+
+İki pencere artık **aynı** klasörde açılıyor ve son kullandığınız klasörü hatırlıyor;
+ilk açılışta Belgeler dizini geliyor. Dışa aktarma bittiğinde bildirim şeridi dosyanın
+**tam yolunu** yazıyor — nereye gittiği belirsiz kalmıyor.
+
+Eskiden dışa aktarma penceresine geçersiz bir başlangıç yolu veriliyordu; Qt onu yok
+sayıyor ve her pencere kendi varsayılanında açılıyordu.
+
+İçe aktarma penceresinde dosyayı hâlâ göremiyorsanız biçim süzgecine bakın: en üstteki
+`.sonarprofile`; AutoEQ metni veya EasyEffects JSON'u için alttaki seçenekleri kullanın.
+
+---
+
 ## Preset'i düzenleyemiyorum
 
 Gömülü presetler (`Flat`, `FPS Footsteps`, `Broadcast`…) salt okunurdur. Düzenlemeye
