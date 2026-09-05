@@ -58,7 +58,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: parent.top
                     anchors.topMargin: Theme.s3
-                    text: "＋  Kanal ekle"
+                    text: "＋  " + I18n.t("mixer.add_channel")
                     onClicked: addDialog.open()
                 }
             }
@@ -77,7 +77,7 @@ Item {
             anchors.centerIn: parent
             spacing: 2
             SonarSectionLabel {
-                text: root.chatmixByWheel ? "ChatMix — kulaklık tekeri yönetiyor" : "ChatMix"
+                text: root.chatmixByWheel ? I18n.t("mixer.chatmix.by_wheel") : I18n.t("mixer.chatmix")
                 color: root.chatmixByWheel ? Theme.warn : Theme.textFaint
                 anchors.horizontalCenter: parent.horizontalCenter
             }
@@ -102,7 +102,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 SonarButton {
-                    text: "Sıfırla"
+                    text: I18n.t("common.reset")
                     variant: "ghost"
                     enabled: !root.chatmixByWheel
                              && (root.bridge ? Math.abs(root.bridge.chatmix - 50) > 0.5 : false)
@@ -143,7 +143,7 @@ Item {
                     SonarButton {
                         width: parent.width
                         variant: "ghost"
-                        text: "★ Hep " + parent.row.name + "'e gönder"
+                        text: I18n.tf("mixer.stream.always", { name: parent.row.name })
                         visible: parent.row.kind === "channel"
                         height: visible ? 28 : 0
                         onClicked: {
@@ -159,7 +159,7 @@ Item {
     // --- kanal silme onayı ---------------------------------------------------
     SonarDialog {
         id: removeDialog
-        title: "Kanalı sil"
+        title: I18n.t("channel.remove.title")
         accent: Theme.danger
         preferredWidth: 380
         property string channelId: ""
@@ -173,9 +173,7 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "\"" + removeDialog.channelName + "\" ve tüm profilleri silinecek. "
-                    + "Bu kanala yönlenen kurallar kalkar, uygulamaları varsayılan kanala "
-                    + "düşer. Ses grafı yeniden kurulur (yaklaşık 200 ms sessizlik)."
+                text: I18n.tf("channel.remove.body", { name: removeDialog.channelName })
                 color: Theme.textDim
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -184,14 +182,14 @@ Item {
             Row {
                 spacing: Theme.s2
                 SonarButton {
-                    text: "Sil"
+                    text: I18n.t("common.delete")
                     variant: "danger"
                     onClicked: {
                         root.bridge.removeChannel(removeDialog.channelId)
                         removeDialog.close()
                     }
                 }
-                SonarButton { text: "Vazgeç"; onClicked: removeDialog.close() }
+                SonarButton { text: I18n.t("common.cancel"); onClicked: removeDialog.close() }
             }
         }
     }
@@ -200,7 +198,7 @@ Item {
     SonarDialog {
         id: addDialog
         objectName: "addDialog"
-        title: "Yeni kanal"
+        title: I18n.t("channel.add.title")
         preferredWidth: 420
 
         // "output" = uygulamaların çaldığı sanal çıkış, "input" = işlenmiş mikrofon.
@@ -236,16 +234,16 @@ Item {
                 }
             }
 
-            SonarSectionLabel { text: "Kanal türü" }
+            SonarSectionLabel { text: I18n.t("channel.add.kind") }
             Row {
                 spacing: Theme.s2
                 width: parent.width
                 Repeater {
                     model: [
-                        { value: "output", label: "Çıkış",
-                          hint: "Uygulamaların ses çaldığı sanal çıkış cihazı" },
-                        { value: "input", label: "Giriş",
-                          hint: "İşlenmiş bir mikrofon — sanal giriş cihazı" }
+                        { value: "output", label: I18n.t("channel.add.output"),
+                          hint: I18n.t("channel.add.output.hint") },
+                        { value: "input", label: I18n.t("channel.add.input"),
+                          hint: I18n.t("channel.add.input.hint") }
                     ]
                     Rectangle {
                         id: kindCard
@@ -299,7 +297,7 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "Kanal eklemek ses grafını yeniden kurar; yaklaşık 200 ms sessizlik olur."
+                text: I18n.t("channel.add.note")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -308,8 +306,8 @@ Item {
 
             Row {
                 spacing: Theme.s2
-                SonarButton { text: "Ekle"; variant: "accent"; onClicked: addDialog.commit() }
-                SonarButton { text: "Vazgeç"; onClicked: addDialog.close() }
+                SonarButton { text: I18n.t("common.add"); variant: "accent"; onClicked: addDialog.commit() }
+                SonarButton { text: I18n.t("common.cancel"); onClicked: addDialog.close() }
             }
         }
 

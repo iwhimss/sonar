@@ -37,10 +37,10 @@ Item {
     readonly property bool setupOk: setupProblems.length === 0
     readonly property string setupSummary: {
         if (setupProblems.length > 0) return "⚠ " + setupProblems[0].message
-        if (setupListeners.length === 0) return "Henüz kimse dinlemiyor."
+        if (setupListeners.length === 0) return I18n.t("stream.nobody_listening")
         return setupListeners.length === 1
-            ? setupListeners[0].label + " dinliyor."
-            : setupListeners.length + " uygulama dinliyor."
+            ? I18n.tf("stream.one_listener", { name: setupListeners[0].label })
+            : I18n.tf("stream.many_listeners", { count: setupListeners.length })
     }
 
     ColumnLayout {
@@ -62,7 +62,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: "MASTER"
+                    text: I18n.t("master.title")
                     color: Theme.master
                     elide: Text.ElideRight
                     font.family: Theme.fontFamily
@@ -109,7 +109,7 @@ Item {
                    Burada eskiden sabit bir metin vardı ve kullanıcının makinesinde
                    karşılığı olmayan bir cihaz adı yazıyordu. Artık tanı canlı: adı
                    yapılandırmadan, dinleyicileri graftan okuyoruz. */
-                SonarSectionLabel { text: "Yayın Miksi (OBS)" }
+                SonarSectionLabel { text: I18n.t("master.stream_mix") }
                 /* Şeritte yalnızca **özet** duruyor: 240 px'lik bir kolona kurulum
                    yönergesi, dinleyici listesi ve uyarılar sığmıyordu — bölüm kendi
                    içinde kayıyordu ama kullanıcı kaydırılabildiğini görmüyordu.
@@ -125,11 +125,11 @@ Item {
                 }
                 SonarButton {
                     width: parent.width
-                    text: "Yayın kurulumu…"
+                    text: I18n.t("stream.setup.open")
                     onClicked: streamDialog.open()
                 }
 
-                SonarSectionLabel { text: "Kişisel Miks" }
+                SonarSectionLabel { text: I18n.t("bus.personal") }
                 SonarComboBox {
                     width: parent.width
                     accent: Theme.master
@@ -138,7 +138,7 @@ Item {
                     onActivated: (value) => root.bridge.setBusDevice(root.outputId, value)
                 }
 
-                SonarSectionLabel { text: "Mikrofon" }
+                SonarSectionLabel { text: I18n.t("master.microphone") }
                 SonarComboBox {
                     width: parent.width
                     accent: Theme.master
@@ -163,8 +163,8 @@ Item {
                 spacing: Theme.s6
                 Repeater {
                     model: [
-                        { key: root.outputId, icon: "headset", label: "Kulaklık" },
-                        { key: "stream", icon: "cast", label: "Yayın" }
+                        { key: root.outputId, icon: "headset", label: I18n.t("master.headphones") },
+                        { key: "stream", icon: "cast", label: I18n.t("master.stream") }
                     ]
                     Column {
                         id: busColumn
@@ -241,7 +241,7 @@ Item {
                 SonarSectionLabel {
                     width: parent.width
                     elide: Text.ElideRight
-                    text: "Miksi yakalayanlar  (" + root.captures.length + ")"
+                    text: I18n.t("master.captures") + "  (" + root.captures.length + ")"
                 }
 
                 ListView {
@@ -296,7 +296,7 @@ Item {
     SonarDialog {
         id: streamDialog
         objectName: "streamDialog"
-        title: "Yayın kurulumu (OBS)"
+        title: I18n.t("stream.setup.title")
         preferredWidth: 460
 
         Column {
@@ -306,7 +306,7 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "1. OBS → Ayarlar → Ses → Global Ses Aygıtları → Masaüstü Sesi:"
+                text: I18n.t("stream.setup.step1")
                 color: Theme.textDim
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -346,15 +346,14 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "2. Aynı ekranda Mikrofon/AUX Sesi → Devre dışı. Başka kaynak eklemeyin — "
-                    + "aynı miksi ikinci kez almak her şeyi iki kez duyurur."
+                text: I18n.t("stream.setup.step2")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
                 renderType: Text.NativeRendering
             }
 
-            SonarSectionLabel { width: parent.width; text: "Şu an kim dinliyor" }
+            SonarSectionLabel { width: parent.width; text: I18n.t("stream.setup.listeners") }
             Repeater {
                 model: root.setupListeners
                 Text {
@@ -372,7 +371,7 @@ Item {
             Text {
                 width: parent.width
                 visible: root.setupListeners.length === 0
-                text: "· henüz kimse dinlemiyor"
+                text: "· " + I18n.t("stream.nobody_listening")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -382,7 +381,7 @@ Item {
             /* Mikrofonun yayın gönderisi. Bu anahtar modelde baştan beri vardı ama
                hiçbir arayüzü yoktu; kullanıcı "yayında mikrofonum duyulmuyor" ve
                "mikrofonun yayın fader'ı hiçbir şey yapmıyor" diye bildirdi. */
-            SonarSectionLabel { width: parent.width; text: "Mikrofon yayın miksinde" }
+            SonarSectionLabel { width: parent.width; text: I18n.t("stream.setup.mic_section") }
             Repeater {
                 model: root.setup.mics || []
                 Row {
@@ -400,8 +399,8 @@ Item {
                         width: parent.width - 26 - Theme.s2
                         anchors.verticalCenter: parent.verticalCenter
                         wrapMode: Text.WordWrap
-                        text: modelData.name
-                            + (modelData.in_stream ? " — yayın miksinde" : " — yayın miksinde değil")
+                        text: modelData.name + " — " + (modelData.in_stream
+                            ? I18n.t("stream.setup.mic_on") : I18n.t("stream.setup.mic_off"))
                         color: modelData.in_stream ? Theme.textDim : Theme.textFaint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -412,8 +411,7 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "Açıkken tek kaynak yeter. OBS'e ayrı bir mikrofon kaynağı "
-                    + "eklediyseniz bunu kapatın, yoksa sesiniz iki kez gider."
+                text: I18n.t("stream.setup.mic_note")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -444,7 +442,9 @@ Item {
     }
 
     function busLabel(id) {
-        return id === "stream" ? "Yayın Miksi" : "Kişisel Miks"
+        // Gömülü adların çevirisi tek yerde: köprü, kullanıcı yeniden adlandırmışsa
+        // onun adını döndürüyor.
+        return root.bridge ? root.bridge.busLabel(id) : id
     }
 
     function deviceList(source) {

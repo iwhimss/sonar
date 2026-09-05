@@ -26,17 +26,18 @@ Item {
     readonly property var profileOptions: {
         const all = root.names.map(function (p) {
             return typeof p === "string"
-                ? { value: p, label: p, builtin: false }
-                : { value: p.name, label: p.name, builtin: p.builtin === true }
+                ? { value: p, label: root.bridge.presetLabel(p), builtin: false }
+                : { value: p.name, label: root.bridge.presetLabel(p.name),
+                    builtin: p.builtin === true }
         })
         const out = []
         if (root.favorites.length > 0) {
-            out.push({ value: "", label: "Favoriler", header: true })
+            out.push({ value: "", label: I18n.t("profile.favorites"), header: true })
             for (const name of root.favorites) {
                 const hit = all.find(function (o) { return o.value === name })
                 if (hit) out.push({ value: hit.value, label: "★ " + hit.label })
             }
-            out.push({ value: "", label: "Tüm profiller", header: true })
+            out.push({ value: "", label: I18n.t("profile.all"), header: true })
         }
         for (const option of all)
             out.push({ value: option.value, label: (option.builtin ? "🔒 " : "") + option.label })
@@ -93,32 +94,32 @@ Item {
                     }
 
                     SonarButton {
-                        text: "＋ Yeni profil"
+                        text: "＋ " + I18n.t("profile.new")
                         variant: "accent"
                         accent: root.accent
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: newDialog.open()
                     }
                     SonarButton {
-                        text: "Sıfırla"
+                        text: I18n.t("common.reset")
                         variant: "ghost"
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: root.bridge.resetProfile(root.target)
                     }
                     SonarButton {
-                        text: "Sil"
+                        text: I18n.t("common.delete")
                         variant: "ghost"
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: root.bridge.deleteProfile(root.target, root.activeName)
                     }
                     SonarButton {
-                        text: "İçe aktar"
+                        text: I18n.t("profile.import")
                         variant: "ghost"
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: importDialog.open()
                     }
                     SonarButton {
-                        text: "Dışa aktar"
+                        text: I18n.t("profile.export")
                         variant: "ghost"
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: exportDialog.open()
@@ -130,7 +131,7 @@ Item {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: x + implicitWidth <= parent.width
-                        text: "değişiklikler otomatik kaydediliyor"
+                        text: I18n.t("profile.autosave")
                         color: Theme.textFaint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -146,7 +147,7 @@ Item {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root.favorites.length === 0
-                        text: "Favori yok — yıldıza basarak ekleyin, hızlı geçiş için buraya dizilir."
+                        text: I18n.t("profile.no_favorites")
                         color: Theme.textFaint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -312,7 +313,7 @@ Item {
                 width: dynamics.panelWidth
                 height: smartBody.implicitHeight + 26 + Theme.s3 * 2
                 visible: !root.isMic
-                title: "Smart Volume"
+                title: I18n.t("fx.stage.smart")
                 accent: root.accent
                 active: root.duckOn
                 onToggled: (v) => root.bridge.setDucking(root.target, { "enabled": v })
@@ -342,7 +343,7 @@ Item {
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: root.channelName + " kanalında ses olunca diğer kanallar kısılır."
+                        text: I18n.tf("fx.smart.hint", { name: root.channelName })
                         color: Theme.textFaint
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -371,7 +372,7 @@ Item {
             anchors.fill: parent
             anchors.margins: Theme.s4
             spacing: Theme.s3
-            SonarSectionLabel { text: "Yeni profil" }
+            SonarSectionLabel { text: I18n.t("profile.new") }
             Rectangle {
                 width: parent.width
                 height: 28
@@ -393,8 +394,7 @@ Item {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "Sıfırdan düz başlar: EQ düz, tüm filtreler kapalı. "
-                    + "Şu anki profil olduğu gibi kalır."
+                text: I18n.t("profile.new.hint")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
@@ -402,9 +402,9 @@ Item {
             }
             Row {
                 spacing: Theme.s2
-                SonarButton { text: "Oluştur"; variant: "accent"; accent: root.accent
+                SonarButton { text: I18n.t("common.create"); variant: "accent"; accent: root.accent
                               onClicked: newDialog.commit() }
-                SonarButton { text: "Vazgeç"; onClicked: newDialog.visible = false }
+                SonarButton { text: I18n.t("common.cancel"); onClicked: newDialog.visible = false }
             }
         }
 
@@ -418,23 +418,23 @@ Item {
     // --- içe / dışa aktarma --------------------------------------------------
     Dialogs.FileDialog {
         id: importDialog
-        title: "Profil içe aktar"
+        title: I18n.t("profile.import.title")
         nameFilters: [
-            "Desteklenen tüm biçimler (*.txt *.json *.sonarprofile)",
+            I18n.t("profile.filter.all_supported") + " (*.txt *.json *.sonarprofile)",
             "AutoEQ / EqualizerAPO (*.txt)",
             "EasyEffects (*.json)",
-            "Sonar profili (*.sonarprofile)",
-            "Tüm dosyalar (*)"
+            I18n.t("profile.filter.sonar") + " (*.sonarprofile)",
+            I18n.t("profile.filter.any") + " (*)"
         ]
         onAccepted: root.bridge.importProfile(root.target, selectedFile.toString())
     }
 
     Dialogs.FileDialog {
         id: exportDialog
-        title: "Profili dışa aktar"
+        title: I18n.t("profile.export.title")
         fileMode: Dialogs.FileDialog.SaveFile
         currentFile: "file://" + root.activeName + ".sonarprofile"
-        nameFilters: ["Sonar profili (*.sonarprofile)", "AutoEQ (*.txt)"]
+        nameFilters: [I18n.t("profile.filter.sonar") + " (*.sonarprofile)", "AutoEQ (*.txt)"]
         onAccepted: {
             const path = selectedFile.toString()
             root.bridge.exportProfile(root.target, path, path.endsWith(".txt"))
@@ -445,22 +445,22 @@ Item {
     /* Spatial Audio (crossfeed): kulaklar arası sızıntı. Ölçüldü — kapalıyken çıkış
        girişe bit-eş, açıkken karşı kulakta -6 dB kopya ve 0.40 ms gecikme. */
     readonly property var spatialParams: [
-        { stage:"spatial", key:"immersion", label:"Sürükleyicilik", from:0, to:100, unit:"", fallback:50, digits:0 },
-        { stage:"spatial", key:"distance",  label:"Mesafe",         from:0, to:100, unit:"", fallback:40, digits:0 }
+        { stage:"spatial", key:"immersion", label:I18n.t("param.immersion"), from:0, to:100, unit:"", fallback:50, digits:0 },
+        { stage:"spatial", key:"distance",  label:I18n.t("param.distance"),         from:0, to:100, unit:"", fallback:40, digits:0 }
     ]
     readonly property var boostParams: [
-        { stage:"boost", key:"gain_db", label:"Kazanç", from:0, to:12, unit:"dB", fallback:6 }
+        { stage:"boost", key:"gain_db", label:I18n.t("param.gain"), from:0, to:12, unit:"dB", fallback:6 }
     ]
     /* Smart Volume ayarları profilde duruyor (şema 4). */
     readonly property var ducking: bridge ? (tick, bridge.ducking(target)) : ({})
     readonly property bool duckOn: ducking.enabled === true
     readonly property string channelName: channel.name !== undefined ? channel.name : target
     readonly property var duckParams: [
-        { key:"reduction_db", label:"İndirim",  from:-40, to:0,    unit:"dB", fallback:-12 },
-        { key:"threshold_db", label:"Eşik",     from:-80, to:0,    unit:"dB", fallback:-40 },
-        { key:"attack_ms",    label:"Atak",     from:0,   to:500,  unit:"ms", fallback:80 },
-        { key:"hold_ms",      label:"Tut",      from:0,   to:2000, unit:"ms", fallback:400 },
-        { key:"release_ms",   label:"Bırakma",  from:20,  to:3000, unit:"ms", fallback:800 }
+        { key:"reduction_db", label:I18n.t("param.reduction"),  from:-40, to:0,    unit:"dB", fallback:-12 },
+        { key:"threshold_db", label:I18n.t("param.threshold"), from:-80, to:0,    unit:"dB", fallback:-40 },
+        { key:"attack_ms",    label:I18n.t("param.attack"), from:0,   to:500,  unit:"ms", fallback:80 },
+        { key:"hold_ms",      label:I18n.t("param.hold"),      from:0,   to:2000, unit:"ms", fallback:400 },
+        { key:"release_ms",   label:I18n.t("param.release"), from:20,  to:3000, unit:"ms", fallback:800 }
     ]
 
     function duckValue(key, fallback) {
@@ -474,42 +474,41 @@ Item {
     readonly property var panels: {
         const out = []
         if (isMic)
-            out.push({ stage: "df", title: "AI Gürültü Engelleme", params: dfParams })
-        out.push({ stage: "gate", title: "Noise Gate", params: gateParams,
-                   note: (isMic && stageOn("df")) ? "AI aktifken devre dışı" : "" })
-        out.push({ stage: "comp", title: "Compressor", params: compParams })
-        out.push({ stage: "lim", title: "Limiter", params: limParams })
+            out.push({ stage: "df", title: I18n.t("fx.stage.df"), params: dfParams })
+        out.push({ stage: "gate", title: I18n.t("fx.stage.gate"), params: gateParams,
+                   note: (isMic && stageOn("df")) ? I18n.t("fx.gate.disabled_by_df") : "" })
+        out.push({ stage: "comp", title: I18n.t("fx.stage.comp"), params: compParams })
+        out.push({ stage: "lim", title: I18n.t("fx.stage.lim"), params: limParams })
         if (!isMic)
-            out.push({ stage: "spatial", title: "Spatial Audio", params: spatialParams,
-                       hint: "Sesi kafanın dışına çıkarır. Gerçek surround değil; "
-                           + "rekabetçi FPS'te kapalı tutmak yön algısını keskin bırakır." })
-        out.push({ stage: "boost", title: "Volume Boost", params: boostParams,
-                   hint: "Limiter'ın öncesinde uygulanır; kırpma üretmez." })
+            out.push({ stage: "spatial", title: I18n.t("fx.stage.spatial"),
+                       params: spatialParams, hint: I18n.t("fx.spatial.hint") })
+        out.push({ stage: "boost", title: I18n.t("fx.stage.boost"), params: boostParams,
+                   hint: I18n.t("fx.boost.hint") })
         return out
     }
 
     readonly property var gateParams: [
-        { stage:"gate", key:"threshold_db", label:"Eşik",    from:-80, to:0,   unit:"dB", fallback:-40 },
-        { stage:"gate", key:"attack_ms",    label:"Atak",    from:0,   to:200, unit:"ms", fallback:10 },
-        { stage:"gate", key:"release_ms",   label:"Bırakma", from:5,   to:1000,unit:"ms", fallback:100 },
-        { stage:"gate", key:"reduction_db", label:"Azaltma", from:-80, to:0,   unit:"dB", fallback:-24 }
+        { stage:"gate", key:"threshold_db", label:I18n.t("param.threshold"), from:-80, to:0,   unit:"dB", fallback:-40 },
+        { stage:"gate", key:"attack_ms",    label:I18n.t("param.attack"), from:0,   to:200, unit:"ms", fallback:10 },
+        { stage:"gate", key:"release_ms",   label:I18n.t("param.release"), from:5,   to:1000,unit:"ms", fallback:100 },
+        { stage:"gate", key:"reduction_db", label:I18n.t("param.reduction_amount"), from:-80, to:0,   unit:"dB", fallback:-24 }
     ]
     readonly property var compParams: [
-        { stage:"comp", key:"threshold_db", label:"Eşik",    from:-60, to:0,   unit:"dB", fallback:-18 },
-        { stage:"comp", key:"ratio",        label:"Oran",    from:1,   to:20,  unit:": 1", fallback:4 },
-        { stage:"comp", key:"attack_ms",    label:"Atak",    from:0,   to:200, unit:"ms", fallback:5 },
-        { stage:"comp", key:"release_ms",   label:"Bırakma", from:5,   to:1000,unit:"ms", fallback:120 },
-        { stage:"comp", key:"makeup_db",    label:"Makyaj",  from:0,   to:24,  unit:"dB", fallback:0 }
+        { stage:"comp", key:"threshold_db", label:I18n.t("param.threshold"), from:-60, to:0,   unit:"dB", fallback:-18 },
+        { stage:"comp", key:"ratio",        label:I18n.t("param.ratio"), from:1,   to:20,  unit:": 1", fallback:4 },
+        { stage:"comp", key:"attack_ms",    label:I18n.t("param.attack"), from:0,   to:200, unit:"ms", fallback:5 },
+        { stage:"comp", key:"release_ms",   label:I18n.t("param.release"), from:5,   to:1000,unit:"ms", fallback:120 },
+        { stage:"comp", key:"makeup_db",    label:I18n.t("param.makeup"), from:0,   to:24,  unit:"dB", fallback:0 }
     ]
     readonly property var limParams: [
-        { stage:"lim", key:"ceiling_db",   label:"Tavan",    from:-24, to:0,  unit:"dB", fallback:-1 },
-        { stage:"lim", key:"lookahead_ms", label:"İleri bak",from:0.1, to:20, unit:"ms", fallback:5 },
-        { stage:"lim", key:"release_ms",   label:"Bırakma",  from:0.25,to:20, unit:"ms", fallback:5 }
+        { stage:"lim", key:"ceiling_db",   label:I18n.t("param.ceiling"), from:-24, to:0,  unit:"dB", fallback:-1 },
+        { stage:"lim", key:"lookahead_ms", label:I18n.t("param.lookahead"),from:0.1, to:20, unit:"ms", fallback:5 },
+        { stage:"lim", key:"release_ms",   label:I18n.t("param.release"), from:0.25,to:20, unit:"ms", fallback:5 }
     ]
     readonly property var dfParams: [
-        { stage:"df", key:"attenuation_db",   label:"Azaltma", from:0, to:100, unit:"dB",
+        { stage:"df", key:"attenuation_db",   label:I18n.t("param.reduction_amount"), from:0, to:100, unit:"dB",
           fallback:40, digits:0 },
-        { stage:"df", key:"post_filter_beta", label:"Post filtre", from:0, to:0.05, unit:"",
+        { stage:"df", key:"post_filter_beta", label:I18n.t("param.post_filter"), from:0, to:0.05, unit:"",
           fallback:0.02, digits:3 }
     ]
 

@@ -317,10 +317,7 @@ class SonarApi:
             problems.append(
                 {
                     "code": "no_stream_listener",
-                    "message": (
-                        f"Hiçbir uygulama yayın miksini dinlemiyor. OBS → Ayarlar → Ses → "
-                        f"Masaüstü Sesi → “{device}” seçin."
-                    ),
+                    "message": i18n.t("problem.no_stream_listener", device=device),
                 }
             )
         # Aynı uygulamanın iki yoldan da dinlemesi: üçüncü turdaki "iki kaynak da her şeyi
@@ -334,10 +331,8 @@ class SonarApi:
                 problems.append(
                     {
                         "code": "duplicate_capture",
-                        "message": (
-                            f"{app} yayın miksini iki kez alıyor (hem “{device}” monitörü "
-                            f"hem “{device} (alternatif giriş)”). Birini kaldırın; aksi "
-                            f"hâlde her şey iki kez duyulur."
+                        "message": i18n.t(
+                            "problem.duplicate_capture", app=app, device=device
                         ),
                     }
                 )
@@ -345,11 +340,7 @@ class SonarApi:
             problems.append(
                 {
                     "code": "mic_not_in_stream",
-                    "message": (
-                        "Mikrofon yayın miksine gitmiyor; yayında sesiniz duyulmaz. "
-                        "Master şeridindeki “Mikrofon yayında” anahtarını açın veya OBS'e "
-                        "ayrı bir mikrofon kaynağı ekleyin."
-                    ),
+                    "message": i18n.t("problem.mic_not_in_stream"),
                 }
             )
 
@@ -395,11 +386,7 @@ class SonarApi:
                 "code": "conflicting_processor",
                 "node": node,
                 "name": name,
-                "message": (
-                    f"{name} sistem geneli çalışıyor ve Sonar'ın çıkışını kendi zincirine "
-                    f"çekiyor; seçtiğiniz çıkış cihazı yok sayılabilir. {name}'i kapatın "
-                    f"veya Sonar'ın node'larını dışlama listesine ekleyin."
-                ),
+                "message": i18n.t("problem.conflicting_sink", name=name),
             }
             for node, name in CONFLICTING_SINKS.items()
             if node in nodes
@@ -532,7 +519,7 @@ class SonarApi:
         """
         filter_stage = self._stage(target, stage)
         if name not in DEFAULT_FILTER_PARAMS[filter_stage]:
-            raise ApiError("unknown_param", f"'{stage}' aşamasında böyle bir parametre yok: {name}")
+            raise ApiError("unknown_param", i18n.t("error.unknown_param", stage=stage, name=name))
         state = self._editable(target).filter(filter_stage)
         state.params[name] = float(value)
         self._live_target(
@@ -549,15 +536,17 @@ class SonarApi:
     def set_eq_band(self, target: str, band: int, field: str, value: float | str) -> None:
         eq = self._editable(target).eq
         if not 0 <= band < len(eq.bands):
-            raise ApiError("unknown_band", f"band aralık dışında: {band}")
+            raise ApiError("unknown_band", i18n.t("error.band_out_of_range", band=band))
         if field not in _EQ_FIELDS:
-            raise ApiError("unknown_field", f"bilinmeyen band alanı: {field}")
+            raise ApiError("unknown_field", i18n.t("error.unknown_band_field", field=field))
         target_band = eq.bands[band]
         if field == "band_type":
             try:
                 target_band.band_type = EqBandType(str(value))
             except ValueError as exc:
-                raise ApiError("unknown_field", f"bilinmeyen band tipi: {value}") from exc
+                raise ApiError(
+                    "unknown_field", i18n.t("error.unknown_band_type", value=value)
+                ) from exc
         elif field == "enabled":
             target_band.enabled = bool(value)
         elif field == "slope":
@@ -581,7 +570,7 @@ class SonarApi:
         eq = self._editable(target).eq
         if len(eq.bands) >= registry.EQ_CAPACITY:
             raise ApiError(
-                "eq_full", f"en fazla {registry.EQ_CAPACITY} band olabilir"
+                "eq_full", i18n.t("error.eq_full", count=registry.EQ_CAPACITY)
             )
         band = EqBand(
             freq=max(EQ_FREQ_MIN, min(float(freq), EQ_FREQ_MAX)),
@@ -599,9 +588,9 @@ class SonarApi:
         """Bir EQ bandını siler. **Canlı**."""
         eq = self._editable(target).eq
         if not 0 <= index < len(eq.bands):
-            raise ApiError("unknown_band", f"böyle bir band yok: {index}")
+            raise ApiError("unknown_band", i18n.t("error.no_such_band", index=index))
         if len(eq.bands) <= 1:
-            raise ApiError("last_band", "en az bir band kalmalı")
+            raise ApiError("last_band", i18n.t("error.last_band"))
         eq.bands.pop(index)
         eq.band_count = len(eq.bands)
         self._live_target(target, {"kind": "eq_band_removed", "target": target, "band": index})
@@ -618,7 +607,7 @@ class SonarApi:
     def save_profile(self, target: str, name: str) -> None:
         self._check_target(target)
         if self._is_builtin(target, name):
-            raise ApiError("profile_readonly", f"gömülü preset üzerine yazılamaz: {name}")
+            raise ApiError("profile_readonly", i18n.t("error.preset_readonly", name=name))
         profile = self.profile(target)
         profile.name = name
         self.store.save_profile(target, profile)
@@ -630,9 +619,9 @@ class SonarApi:
     def delete_profile(self, target: str, name: str) -> None:
         self._check_target(target)
         if self._is_builtin(target, name):
-            raise ApiError("profile_readonly", f"gömülü preset silinemez: {name}")
+            raise ApiError("profile_readonly", i18n.t("error.preset_undeletable", name=name))
         if not self.store.delete_profile(target, name):
-            raise ApiError("profile_protected", f"bu profil silinemez: {name}")
+            raise ApiError("profile_protected", i18n.t("error.profile_protected", name=name))
         favorites = self.config.favorites_of(target)
         if name in favorites:
             favorites.remove(name)
@@ -645,11 +634,11 @@ class SonarApi:
     def rename_profile(self, target: str, old: str, new: str) -> None:
         self._check_target(target)
         if self._is_builtin(target, old):
-            raise ApiError("profile_readonly", f"gömülü preset yeniden adlandırılamaz: {old}")
+            raise ApiError("profile_readonly", i18n.t("error.preset_unrenamable", name=old))
         if self._is_builtin(target, new):
-            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {new}")
+            raise ApiError("profile_readonly", i18n.t("error.name_is_preset", name=new))
         if not self.store.rename_profile(target, old, new):
-            raise ApiError("profile_not_renamed", f"profil yeniden adlandırılamadı: {old}")
+            raise ApiError("profile_not_renamed", i18n.t("error.profile_not_renamed", name=old))
         favorites = self.config.favorites_of(target)
         if old in favorites:
             self.config.favorites[target] = [new if n == old else n for n in favorites]
@@ -704,7 +693,7 @@ class SonarApi:
         """Aktif profili yeni bir adla çoğaltır ve ona geçer."""
         self._check_target(target)
         if self._is_builtin(target, name):
-            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {name}")
+            raise ApiError("profile_readonly", i18n.t("error.name_is_preset", name=name))
         self.save_profile(target, name)
         return name
 
@@ -729,11 +718,11 @@ class SonarApi:
         self._check_target(target)
         name = str(name).strip()
         if not name:
-            raise ApiError("invalid_name", "profil adı boş olamaz")
+            raise ApiError("invalid_name", i18n.t("error.empty_profile_name"))
         if self._is_builtin(target, name):
-            raise ApiError("profile_readonly", f"bu ad gömülü bir presete ait: {name}")
+            raise ApiError("profile_readonly", i18n.t("error.name_is_preset", name=name))
         if name in self.store.list_profiles(target):
-            raise ApiError("duplicate_profile", f"bu profil zaten var: {name}")
+            raise ApiError("duplicate_profile", i18n.t("error.duplicate_profile", name=name))
 
         profile = default_profile(name, self.config.settings.default_band_count)
         self.store.save_profile(target, profile)
@@ -756,7 +745,7 @@ class SonarApi:
         """Bir profili favorilere ekler veya çıkarır. Sayı sınırı yok."""
         self._check_target(target)
         if name not in self.list_profiles(target):
-            raise ApiError("unknown_profile", f"böyle bir profil yok: {name}")
+            raise ApiError("unknown_profile", i18n.t("error.no_such_profile", name=name))
         current = self.config.favorites_of(target)
         if favorite and name not in current:
             current.append(name)
@@ -838,13 +827,15 @@ class SonarApi:
         """
         name = str(name).strip()
         if not name:
-            raise ApiError("invalid_name", "kanal adı boş olamaz")
+            raise ApiError("invalid_name", i18n.t("error.empty_channel_name"))
         if direction not in ("output", "input"):
-            raise ApiError("invalid_direction", f"yön 'output' veya 'input' olmalı: {direction}")
+            raise ApiError(
+                "invalid_direction", i18n.t("error.bad_channel_direction", value=direction)
+            )
 
         channel_id = slugify(name)
         if channel_id in self.config.profile_targets():
-            raise ApiError("duplicate_channel", f"bu kanal zaten var: {channel_id}")
+            raise ApiError("duplicate_channel", i18n.t("error.duplicate_channel", name=channel_id))
 
         if direction == "output":
             self.config.channels.append(
@@ -883,7 +874,7 @@ class SonarApi:
         elif self.config.mic(channel) is not None:
             self._remove_input_channel(channel)
         else:
-            raise ApiError("unknown_channel", f"böyle bir kanal yok: {channel}")
+            raise ApiError("unknown_channel", i18n.t("error.no_such_channel", name=channel))
 
         self.profiles.pop(channel, None)
         self._dirty_profiles.discard(channel)
@@ -893,7 +884,7 @@ class SonarApi:
 
     def _remove_output_channel(self, channel: str) -> None:
         if len(self.config.channels) <= 1:
-            raise ApiError("last_channel", "en az bir çıkış kanalı kalmalı")
+            raise ApiError("last_channel", i18n.t("error.last_output_channel"))
 
         self.config.channels = [c for c in self.config.channels if c.id != channel]
         self.config.rules = [r for r in self.config.rules if r.channel_id != channel]
@@ -916,7 +907,7 @@ class SonarApi:
 
     def _remove_input_channel(self, chain: str) -> None:
         if len(self.config.mic_chains) <= 1:
-            raise ApiError("last_channel", "en az bir giriş kanalı kalmalı")
+            raise ApiError("last_channel", i18n.t("error.last_input_channel"))
         mic = self.config.mic(chain)
         assert mic is not None
         if not mic.share_chain_with_mic and not any(
@@ -926,7 +917,7 @@ class SonarApi:
             # kaynaksız bırakır (`confgen._primary_mic` hata yükseltir).
             raise ApiError(
                 "mic_chain_needed",
-                "kendi zincirine sahip son mikrofon silinemez; önce diğerlerini bağımsızlaştırın",
+                i18n.t("error.mic_chain_needed"),
             )
         self.config.mic_chains = [m for m in self.config.mic_chains if m.id != chain]
 
@@ -946,7 +937,7 @@ class SonarApi:
         """
         node = self._target_node(channel)
         if not self.supervisor.control.move_stream(int(stream_id), node):
-            raise ApiError("move_failed", f"akış taşınamadı: {stream_id}")
+            raise ApiError("move_failed", i18n.t("error.move_failed", id=stream_id))
         # Taşıma komutu başarılı dönse de bağlantı kurulmamış olabilir; kullanıcı bunu
         # yalnızca sesin kesilmesiyle fark ediyordu. Bir kez daha deneyip bırakıyoruz.
         if not self._stream_reached(int(stream_id), node):
@@ -961,7 +952,7 @@ class SonarApi:
         """Taşıma hedefinin node adı: kanalda sink, giriş zincirinde sanal kaynak."""
         node = target_node_for(target, self.config)
         if node is None:
-            raise ApiError("unknown_channel", f"böyle bir kanal yok: {target}")
+            raise ApiError("unknown_channel", i18n.t("error.no_such_channel", name=target))
         return node
 
     def _stream_reached(self, stream_id: int, node: str) -> bool:
@@ -982,7 +973,7 @@ class SonarApi:
     def _remember_stream(self, stream_id: int, channel: str) -> None:
         stream = self.supervisor.state.streams.get(stream_id)
         if stream is None:
-            raise ApiError("unknown_stream", f"böyle bir akış yok: {stream_id}")
+            raise ApiError("unknown_stream", i18n.t("error.no_such_stream", id=stream_id))
         direction = StreamDirection.IN if stream.is_capture else StreamDirection.OUT
         for key in (MatchKey.BINARY, MatchKey.APP_NAME, MatchKey.MEDIA_NAME):
             value = _stream_field(stream, key)
@@ -991,7 +982,7 @@ class SonarApi:
                 return
         raise ApiError(
             "not_identifiable",
-            "bu akışın kural üretilebilecek bir kimliği yok (binary/ad/medya adı boş)",
+            i18n.t("error.not_identifiable"),
         )
 
     def set_rule(
@@ -1012,14 +1003,16 @@ class SonarApi:
             key = MatchKey(match_key)
         except ValueError as exc:
             raise ApiError(
-                "unknown_match_key", f"bilinmeyen eşleşme anahtarı: {match_key}"
+                "unknown_match_key", i18n.t("error.unknown_match_key", value=match_key)
             ) from exc
         try:
             way = StreamDirection(direction)
         except ValueError as exc:
-            raise ApiError("unknown_direction", f"yön 'out' veya 'in' olmalı: {direction}") from exc
+            raise ApiError(
+                "unknown_direction", i18n.t("error.bad_rule_direction", value=direction)
+            ) from exc
         if not str(pattern).strip():
-            raise ApiError("invalid_pattern", "desen boş olamaz")
+            raise ApiError("invalid_pattern", i18n.t("error.empty_pattern"))
         for rule in self.config.rules:
             if rule.match_key == key and rule.pattern == pattern and rule.direction is way:
                 rule.channel_id = channel
@@ -1052,7 +1045,9 @@ class SonarApi:
             )
         ]
         if len(self.config.rules) == before:
-            raise ApiError("unknown_rule", f"böyle bir kural yok: {match_key}={pattern}")
+            raise ApiError(
+                "unknown_rule", i18n.t("error.no_such_rule", key=match_key, pattern=pattern)
+            )
         self._emit({"kind": "rules", "pattern": pattern})
         self._save_soon()
 
@@ -1082,6 +1077,11 @@ class SonarApi:
         normalized = i18n.set_language(code)
         self.config.settings.language = normalized
         self._touch_config({"kind": "language", "code": normalized})
+        # Gecikmeli kaydetme burada yetmiyor: `sonar-cli` dili **diskten** okuyor ve
+        # dil değişiminden hemen sonra çalışan bir komut eski dili görüyordu (ölçüldü:
+        # `sonar-cli lang en && sonar-cli status` → başlıklar Türkçe, daemon mesajları
+        # İngilizce). Dil değişimi nadir; anında yazmanın maliyeti yok.
+        self.flush_save()
         return normalized
 
     def set_chatmix_config(self, enabled: bool, left: str, right: str) -> None:
@@ -1091,7 +1091,7 @@ class SonarApi:
         for side in (left, right):
             channels = _split_channels(side)
             if not channels:
-                raise ApiError("invalid_value", "en az bir kanal gerekli")
+                raise ApiError("invalid_value", i18n.t("error.channel_required"))
             for channel in channels:
                 self._channel(channel)
         self.config.chatmix.enabled = bool(enabled)
@@ -1171,8 +1171,7 @@ class SonarApi:
             self._emit(
                 {
                     "kind": "save_failed",
-                    "message": f"Ayarlar diske yazılamadı ({error.strerror or error}). "
-                    f"Değişiklikler çalışıyor ama yeniden başlatınca kaybolacak.",
+                    "message": i18n.t("problem.save_failed", error=error.strerror or error),
                 }
             )
 
@@ -1239,11 +1238,11 @@ class SonarApi:
         aynı davranış.
         """
         if self.config.channel(target) is None:
-            raise ApiError("unknown_channel", f"Smart Volume yalnızca çıkış kanallarında: {target}")
+            raise ApiError("unknown_channel", i18n.t("error.smart_output_only", name=target))
         duck = self._editable(target).ducking
         for name, value in fields.items():
             if not hasattr(duck, name):
-                raise ApiError("unknown_field", f"bilinmeyen Smart Volume alanı: {name}")
+                raise ApiError("unknown_field", i18n.t("error.unknown_smart_field", field=name))
             current = getattr(duck, name)
             if isinstance(current, bool):
                 setattr(duck, name, bool(value))
@@ -1386,7 +1385,7 @@ class SonarApi:
     def _channel(self, channel: str) -> Channel:
         found = self.config.channel(channel)
         if found is None:
-            raise ApiError("unknown_channel", f"böyle bir kanal yok: {channel}")
+            raise ApiError("unknown_channel", i18n.t("error.no_such_channel", name=channel))
         return found
 
     def _bus(self, bus: str, channel: Channel | None = None) -> str:
@@ -1404,45 +1403,45 @@ class SonarApi:
                 return default.id
         if self.config.bus(bus) is None:
             names = ", ".join(b.id for b in self.config.ordered_buses())
-            raise ApiError("unknown_bus", f"böyle bir bus yok: {bus} (var olanlar: {names})")
+            raise ApiError("unknown_bus", i18n.t("error.no_such_bus", name=bus, names=names))
         return bus
 
     def _master(self, bus: str):
         found = self.config.bus(bus)
         if found is None:
             names = ", ".join(b.id for b in self.config.ordered_buses())
-            raise ApiError("unknown_bus", f"böyle bir bus yok: {bus} (var olanlar: {names})")
+            raise ApiError("unknown_bus", i18n.t("error.no_such_bus", name=bus, names=names))
         return found
 
     def _mic(self, chain: str):
         found = self.config.mic(chain)
         if found is None:
-            raise ApiError("unknown_mic", f"böyle bir mikrofon zinciri yok: {chain}")
+            raise ApiError("unknown_mic", i18n.t("error.no_such_mic", name=chain))
         return found
 
     def _stage(self, target: str, stage: str) -> FilterStage:
         try:
             value = FilterStage(stage)
         except ValueError as exc:
-            raise ApiError("unknown_stage", f"bilinmeyen filtre aşaması: {stage}") from exc
+            raise ApiError("unknown_stage", i18n.t("error.unknown_stage", name=stage)) from exc
         if value is FilterStage.DEEPFILTER and self.config.mic(target) is None:
             raise ApiError(
                 "stage_not_in_chain",
-                "gürültü engelleme yalnızca mikrofon zincirinde var",
+                i18n.t("error.stage_not_in_chain"),
             )
         return value
 
     def _check_target(self, target: str) -> None:
         if target not in self.config.profile_targets():
-            raise ApiError("unknown_target", f"böyle bir profil hedefi yok: {target}")
+            raise ApiError("unknown_target", i18n.t("error.no_such_target", name=target))
 
     def _level(self, value: float) -> float:
         try:
             level = float(value)
         except (TypeError, ValueError) as exc:
-            raise ApiError("invalid_value", f"sayı bekleniyordu: {value!r}") from exc
+            raise ApiError("invalid_value", i18n.t("error.not_a_number", value=value)) from exc
         if not 0.0 <= level <= 4.0:
-            raise ApiError("invalid_value", f"ses seviyesi 0–4 aralığında olmalı: {level}")
+            raise ApiError("invalid_value", i18n.t("error.level_out_of_range", value=level))
         return level
 
     def _active_name(self, target: str) -> str:

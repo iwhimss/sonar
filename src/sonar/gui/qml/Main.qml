@@ -80,6 +80,24 @@ Window {
             tabs: window.tabList()
             onSelected: (key) => window.currentTab = key
         }
+
+        /* Genel ayarlar. Dil, davranış anahtarları ve kaldırıcı buradan açılıyor;
+           şeritlerdeki dişli kanala ait ayarları açıyor, bu ise uygulamanınkileri. */
+        SonarIconButton {
+            id: settingsButton
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.s6
+            anchors.top: parent.top
+            anchors.topMargin: Theme.s3
+            icon: "gear"
+            accent: Theme.master
+            onClicked: settingsDialog.open()
+        }
+    }
+
+    SettingsDialog {
+        id: settingsDialog
+        bridge: bridge
     }
 
     // --- uyarı şeridi ------------------------------------------------------
@@ -222,7 +240,7 @@ Window {
                 anchors.centerIn: parent
                 spacing: Theme.s3
                 Text {
-                    text: "Sonar servisi çalışmıyor"
+                    text: I18n.t("daemon.down.title")
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontTitle
@@ -238,7 +256,7 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
                 Text {
-                    text: "Bağlantı kurulunca bu ekran kendiliğinden kapanır."
+                    text: I18n.t("daemon.down.hint")
                     color: Theme.textFaint
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSmall
@@ -255,7 +273,7 @@ Window {
         // `bridge.revision` bilinçli olarak okunuyor: binding'in modeller değişince
         // yeniden değerlendirilmesi buna bağlı (rowCount() bir özellik değil).
         const _ = bridge.revision
-        const tabs = [{ key: "mixer", label: "Mikser", color: Theme.master }]
+        const tabs = [{ key: "mixer", label: I18n.t("tab.mixer"), color: Theme.master }]
         if (!bridge.connected) return tabs
         for (let i = 0; i < bridge.channels.rowCount(); ++i) {
             const row = bridge.channels.get(i)

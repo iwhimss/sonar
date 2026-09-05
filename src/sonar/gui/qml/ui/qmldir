@@ -16,4 +16,5 @@ SonarValueField 1.0 SonarValueField.qml
 SonarParamRow 1.0 SonarParamRow.qml
 SonarFilterPanel 1.0 SonarFilterPanel.qml
 SonarDragProxy 1.0 SonarDragProxy.qml
+SonarCheck 1.0 SonarCheck.qml
 SonarDialog 1.0 SonarDialog.qml

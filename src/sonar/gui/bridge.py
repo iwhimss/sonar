@@ -39,13 +39,22 @@ from PySide6.QtCore import (
     Slot,
 )
 
+from sonar.core import i18n
+from sonar.core.names import (
+    BUILTIN_NAMES,
+    display_name,
+    preset_label,
+)
+
 __all__ = [
+    "BUILTIN_NAMES",
     "ChannelModel",
     "DeviceModel",
     "SonarBridge",
     "StreamModel",
     "channel_rows",
     "device_rows",
+    "display_name",
     "stream_rows",
 ]
 
@@ -83,7 +92,7 @@ def channel_rows(state: dict) -> list[dict]:
         rows.append(
             {
                 "id": channel["id"],
-                "name": channel["name"],
+                "name": display_name("channel", channel["id"], channel["name"]),
                 "color": channel["color"],
                 "icon": channel.get("icon", "speaker"),
                 "builtin": bool(channel.get("builtin")),
@@ -105,7 +114,7 @@ def channel_rows(state: dict) -> list[dict]:
         rows.append(
             {
                 "id": mic["id"],
-                "name": mic["name"],
+                "name": display_name("mic", mic["id"], mic["name"]),
                 "color": mic.get("color", "#F2A73B"),
                 "icon": mic.get("icon", "mic"),
                 "builtin": bool(mic.get("builtin")),
@@ -181,7 +190,7 @@ def stream_rows(state: dict) -> list[dict]:
 
 def device_rows(state: dict, *, sources: bool) -> list[dict]:
     """Cihaz seçicilerinin içeriği. İlk satır her zaman 'sistem varsayılanı'."""
-    rows = [{"name": "", "label": "Sistem varsayılanı", "isSource": sources}]
+    rows = [{"name": "", "label": i18n.t("device.system_default"), "isSource": sources}]
     for device in state.get("devices", []):
         if bool(device.get("is_source")) is not sources:
             continue
@@ -373,6 +382,11 @@ class SonarBridge(QObject):
         language = self._settings().get("language")
         # Dil `sonar-cli lang` ile de değişebiliyor; arayüz daemon'ı takip etsin.
         if language and language != previous:
+            # Dili **burada** kurmuyoruz. `sonar.core.i18n` süreç genelinde tek bir dil
+            # tutuyor ve QML'in tazeleme tetiği `QmlI18n.language` özelliği; ikisini ayrı
+            # yerlerden yazmak arayüzü karışık dilde bırakıyordu (ölçüldü: yükleme
+            # sırasında değerlenen bağlamalar bir dilde, sonradan tazelenenler ötekinde).
+            # Tek yol: sinyal → `app._apply_language` → `QmlI18n` → çekirdek.
             self.languageChanged.emit(str(language))
         self._refresh_models()
         self._bump()
@@ -409,10 +423,12 @@ class SonarBridge(QObject):
             self.apply_state(state)
 
     #: Kullanıcıya söylenmesi gereken deltalar → (metin şablonu, hata mı).
+    #: Şablonlar katalog **anahtarı** tutuyor; biçimlendirme delta alanlarıyla burada
+    #: yapılıyor. `save_failed` bir istisna: metni daemon üretiyor (dosya sistemi hatası).
     _NOTICES: ClassVar[dict[str, tuple[str, bool]]] = {
-        "profile_copied": ("Gömülü preset düzenlenemez; '{to}' kopyasına geçildi.", False),
-        "save_failed": ("{message}", True),
-        "path_ok": ("Ses yolu onarıldı.", False),
+        "profile_copied": ("notice.profile_copied", False),
+        "save_failed": ("notice.save_failed", True),
+        "path_ok": ("notice.path_ok", False),
     }
 
     def _announce(self, payload: str) -> None:
@@ -429,19 +445,15 @@ class SonarBridge(QObject):
         for change in changes:
             # Kopan ses yolu şablona sığmıyor: kanal adları listeden geliyor.
             if change.get("kind") == "path_broken":
-                names = ", ".join(change.get("channels") or []) or "Bir kanal"
-                self.noticeRaised.emit(
-                    f"{names} çıkışa bağlanamadı — o kanaldan ses gelmiyor olabilir. "
-                    f"Ayrıntı için: sonar-cli doctor",
-                    True,
-                )
+                names = ", ".join(change.get("channels") or []) or i18n.t("notice.a_channel")
+                self.noticeRaised.emit(i18n.t("notice.path_broken", names=names), True)
                 continue
             notice = self._NOTICES.get(change.get("kind"))
             if notice is None:
                 continue
-            template, is_error = notice
+            key, is_error = notice
             with contextlib.suppress(KeyError, IndexError):
-                self.noticeRaised.emit(template.format(**change), is_error)
+                self.noticeRaised.emit(i18n.t(key, **change), is_error)
 
     @Slot(str)
     def onStreamsChanged(self, payload: str) -> None:
@@ -579,6 +591,34 @@ class SonarBridge(QObject):
         """
         self._call("SetLanguage", code)
         self.languageChanged.emit(code)
+        # Yayın tanısının metinlerini **daemon** üretiyor ve önbellekte eski dilde
+        # duruyor; süresi dolana kadar master şeridi Türkçe kalıyordu (ölçüldü).
+        self._setup_at = 0.0
+        # Satırlardaki gömülü adlar (`display_name`) çeviriyle üretiliyor; modeller
+        # yeniden kurulmazsa sekme başlıkları eski dilde kalırdı.
+        self._refresh_models()
+        self._bump()
+
+    def _get_take_over_default_sink(self) -> bool:
+        return bool(self._settings().get("take_over_default_sink", False))
+
+    takeOverDefaultSink = Property(bool, _get_take_over_default_sink, notify=stateChanged)
+
+    @Slot(bool)
+    def setTakeOverDefaultSink(self, enabled: bool) -> None:
+        self._call("SetTakeOverDefaultSink", bool(enabled))
+        self.refresh()
+
+    def _get_chatmix_invert(self) -> bool:
+        return bool(self._settings().get("chatmix_invert", False))
+
+    chatmixInvert = Property(bool, _get_chatmix_invert, notify=stateChanged)
+
+    @Slot(bool)
+    def setChatMixInvert(self, enabled: bool) -> None:
+        """Donanım tekerinin yönü. Faz 35'te modele girdi, arayüz karşılığı yoktu."""
+        self._call("SetChatMixInvert", bool(enabled))
+        self.refresh()
 
     def _get_provisioned(self) -> bool:
         """Sanal kanallar kuruldu mu. Daemon'a bağlı değilken `True` sayılır —
@@ -709,6 +749,20 @@ class SonarBridge(QObject):
         self._call("SetDucking", target, _json.dumps(payload))
         self.refresh()
 
+    @Slot(str, result=str)
+    def busLabel(self, bus_id: str) -> str:
+        """Bir bus'ın arayüzde görünecek adı (kullanıcı adlandırmışsa onunki)."""
+        buses = (self._state.get("config") or {}).get("buses") or []
+        bus = next((b for b in buses if b.get("id") == bus_id), None)
+        if bus is None:
+            return bus_id
+        return display_name("bus", bus_id, str(bus.get("name", bus_id)))
+
+    @Slot(str, result=str)
+    def presetLabel(self, name: str) -> str:
+        """Gömülü preset adının çevirisi; kullanıcının kendi profil adları değişmez."""
+        return preset_label(name)
+
     @Slot(str, result=bool)
     def isInputChannel(self, target: str) -> bool:
         """Hedef bir giriş kanalı mı? Sabit `"mic"`/`"stream_mic"` listesi yetmiyor —
@@ -738,15 +792,19 @@ class SonarBridge(QObject):
         try:
             text = Path(path.removeprefix("file://")).read_text(encoding="utf-8", errors="replace")
         except OSError as error:
-            self.noticeRaised.emit(f"Dosya okunamadı: {error.strerror or error}", True)
+            self.noticeRaised.emit(
+                i18n.t("notice.read_failed", error=error.strerror or error), True
+            )
             return
         result = self._call("ImportProfile", target, text, "")
         self.refresh()
         if result is None:
             return  # hata zaten `errorRaised` ile bildirildi
-        parts = [f"'{result.get('name')}' içe aktarıldı ({result.get('source')})"]
+        parts = [
+            i18n.t("notice.imported", name=result.get("name"), source=result.get("source"))
+        ]
         if result.get("dropped"):
-            parts.append(f"{result['dropped']} band sığmadı")
+            parts.append(i18n.t("notice.bands_dropped", count=result["dropped"]))
         parts.extend(result.get("warnings") or [])
         self.noticeRaised.emit(" — ".join(parts), False)
 
@@ -761,9 +819,11 @@ class SonarBridge(QObject):
         try:
             target_path.write_text(text, encoding="utf-8")
         except OSError as error:
-            self.noticeRaised.emit(f"Dosya yazılamadı: {error.strerror or error}", True)
+            self.noticeRaised.emit(
+                i18n.t("notice.write_failed", error=error.strerror or error), True
+            )
             return
-        self.noticeRaised.emit(f"{target_path.name} kaydedildi", False)
+        self.noticeRaised.emit(i18n.t("notice.saved", name=target_path.name), False)
 
     @Slot(str)
     def resetProfile(self, target: str) -> None:

@@ -34,6 +34,9 @@ def cli(config_store, monkeypatch):
     api = SonarApi(config_store, FakeSupervisor(), save_delay=0)
     client = LoopbackClient(SonarDBusInterface(api))
     monkeypatch.setattr("sonar.cli.__main__.Client", lambda: client)
+    # `main()` dili gerçek `~/.config/sonar`dan okuyor; testler geliştiricinin diline
+    # bağlı olmasın.
+    monkeypatch.setattr("sonar.cli.__main__._startup_language", lambda: "tr")
     return client
 
 
@@ -69,7 +72,10 @@ def test_bus_argument_is_free_text_now():
 def test_status_prints_a_table(cli, capsys):
     assert run(["status"]) == 0
     out = capsys.readouterr().out
-    assert "KANAL" in out and "Game" in out and "Stream Mix" in out
+    # Gösterilen adlar çevriliyor; `config.toml` ve PipeWire tarafı İngilizce kalıyor.
+    assert "KANAL" in out and "Oyun" in out and "Yayın Miksi" in out
+    # OBS'te seçilecek aygıt adı **dile bağlı değil**: doküman onu birebir yazıyor.
+    assert "Sonar Stream Mix" in out
 
 
 def test_status_json(cli, capsys):
@@ -112,7 +118,8 @@ def test_profile_list_marks_the_active_one(cli, capsys):
     assert run(["profile", "game"]) == 0
     out = capsys.readouterr().out
     assert "* CS2" in out
-    assert "  Default" in out
+    # "Default" gömülü bir ad: diskte öyle duruyor, ekranda çeviriliyor.
+    assert "  Varsayılan" in out
 
 
 def test_profile_load(cli):
@@ -258,6 +265,7 @@ def test_status_counts_match_what_is_printed(config_store, capsys, monkeypatch):
     )
     client = LoopbackClient(SonarDBusInterface(api))
     monkeypatch.setattr("sonar.cli.__main__.Client", lambda: client)
+    monkeypatch.setattr("sonar.cli.__main__._startup_language", lambda: "tr")
     run(["status"])
     out = capsys.readouterr().out
     assert "ÇALAN UYGULAMALAR (1)" in out

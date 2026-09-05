@@ -19,15 +19,14 @@ from PySide6.QtDBus import QDBus, QDBusConnection, QDBusInterface
 
 from sonar.core import config as config_mod
 from sonar.core import i18n
+from sonar.core.names import display_name, preset_label
 from sonar.daemon.dbus_iface import BUS_NAME, INTERFACE, OBJECT_PATH
 
 __all__ = ["main"]
 
-_NOT_RUNNING = (
-    "Sonar daemon'ına ulaşılamadı.\n"
-    "Başlatmak için:  systemctl --user start sonar-daemon\n"
-    "Durumu görmek için:  systemctl --user status sonar-daemon"
-)
+def _not_running() -> str:
+    """Dil, `main()` içinde daemon'a bağlanmadan önce kuruluyor; bu metin de çevrili."""
+    return i18n.t("cli.not_running")
 
 
 class Client:
@@ -35,10 +34,10 @@ class Client:
         self._app = QCoreApplication.instance() or QCoreApplication([])
         bus = QDBusConnection.sessionBus()
         if not bus.isConnected():
-            raise SystemExit("Oturum D-Bus'ına bağlanılamadı.")
+            raise SystemExit(i18n.t("cli.no_session_bus"))
         self.iface = QDBusInterface(BUS_NAME, OBJECT_PATH, INTERFACE, bus)
         if not self.iface.isValid():
-            raise SystemExit(_NOT_RUNNING)
+            raise SystemExit(_not_running())
 
     def call(self, method: str, *args: Any) -> Any:
         # `iface.call(method, *args)` PySide6'da en fazla 4 argüman alıyor; beşincisinde
@@ -47,16 +46,18 @@ class Client:
         message = self.iface.callWithArgumentList(QDBus.CallMode.Block, method, list(args))
         arguments = message.arguments()
         if not arguments:
-            raise SystemExit(f"'{method}' çağrısı yanıtsız kaldı. {_NOT_RUNNING}")
+            raise SystemExit(i18n.t("cli.no_reply", method=method) + " " + _not_running())
         try:
             payload = json.loads(arguments[0])
         except (TypeError, json.JSONDecodeError) as exc:
             raise SystemExit(
-                f"'{method}' beklenmeyen bir yanıt döndürdü: {arguments[0]!r}"
+                i18n.t("cli.bad_reply", method=method, payload=repr(arguments[0]))
             ) from exc
         if not payload.get("ok"):
-            code = payload.get("code", "hata")
-            raise SystemExit(f"hata [{code}]: {payload.get('message', '')}")
+            code = payload.get("code", "error")
+            raise SystemExit(
+                i18n.t("cli.error", code=code, message=payload.get("message", ""))
+            )
         return payload.get("result")
 
 
@@ -86,7 +87,10 @@ def _print_status(state: dict) -> None:
     output_bus = next(
         (b["id"] for b in config["buses"] if b.get("kind") != "stream"), "personal"
     )
-    print(f"{'KANAL':<12} {'PROFİL':<16} {'KULAKLIK':<26} {'YAYIN':<26}")
+    print(
+        f"{i18n.t('cli.col.channel'):<12} {i18n.t('cli.col.profile'):<16} "
+        f"{i18n.t('cli.col.headphones'):<26} {i18n.t('cli.col.stream'):<26}"
+    )
     print("─" * 82)
     for channel in channels:
         rows = []
@@ -94,7 +98,9 @@ def _print_status(state: dict) -> None:
             send = _send_of(channel, bus_id)
             mark = "M" if send["muted"] else " "
             rows.append(f"{mark} {_bar(send['volume'])} {_pct(send['volume'])}")
-        print(f"{channel['name']:<12} {channel['active_profile']:<16} {rows[0]:<26} {rows[1]:<26}")
+        name = display_name("channel", channel["id"], channel["name"])
+        profile = preset_label(channel["active_profile"])
+        print(f"{name:<12} {profile:<16} {rows[0]:<26} {rows[1]:<26}")
 
     print()
     for bus in config["buses"]:
@@ -102,16 +108,19 @@ def _print_status(state: dict) -> None:
         if bus.get("kind") == "stream":
             # Sabit metin değil: OBS'te seçilecek ad bus'ın adından üretiliyor ve
             # doküman ile birebir aynı olmalı.
-            where = f"→ OBS: Masaüstü Sesi = “Sonar {bus['name']}”"
+            where = "→ " + i18n.t("cli.obs_desktop_audio", device=f"Sonar {bus['name']}")
         else:
-            where = f"→ {bus['device'] or '(sistem varsayılanı)'}"
-        print(f"{bus['name']:<24} {mark} {_bar(bus['volume'])} {_pct(bus['volume'])}  {where}")
+            where = f"→ {bus['device'] or i18n.t('cli.system_default')}"
+        name = display_name("bus", bus["id"], bus["name"])
+        print(f"{name:<24} {mark} {_bar(bus['volume'])} {_pct(bus['volume'])}  {where}")
     for mic in config["mic_chains"]:
         mark = "M" if mic["muted"] else " "
-        device = mic["source_device"] or "(sistem varsayılanı)"
-        stream = "" if mic.get("send_to_stream_bus", True) else "  [yayında değil]"
+        device = mic["source_device"] or i18n.t("cli.system_default")
+        in_stream = mic.get("send_to_stream_bus", True)
+        stream = "" if in_stream else "  [" + i18n.t("cli.not_in_stream") + "]"
+        name = display_name("mic", mic["id"], mic["name"])
         print(
-            f"{mic['name']:<24} {mark} {_bar(mic['volume'])} {_pct(mic['volume'])}  "
+            f"{name:<24} {mark} {_bar(mic['volume'])} {_pct(mic['volume'])}  "
             f"← {device}{stream}"
         )
 
@@ -124,24 +133,24 @@ def _print_status(state: dict) -> None:
 
     playback = [s for s in streams if not s["is_capture"]]
     capture = [s for s in streams if s["is_capture"]]
-    print(f"\nÇALAN UYGULAMALAR ({len(playback)})")
+    print(f"\n{i18n.t('cli.playing_apps')} ({len(playback)})")
     if not playback:
-        print("  (yok)")
+        print("  " + i18n.t("cli.none"))
     for stream in playback:
         # `channel` daemon'ın yönlendirme kaydından geliyor; `target_node` yalnızca
         # uygulamanın kendi seçtiği hedefi gösterir ve genelde boştur.
-        target = stream.get("channel") or stream["target_node"] or "(yönlendirilmedi)"
+        target = stream.get("channel") or stream["target_node"] or i18n.t("cli.unrouted")
         label = stream["app_name"] or stream["app_binary"] or stream["media_name"]
         print(f"  #{stream['id']:<6} {label:<24} → {target}")
     if capture:
-        print(f"\nMİKROFON KULLANANLAR ({len(capture)})")
+        print(f"\n{i18n.t('cli.mic_apps')} ({len(capture)})")
         for stream in capture:
             label = stream["app_name"] or stream["app_binary"] or stream["media_name"]
-            target = stream.get("channel") or stream["target_node"] or "(yönlendirilmedi)"
+            target = stream.get("channel") or stream["target_node"] or i18n.t("cli.unrouted")
             print(f"  #{stream['id']:<6} {label:<24} ← {target}")
 
     if not state["graph_ready"]:
-        print("\n⚠ Graf henüz hazır değil.")
+        print("\n⚠ " + i18n.t("cli.graph_not_ready"))
     for conflict in state.get("conflicts", []):
         print(f"\n⚠ {conflict['message']}")
 
@@ -168,43 +177,59 @@ def _cmd_doctor(client: Client, args) -> int:
         return 0
 
     problems = 0
-    print(f"Graf hazır         : {'evet' if report['graph_ready'] else 'HAYIR'}")
+    yes, no = i18n.t("cli.yes"), i18n.t("cli.no")
+    print(f"{i18n.t('cli.doctor.graph_ready'):<19}: {yes if report['graph_ready'] else no}")
     problems += 0 if report["graph_ready"] else 1
 
     broken = report["broken_links"]
-    print(f"Gönderi bağlantısı : {report['expected_links'] - len(broken)}/"
-          f"{report['expected_links']}")
+    print(f"{i18n.t('cli.doctor.send_links'):<19}: "
+          f"{report['expected_links'] - len(broken)}/{report['expected_links']}")
     for link in broken:
         print(f"  ✗ {link}")
     problems += len(broken)
 
     for node in report["missing_nodes"]:
-        print(f"  ✗ node grafta yok: {node}")
+        print("  ✗ " + i18n.t("cli.doctor.missing_node", node=node))
     problems += len(report["missing_nodes"])
 
+    # Uyarılar sorun sayısına girmiyor: OBS kapalıyken "dinleyen yok" normal ve
+    # `doctor`ın çıkış kodunu 1 yapmamalı. Ama sayılmadıkları için ekranda ⚠ dururken
+    # "Sorun bulunamadı." yazıyordu — kendi kendini yalanlayan bir çıktı. Artık ayrıca
+    # sayılıyor ve son satır ikisini birden söylüyor.
+    warnings = 0
     for stream in report["unrouted_streams"]:
-        print(f"  ⚠ yönlendirilmemiş akış: #{stream['id']} {stream['label']}")
+        print("  ⚠ " + i18n.t("cli.doctor.unrouted", id=stream["id"], label=stream["label"]))
+        warnings += 1
 
     for conflict in report["conflicts"]:
         print(f"  ⚠ {conflict['message']}")
+        warnings += 1
 
     # Yayın kurulumu: kullanıcının en çok takıldığı yer, o yüzden doctor'da da duruyor.
     setup = client.call("StreamSetup")
     listeners = setup["listeners"]
-    print(f"\nYayın miksi        : {setup['device']}")
+    print(f"\n{i18n.t('cli.doctor.stream_mix'):<19}: {setup['device']}")
     if listeners:
         for row in listeners:
-            way = "Masaüstü Sesi" if row["via"] == "monitor" else "alternatif giriş"
+            way = i18n.t("cli.via.monitor" if row["via"] == "monitor" else "cli.via.source")
             print(f"  · #{row['id']} {row['label']} — {way}")
     else:
-        print("  · dinleyen yok")
+        print("  · " + i18n.t("cli.doctor.no_listener"))
     for mic in setup["mics"]:
-        state = "yayında" if mic["in_stream"] else "yayında DEĞİL"
-        print(f"  · mikrofon {mic['name']}: {state}")
+        where = i18n.t("cli.doctor.mic_on" if mic["in_stream"] else "cli.doctor.mic_off")
+        name = display_name("mic", mic["id"], mic["name"])
+        print(f"  · {i18n.t('cli.microphone')} {name}: {where}")
     for problem in setup["problems"]:
         print(f"  ⚠ {problem['message']}")
+        warnings += 1
 
-    print("\nSorun bulunamadı." if problems == 0 else f"\n{problems} sorun bulundu.")
+    if problems:
+        summary = i18n.t("cli.doctor.problems", count=problems)
+    elif warnings:
+        summary = i18n.t("cli.doctor.warnings", count=warnings)
+    else:
+        summary = i18n.t("cli.doctor.clean")
+    print("\n" + summary)
     return 0 if problems == 0 else 1
 
 
@@ -218,13 +243,17 @@ def _cmd_mute(client: Client, args) -> int:
         state = client.call("GetState")
         channel = next((c for c in state["config"]["channels"] if c["id"] == args.channel), None)
         if channel is None:
-            raise SystemExit(f"hata [unknown_channel]: böyle bir kanal yok: {args.channel}")
+            raise SystemExit(
+                i18n.t("cli.error", code="unknown_channel",
+                       message=i18n.t("error.no_such_channel", name=args.channel))
+            )
         bus_id = channel.get("output_bus", "personal") if args.bus == "output" else args.bus
         muted = not _send_of(channel, bus_id)["muted"]
     else:
         muted = args.state == "on"
     client.call("SetChannelMute", args.channel, args.bus, muted)
-    print(f"{args.channel}/{args.bus}: {'susturuldu' if muted else 'açıldı'}")
+    print(f"{args.channel}/{args.bus}: "
+          + i18n.t("cli.muted" if muted else "cli.unmuted"))
     return 0
 
 
@@ -239,7 +268,7 @@ def _cmd_profile(client: Client, args) -> int:
         state = client.call("GetState")
         active = _active_profile(state, args.target)
         for name in names:
-            print(f"{'*' if name == active else ' '} {name}")
+            print(f"{'*' if name == active else ' '} {preset_label(name)}")
         return 0
     client.call("LoadProfile", args.target, args.name)
     print(f"{args.target} → {args.name}")
@@ -257,14 +286,15 @@ def _active_profile(state: dict, target: str) -> str:
 
 def _cmd_save(client: Client, args) -> int:
     client.call("SaveProfile", args.target, args.name)
-    print(f"kaydedildi: {args.target}/{args.name}")
+    print(i18n.t("cli.saved", name=f"{args.target}/{args.name}"))
     return 0
 
 
 def _cmd_route(client: Client, args) -> int:
     client.call("SetRule", args.key, args.pattern, args.channel, args.regex, args.direction)
     arrow = "←" if args.direction == "in" else "→"
-    print(f"kural: {args.key}={args.pattern} {arrow} {args.channel}")
+    print(i18n.t("cli.rule_set", key=args.key, pattern=args.pattern,
+                 arrow=arrow, channel=args.channel))
     return 0
 
 
@@ -272,9 +302,9 @@ def _cmd_rules(client: Client, args) -> int:
     if args.remove:
         key, _, pattern = args.remove.partition("=")
         if not pattern:
-            raise SystemExit("kaldırmak için biçim: --remove <anahtar>=<desen>")
+            raise SystemExit(i18n.t("cli.remove_format"))
         client.call("RemoveRule", key, pattern, args.direction)
-        print(f"kaldırıldı: {key}={pattern}")
+        print(i18n.t("cli.removed", name=f"{key}={pattern}"))
         return 0
     rules = client.call("ListRules")
     if args.json:
@@ -282,12 +312,13 @@ def _cmd_rules(client: Client, args) -> int:
         print()
         return 0
     if not rules:
-        print("(kural yok)")
+        print(i18n.t("cli.no_rules"))
     for rule in rules:
         flags = " (regex)" if rule["is_regex"] else ""
-        state = "" if rule["enabled"] else " [kapalı]"
+        state = "" if rule["enabled"] else " [" + i18n.t("cli.off") + "]"
         way = rule.get("direction", "out")
-        arrow = "← MİK" if way == "in" else "→ SES"
+        arrow = "← " + i18n.t("cli.mic_short") if way == "in" \
+            else "→ " + i18n.t("cli.audio_short")
         print(
             f"{rule['match_key']:<12} {rule['pattern']:<28} "
             f"{arrow} {rule['channel_id']}{flags}{state}"
@@ -305,10 +336,11 @@ def _cmd_move(client: Client, args) -> int:
 def _cmd_chatmix(client: Client, args) -> int:
     if args.invert is not None:
         client.call("SetChatMixInvert", args.invert == "on")
-        print(f"Teker yönü: {'ters' if args.invert == 'on' else 'normal'}")
+        print(i18n.t("cli.wheel_direction",
+                     value=i18n.t("cli.inverted" if args.invert == "on" else "cli.normal")))
         return 0
     if args.value is None:
-        raise SystemExit("bir değer (0-100) veya --invert on|off verin")
+        raise SystemExit(i18n.t("cli.chatmix_usage"))
     client.call("SetChatMix", float(args.value))
     print(f"ChatMix: {args.value}")
     return 0
@@ -334,7 +366,7 @@ def _cmd_devices(client: Client, args) -> int:
         print()
         return 0
     for device in devices:
-        kind = "giriş " if device["is_source"] else "çıkış "
+        kind = i18n.t("cli.input" if device["is_source"] else "cli.output")
         print(f"{kind} {device['description'] or device['name']}\n        {device['name']}")
     return 0
 
@@ -350,7 +382,7 @@ def _cmd_device(client: Client, args) -> int:
 
 def _cmd_new(client: Client, args) -> int:
     client.call("NewProfile", args.target, args.name)
-    print(f"{args.target}: yeni düz profil '{args.name}' oluşturuldu ve etkin")
+    print(i18n.t("cli.profile_created", target=args.target, name=args.name))
     return 0
 
 
@@ -361,19 +393,19 @@ def _cmd_favorite(client: Client, args) -> int:
         return 0
     adding = args.action == "add"
     client.call("SetProfileFavorite", args.target, args.name, adding)
-    what = "favorilere eklendi" if adding else "favorilerden çıkarıldı"
-    print(f"{args.target}: '{args.name}' {what}")
+    print(i18n.t("cli.favorite_added" if adding else "cli.favorite_removed",
+                 target=args.target, name=args.name))
     return 0
 
 
 def _cmd_channel(client: Client, args) -> int:
     if args.action == "add":
         new_id = client.call("AddChannel", args.name, args.direction, args.color)
-        kind = "giriş" if args.direction == "input" else "çıkış"
-        print(f"{kind} kanalı eklendi: {new_id}  (graf yeniden kuruluyor)")
+        kind = i18n.t("cli.input" if args.direction == "input" else "cli.output")
+        print(i18n.t("cli.channel_added", kind=kind, id=new_id))
     else:
         client.call("RemoveChannel", args.name)
-        print(f"kanal silindi: {args.name}  (graf yeniden kuruluyor)")
+        print(i18n.t("cli.channel_removed", name=args.name))
     return 0
 
 
@@ -400,14 +432,17 @@ def _cmd_smart(client: Client, args) -> int:
         duck = ((state["profiles"] or {}).get(args.channel) or {}).get("ducking") or {}
 
     profile = _active_profile(client.call("GetState"), args.channel)
-    targets = duck.get("target_channels") or ["(kendisi dışındaki hepsi)"]
+    targets = duck.get("target_channels") or [i18n.t("cli.smart.all_others")]
+    on = i18n.t("cli.on" if duck.get("enabled") else "cli.off")
     print(f"{args.channel} / {profile}")
-    print(f"Smart Volume : {'açık' if duck.get('enabled') else 'kapalı'}")
-    print(f"hedef        : {', '.join(targets)}")
-    print(f"indirim      : {duck.get('reduction_db', 0):.1f} dB  "
-          f"(eşik {duck.get('threshold_db', 0):.1f} dB)")
-    print(f"zarf         : atak {duck.get('attack_ms', 0):.0f} ms · "
-          f"tut {duck.get('hold_ms', 0):.0f} ms · bırakma {duck.get('release_ms', 0):.0f} ms")
+    print(f"{i18n.t('cli.smart.state'):<13}: {on}")
+    print(f"{i18n.t('cli.smart.targets'):<13}: {', '.join(targets)}")
+    print(f"{i18n.t('cli.smart.reduction'):<13}: {duck.get('reduction_db', 0):.1f} dB  "
+          f"({i18n.t('param.threshold').lower()} {duck.get('threshold_db', 0):.1f} dB)")
+    print(f"{i18n.t('cli.smart.envelope'):<13}: {i18n.t('param.attack').lower()} "
+          f"{duck.get('attack_ms', 0):.0f} ms · {i18n.t('param.hold').lower()} "
+          f"{duck.get('hold_ms', 0):.0f} ms · {i18n.t('param.release').lower()} "
+          f"{duck.get('release_ms', 0):.0f} ms")
     return 0
 
 
@@ -415,15 +450,15 @@ def _cmd_obs(client: Client, args) -> int:
     """Kanalın OBS için ayrı bir sanal giriş cihazı yayınlaması."""
     enabled = args.state == "on"
     client.call("SetChannelStreamSource", args.channel, enabled)
-    state = "açık" if enabled else "kapalı"
-    print(f"{args.channel} OBS kaynağı: {state}  (graf yeniden kuruluyor)")
+    print(i18n.t("cli.obs_source", channel=args.channel,
+                 state=i18n.t("cli.on" if enabled else "cli.off")))
     return 0
 
 
 def _cmd_presets(client: Client, args) -> int:
     builtin = set(client.call("ListBuiltinProfiles", args.target) or [])
     for name in client.call("ListProfiles", args.target) or []:
-        print(f"{'🔒' if name in builtin else '  '} {name}")
+        print(f"{'🔒' if name in builtin else '  '} {preset_label(name)}")
     return 0
 
 
@@ -432,7 +467,8 @@ def _cmd_import(client: Client, args) -> int:
 
     text = Path(args.file).read_text(encoding="utf-8", errors="replace")
     result = client.call("ImportProfile", args.target, text, args.name or "")
-    print(f"içe aktarıldı: {result['name']}  (biçim: {result['source']}, {result['bands']} band)")
+    print(i18n.t("cli.imported", name=result["name"],
+                 source=result["source"], bands=result["bands"]))
     for warning in result.get("warnings", []):
         print(f"  ⚠ {warning}")
     return 0
@@ -444,7 +480,7 @@ def _cmd_export(client: Client, args) -> int:
     text = client.call("ExportProfile", args.target, args.name or "", args.autoeq)
     if args.file:
         Path(args.file).write_text(text, encoding="utf-8")
-        print(f"yazıldı: {args.file}")
+        print(i18n.t("cli.written", file=args.file))
     else:
         print(text, end="")
     return 0
@@ -452,7 +488,7 @@ def _cmd_export(client: Client, args) -> int:
 
 def _cmd_reset(client: Client, args) -> int:
     client.call("ResetProfile", args.target)
-    print(f"{args.target}: profil sıfırlandı")
+    print(i18n.t("cli.profile_reset", target=args.target))
     return 0
 
 
@@ -494,16 +530,18 @@ def _cmd_mic(client: Client, args) -> int:
     """Mikrofon zincirinin yayın ve sidetone anahtarları."""
     if args.what == "stream":
         client.call("SetMicStreamSend", args.chain, args.state == "on")
-        print(f"{args.chain}: yayın miksine {'katılıyor' if args.state == 'on' else 'katılmıyor'}")
+        print(i18n.t("cli.mic_stream", chain=args.chain,
+                     state=i18n.t("cli.on" if args.state == "on" else "cli.off")))
     else:
         client.call("SetMicMonitor", args.chain, args.state == "on")
-        print(f"{args.chain}: sidetone {'açık' if args.state == 'on' else 'kapalı'}")
+        print(i18n.t("cli.mic_sidetone", chain=args.chain,
+                     state=i18n.t("cli.on" if args.state == "on" else "cli.off")))
     return 0
 
 
 def _cmd_reload(client: Client, _args) -> int:
     client.call("Reload")
-    print("yapılandırma yeniden okundu")
+    print(i18n.t("cli.reloaded"))
     return 0
 
 
@@ -511,40 +549,37 @@ def _cmd_reload(client: Client, _args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="sonar-cli", description="Sonar komut satırı istemcisi")
-    parser.add_argument("--json", action="store_true", help="çıktıyı JSON olarak ver")
+    parser = argparse.ArgumentParser(prog="sonar-cli", description=i18n.t("cli.help.prog"))
+    parser.add_argument("--json", action="store_true", help=i18n.t("cli.help.json"))
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("status", help="kanallar, fader'lar, profiller, çalan uygulamalar")
-    doctor = sub.add_parser("doctor", help="ses yolu teşhisi — ses gelmiyorsa buraya bakın")
-    doctor.add_argument("--json", action="store_true", help="ham çıktı")
+    sub.add_parser("status", help=i18n.t("cli.help.status"))
+    doctor = sub.add_parser("doctor", help=i18n.t("cli.help.doctor"))
+    doctor.add_argument("--json", action="store_true", help=i18n.t("cli.help.raw"))
 
-    p = sub.add_parser("volume", help="kanal ses seviyesi (0-100)")
+    p = sub.add_parser("volume", help=i18n.t("cli.help.volume"))
     p.add_argument("channel")
-    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
-                                "veya 'stream'")
+    p.add_argument("bus", help=i18n.t("cli.help.bus_arg"))
     p.add_argument("value", type=float)
 
-    p = sub.add_parser("mute", help="kanalı sustur/aç")
+    p = sub.add_parser("mute", help=i18n.t("cli.help.mute"))
     p.add_argument("channel")
-    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
-                                "veya 'stream'")
+    p.add_argument("bus", help=i18n.t("cli.help.bus_arg"))
     p.add_argument("state", nargs="?", default="toggle", choices=["on", "off", "toggle"])
 
-    p = sub.add_parser("master", help="Personal/Stream master seviyesi (0-100)")
-    p.add_argument("bus", help="çıkış bus'ının kimliği, 'output' (kanalın seçili çıkışı) "
-                                "veya 'stream'")
+    p = sub.add_parser("master", help=i18n.t("cli.help.master"))
+    p.add_argument("bus", help=i18n.t("cli.help.bus_arg"))
     p.add_argument("value", type=float)
 
-    p = sub.add_parser("profile", help="profil listele veya yükle")
+    p = sub.add_parser("profile", help=i18n.t("cli.help.profile"))
     p.add_argument("target")
     p.add_argument("name", nargs="?")
 
-    p = sub.add_parser("save", help="çalışılan profili yeni adla kaydet")
+    p = sub.add_parser("save", help=i18n.t("cli.help.save"))
     p.add_argument("target")
     p.add_argument("name")
 
-    p = sub.add_parser("route", help="uygulama → kanal kuralı ekle")
+    p = sub.add_parser("route", help=i18n.t("cli.help.route"))
     p.add_argument("pattern")
     p.add_argument("channel")
     p.add_argument("--key", default="binary", choices=["binary", "app_name", "media_name"])
@@ -553,95 +588,96 @@ def build_parser() -> argparse.ArgumentParser:
         "--direction",
         default="out",
         choices=["out", "in"],
-        help="out: uygulamanın çaldığı ses · in: dinlediği mikrofon",
+        help=i18n.t("cli.help.direction"),
     )
 
-    p = sub.add_parser("rules", help="kuralları listele veya kaldır")
-    p.add_argument("--remove", metavar="ANAHTAR=DESEN")
+    p = sub.add_parser("rules", help=i18n.t("cli.help.rules"))
+    p.add_argument("--remove", metavar=i18n.t("cli.meta.key_pattern"))
     p.add_argument("--direction", default="", choices=["", "out", "in"],
-                   help="kaldırırken yalnızca bu yöndeki kuralı sil")
+                   help=i18n.t("cli.help.rules_direction"))
 
-    p = sub.add_parser("move", help="bir akışı başka kanala veya mikrofon zincirine taşı")
+    p = sub.add_parser("move", help=i18n.t("cli.help.move"))
     p.add_argument("stream", type=int)
     p.add_argument("channel")
     p.add_argument(
-        "--remember", action="store_true", help="bu uygulamayı bundan sonra hep bu kanala gönder"
+        "--remember", action="store_true", help=i18n.t("cli.help.remember")
     )
 
-    p = sub.add_parser("chatmix", help="ChatMix konumu (0-100)")
+    p = sub.add_parser("chatmix", help=i18n.t("cli.help.chatmix"))
     p.add_argument("value", type=float, nargs="?")
     # Kulaklık tekerinin hangi ucunun Game olduğu HID raporundan çıkmıyor; ters
     # geliyorsa kullanıcı bir kez söylüyor.
-    p.add_argument("--invert", choices=["on", "off"], help="donanım tekerinin yönünü çevir")
+    p.add_argument("--invert", choices=["on", "off"], help=i18n.t("cli.help.invert"))
 
-    sub.add_parser("devices", help="fiziksel ses cihazlarını listele")
+    sub.add_parser("devices", help=i18n.t("cli.help.devices"))
 
-    p = sub.add_parser("device", help="bir bus veya mikrofon zincirinin cihazını ayarla")
+    p = sub.add_parser("device", help=i18n.t("cli.help.device"))
     p.add_argument("target")
     p.add_argument("device")
-    p.add_argument("--mic", action="store_true", help="hedef bir mikrofon zinciri")
+    p.add_argument("--mic", action="store_true", help=i18n.t("cli.help.mic_flag"))
 
-    p = sub.add_parser("new", help="sıfırdan düz bir profil oluştur")
+    p = sub.add_parser("new", help=i18n.t("cli.help.new"))
     p.add_argument("target")
     p.add_argument("name")
 
-    p = sub.add_parser("favorite", help="profilleri favorilere ekle/çıkar veya listele")
+    p = sub.add_parser("favorite", help=i18n.t("cli.help.favorite"))
     p.add_argument("action", choices=("add", "remove", "list"))
     p.add_argument("target")
     p.add_argument("name", nargs="?", default="")
 
-    p = sub.add_parser("channel", help="kanal ekle veya sil")
+    p = sub.add_parser("channel", help=i18n.t("cli.help.channel"))
     p.add_argument("action", choices=("add", "remove"))
-    p.add_argument("name", help="ekleme: görünen ad · silme: kanal id'si")
+    p.add_argument("name", help=i18n.t("cli.help.channel_name"))
     p.add_argument(
-        "--direction", choices=("output", "input"), default="output", help="yalnızca ekleme"
+        "--direction", choices=("output", "input"), default="output",
+        help=i18n.t("cli.help.add_only"),
     )
     p.add_argument("--color", default="#8B95A5")
 
-    p = sub.add_parser("smart", help="Smart Volume (bu kanal konuşurken diğerlerini kıs)")
-    p.add_argument("channel", help="tetikleyici kanal; ayar onun aktif profiline yazılır")
-    p.add_argument("state", nargs="?", choices=("on", "off"), help="verilmezse yalnızca gösterir")
-    p.add_argument("--targets", nargs="*", metavar="KANAL",
-                   help="kısılacak kanallar; boş verilirse kendisi dışındaki hepsi")
+    p = sub.add_parser("smart", help=i18n.t("cli.help.smart"))
+    p.add_argument("channel", help=i18n.t("cli.help.smart_channel"))
+    p.add_argument("state", nargs="?", choices=("on", "off"), help=i18n.t("cli.help.show_only"))
+    p.add_argument("--targets", nargs="*", metavar=i18n.t("cli.meta.channel"),
+                   help=i18n.t("cli.help.smart_targets"))
     p.add_argument("--reduction-db", type=float, dest="reduction_db")
     p.add_argument("--threshold-db", type=float, dest="threshold_db")
     p.add_argument("--attack-ms", type=float, dest="attack_ms")
     p.add_argument("--hold-ms", type=float, dest="hold_ms")
     p.add_argument("--release-ms", type=float, dest="release_ms")
 
-    p = sub.add_parser("obs", help="kanal için OBS'e ayrı sanal giriş cihazı ver")
+    p = sub.add_parser("obs", help=i18n.t("cli.help.obs"))
     p.add_argument("channel")
     p.add_argument("state", choices=("on", "off"))
 
-    p = sub.add_parser("presets", help="gömülü presetleri ve profilleri listele")
+    p = sub.add_parser("presets", help=i18n.t("cli.help.presets"))
     p.add_argument("target")
 
-    p = sub.add_parser("import", help="AutoEQ / EasyEffects / .sonarprofile içe aktar")
+    p = sub.add_parser("import", help=i18n.t("cli.help.import"))
     p.add_argument("target")
     p.add_argument("file")
-    p.add_argument("--name", help="profil adı (varsayılan: dosyadan)")
+    p.add_argument("--name", help=i18n.t("cli.help.import_name"))
 
-    p = sub.add_parser("export", help="profili dışa aktar")
+    p = sub.add_parser("export", help=i18n.t("cli.help.export"))
     p.add_argument("target")
     p.add_argument("name", nargs="?")
-    p.add_argument("--file", help="dosyaya yaz (varsayılan: stdout)")
-    p.add_argument("--autoeq", action="store_true", help="AutoEQ/APO metin biçimi")
+    p.add_argument("--file", help=i18n.t("cli.help.export_file"))
+    p.add_argument("--autoeq", action="store_true", help=i18n.t("cli.help.autoeq"))
 
-    p = sub.add_parser("reset", help="aktif profili düz hâle döndür")
+    p = sub.add_parser("reset", help=i18n.t("cli.help.reset"))
     p.add_argument("target")
 
-    p = sub.add_parser("meters", help="seviye metrelerini canlı göster")
-    p.add_argument("--seconds", type=float, default=10.0, help="kaç saniye izlensin")
+    p = sub.add_parser("meters", help=i18n.t("cli.help.meters"))
+    p.add_argument("--seconds", type=float, default=10.0, help=i18n.t("cli.help.seconds"))
 
-    p = sub.add_parser("mic", help="mikrofonun yayın gönderisi ve sidetone'u")
-    p.add_argument("chain", help="giriş kanalının kimliği (örn. mic)")
+    p = sub.add_parser("mic", help=i18n.t("cli.help.mic"))
+    p.add_argument("chain", help=i18n.t("cli.help.mic_chain"))
     p.add_argument("what", choices=["stream", "sidetone"])
     p.add_argument("state", choices=["on", "off"])
 
-    p = sub.add_parser("lang", help="arayüz dili (tr/en) — argümansız listeler")
+    p = sub.add_parser("lang", help=i18n.t("cli.help.lang"))
     p.add_argument("code", nargs="?", choices=sorted(i18n.LANGUAGES))
 
-    sub.add_parser("reload", help="config.toml'u diskten yeniden oku")
+    sub.add_parser("reload", help=i18n.t("cli.help.reload"))
     return parser
 
 
@@ -675,10 +711,22 @@ _COMMANDS = {
 }
 
 
+def _startup_language() -> str:
+    """Dili diskten okur.
+
+    Daemon'a **bağlanmadan önce** gerekiyor: `--help` çıktısı ve "daemon'a ulaşılamadı"
+    mesajı da kullanıcının dilinde olmalı, ikisi de bağlantı kurulmadan basılıyor.
+    Yapılandırma okunamıyorsa varsayılana düşülür — dil yüzünden komut çalışmamazlık
+    etmemeli.
+    """
+    try:
+        return config_mod.ConfigStore().load(create_missing=False).settings.language
+    except (OSError, ValueError):
+        return i18n.DEFAULT_LANGUAGE
+
+
 def main(argv: list[str] | None = None) -> int:
-    # Dil, daemon'a bağlanmadan **önce** ayarlanmalı: `--help` ve bağlantı hatası
-    # metinleri de kullanıcının dilinde çıksın.
-    i18n.set_language(config_mod.ConfigStore().load(create_missing=False).settings.language)
+    i18n.set_language(_startup_language())
     args = build_parser().parse_args(argv)
     return _COMMANDS[args.command](Client(), args)
 

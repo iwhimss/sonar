@@ -23,9 +23,30 @@ import pytest
 from sonar.core import i18n
 
 SOURCE_ROOT = Path(i18n.__file__).resolve().parent.parent
-#: `t("x.y")`, `i18n.t("x.y")`, `I18n.t("x.y")`, `I18n.tf("x.y", {...})`, `tr("x.y")`.
-KEY_CALL = re.compile(r"\bt[fr]?\(\s*[\"']([a-z0-9_]+(?:\.[a-z0-9_]+)+)[\"']")
+#: `t(`, `i18n.t(`, `I18n.t(`, `I18n.tf(`, `tr(` çağrısının **başlangıcı**.
+KEY_CALL = re.compile(r"\bt[fr]?\(")
+#: Anahtar biçimi: noktalı, küçük harf.
+KEY_SHAPE = re.compile(r"[\"']([a-z0-9_]+(?:\.[a-z0-9_]+)+)[\"']")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _call_body(text: str, start: int) -> str:
+    """`t(` çağrısının kapanan parantezine kadarki gövdesi.
+
+    Yalnızca ilk metni almak yetmiyor: `t("cli.on" if x else "cli.off")` gibi üçlü
+    ifadelerde ikinci anahtar da gerçekten kullanılıyor ve "ölü çeviri" testi onu
+    yanlışlıkla kullanılmamış sayardı.
+    """
+    depth = 0
+    for index in range(start, min(len(text), start + 500)):
+        char = text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start:index]
+    return text[start : start + 500]
 
 
 def catalogs() -> dict[str, dict[str, str]]:
@@ -46,8 +67,21 @@ def source_files() -> list[Path]:
 def used_keys() -> dict[str, list[Path]]:
     found: dict[str, list[Path]] = {}
     for path in source_files():
-        for key in KEY_CALL.findall(path.read_text(encoding="utf-8")):
-            found.setdefault(key, []).append(path)
+        text = path.read_text(encoding="utf-8")
+        for match in KEY_CALL.finditer(text):
+            for key in KEY_SHAPE.findall(_call_body(text, match.end() - 1)):
+                found.setdefault(key, []).append(path)
+    # Gömülü ad ve preset eşlemeleri anahtarı veri olarak taşıyor, çağrı olarak değil.
+    from sonar.core.names import BUILTIN_NAMES, PRESET_NAMES
+    from sonar.gui.bridge import SonarBridge
+
+    source = Path(SOURCE_ROOT / "core" / "names.py")
+    for key, _default in BUILTIN_NAMES.values():
+        found.setdefault(key, []).append(source)
+    for key in PRESET_NAMES.values():
+        found.setdefault(key, []).append(source)
+    for key, _is_error in SonarBridge._NOTICES.values():
+        found.setdefault(key, []).append(source)
     return found
 
 

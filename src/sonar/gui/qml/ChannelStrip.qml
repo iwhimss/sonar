@@ -63,17 +63,18 @@ Item {
     readonly property var profileOptions: {
         const all = (root.profiles || []).map(function (p) {
             return typeof p === "string"
-                ? { value: p, label: p, builtin: false }
-                : { value: p.name, label: p.name, builtin: p.builtin === true }
+                ? { value: p, label: root.bridge.presetLabel(p), builtin: false }
+                : { value: p.name, label: root.bridge.presetLabel(p.name),
+                    builtin: p.builtin === true }
         })
         const out = []
         if (favorites.length > 0) {
-            out.push({ value: "", label: "Favoriler", header: true })
+            out.push({ value: "", label: I18n.t("profile.favorites"), header: true })
             for (const name of favorites) {
                 const hit = all.find(function (o) { return o.value === name })
                 if (hit) out.push({ value: hit.value, label: "★ " + hit.label })
             }
-            out.push({ value: "", label: "Tüm profiller", header: true })
+            out.push({ value: "", label: I18n.t("profile.all"), header: true })
         }
         for (const option of all)
             out.push({ value: option.value, label: (option.builtin ? "🔒 " : "") + option.label })
@@ -212,8 +213,8 @@ Item {
                        "yayın fader'ı" sanıyordu. */
                     model: root.isMic
                         ? [
-                            { bus: "output", icon: "headset", label: "Kendini duy" },
-                            { bus: "stream", icon: "mic", label: "Mikrofon" }
+                            { bus: "output", icon: "headset", label: I18n.t("mic.sidetone") },
+                            { bus: "stream", icon: "mic", label: I18n.t("mic.level") }
                           ]
                         : [
                             // "output" = kanalın seçili çıkış bus'ı; daemon çözüyor.
@@ -280,7 +281,7 @@ Item {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             visible: root.isMic && busColumn.bus === "stream" && !root.inStream
-                            text: "yayında değil"
+                            text: I18n.t("mic.not_in_stream")
                             color: Theme.warn
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSmall
@@ -332,7 +333,8 @@ Item {
                 SonarSectionLabel {
                     width: parent.width
                     elide: Text.ElideRight
-                    text: (root.isMic ? "Mikrofon  (" : "Apps  (") + root.apps.length + ")"
+                    text: (root.isMic ? I18n.t("strip.mics") : I18n.t("strip.apps"))
+                          + "  (" + root.apps.length + ")"
                 }
 
                 ListView {

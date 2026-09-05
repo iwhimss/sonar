@@ -49,7 +49,7 @@ SonarPanel {
                 }
             }
             SonarSectionLabel {
-                text: "Equalizer"
+                text: I18n.t("fx.stage.eq")
                 color: root.eq.enabled ? root.accent : Theme.textDim
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -58,11 +58,11 @@ SonarPanel {
                değişiyor. Zincir her zaman 32 bandlık eklentiyle kurulduğu için bu
                tamamen canlı — eskiden kapasite değişimi grafı yeniden kuruyordu. */
             SonarSectionLabel {
-                text: root.bandCount + " band"
+                text: I18n.tf("eq.bands", { count: root.bandCount })
                 anchors.verticalCenter: parent.verticalCenter
             }
             Item { width: Theme.s4; height: 1 }
-            SonarSectionLabel { text: "Ölçek"; anchors.verticalCenter: parent.verticalCenter }
+            SonarSectionLabel { text: I18n.t("eq.scale"); anchors.verticalCenter: parent.verticalCenter }
             SonarComboBox {
                 width: 84
                 accent: root.accent
@@ -144,25 +144,28 @@ SonarPanel {
             readonly property var band: visible ? root.bands[curve.selectedBand] : ({})
 
             SonarSectionLabel {
-                text: "Band " + ((curve ? curve.selectedBand : -1) + 1)
+                text: I18n.tf("eq.band", { n: (curve ? curve.selectedBand : -1) + 1 })
                 anchors.verticalCenter: parent.verticalCenter
             }
             SonarComboBox {
                 width: 120
                 accent: root.accent
                 anchors.verticalCenter: parent.verticalCenter
-                model: [{value:"peak",label:"Peak"},{value:"low_shelf",label:"Low shelf"},
-                        {value:"high_shelf",label:"High shelf"},{value:"low_pass",label:"Low pass"},
-                        {value:"high_pass",label:"High pass"},{value:"notch",label:"Notch"},
-                        {value:"off",label:"Kapalı"}]
+                model: [{value:"peak",label:I18n.t("eq.type.peak")},
+                        {value:"low_shelf",label:I18n.t("eq.type.low_shelf")},
+                        {value:"high_shelf",label:I18n.t("eq.type.high_shelf")},
+                        {value:"low_pass",label:I18n.t("eq.type.low_pass")},
+                        {value:"high_pass",label:I18n.t("eq.type.high_pass")},
+                        {value:"notch",label:I18n.t("eq.type.notch")},
+                        {value:"off",label:I18n.t("eq.type.off")}]
                 currentValue: parent.band.band_type !== undefined ? parent.band.band_type : "peak"
                 onActivated: (v) => root.bridge.setEqBand(root.target, curve.selectedBand,
                                                           "band_type", v)
             }
             Repeater {
                 model: [
-                    { key: "freq",    label: "Frekans", unit: "Hz", digits: 0 },
-                    { key: "gain_db", label: "Kazanç",  unit: "dB", digits: 1 },
+                    { key: "freq",    label: I18n.t("eq.freq"), unit: "Hz", digits: 0 },
+                    { key: "gain_db", label: I18n.t("eq.gain"),  unit: "dB", digits: 1 },
                     { key: "q",       label: "Q",       unit: "",   digits: 2 }
                 ]
                 Row {
@@ -193,9 +196,9 @@ SonarPanel {
             spacing: Theme.s4
             Repeater {
                 model: [
-                    { label: "Bass",   low: 20,   high: 250 },
-                    { label: "Voice",  low: 250,  high: 4000 },
-                    { label: "Treble", low: 4000, high: 20000 }
+                    { label: I18n.t("eq.range.bass"),   low: 20,   high: 250 },
+                    { label: I18n.t("eq.range.voice"),  low: 250,  high: 4000 },
+                    { label: I18n.t("eq.range.treble"), low: 4000, high: 20000 }
                 ]
                 SonarParamRow {
                     required property var modelData
@@ -211,7 +214,7 @@ SonarPanel {
 
         SonarParamRow {
             width: parent.width
-            label: "Preamp"
+            label: I18n.t("eq.preamp")
             from: -24; to: 12; unit: "dB"
             accent: root.accent
             value: root.eq.preamp_db !== undefined ? root.eq.preamp_db : 0

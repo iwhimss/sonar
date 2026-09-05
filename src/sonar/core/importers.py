@@ -22,6 +22,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from sonar.core import i18n
 from sonar.core.model import (
     SCHEMA_VERSION,
     SUPPORTED_BAND_COUNTS,
@@ -99,17 +100,14 @@ def _fit_band_count(count: int) -> tuple[int, int]:
 def _build(name: str, bands: list[EqBand], preamp_db: float, source: str) -> ImportResult:
     warnings: list[str] = []
     if not bands:
-        raise ProfileImportError("dosyada hiç EQ bandı bulunamadı")
+        raise ProfileImportError(i18n.t("import.no_bands"))
 
     # 32'den fazlaysa en zayıf kazançlılar düşer — en az duyulacak olanlar.
     band_count, dropped = _fit_band_count(len(bands))
     if dropped:
         bands = sorted(bands, key=lambda b: -abs(b.gain_db))[:band_count]
         bands.sort(key=lambda b: b.freq)
-        warnings.append(
-            f"{dropped} band sığmadı ve en zayıf kazançlı olanlar atıldı "
-            f"(en fazla {band_count} band destekleniyor)"
-        )
+        warnings.append(i18n.t("import.bands_dropped", dropped=dropped, kept=band_count))
 
     profile = default_profile(name, band_count=band_count)
     profile.eq.enabled = True
@@ -206,7 +204,7 @@ def parse_easyeffects(text: str, name: str = "EasyEffects") -> ImportResult:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ProfileImportError("EasyEffects preset'i ayrıştırılamadı") from error
+        raise ProfileImportError(i18n.t("import.easyeffects_unparsable")) from error
 
     equalizer = None
     for section in ("output", "input"):
@@ -215,7 +213,7 @@ def parse_easyeffects(text: str, name: str = "EasyEffects") -> ImportResult:
             equalizer = candidate
             break
     if equalizer is None:
-        raise ProfileImportError("preset içinde ekolayzer bölümü yok")
+        raise ProfileImportError(i18n.t("import.no_eq_section"))
 
     channel = equalizer.get("left") or equalizer.get("right") or {}
     bands: list[EqBand] = []
@@ -272,13 +270,13 @@ def parse_sonarprofile(text: str, name: str | None = None) -> ImportResult:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ProfileImportError("dosya geçerli JSON değil") from error
+        raise ProfileImportError(i18n.t("import.bad_json")) from error
     payload = data.get("profile") if isinstance(data, dict) else None
     if payload is None:
-        raise ProfileImportError("dosya bir Sonar profili değil")
+        raise ProfileImportError(i18n.t("import.not_a_sonar_profile"))
     version = data.get("schema_version", SCHEMA_VERSION)
     if not isinstance(version, int) or version > SCHEMA_VERSION:
-        raise ProfileImportError(f"dosya daha yeni bir sürümden ({version})")
+        raise ProfileImportError(i18n.t("import.newer_version", version=version))
     profile = from_jsonable(Profile, payload)
     if name:
         profile.name = name
@@ -316,5 +314,5 @@ def import_any(text: str, name: str | None = None) -> ImportResult:
     if kind == "autoeq":
         return parse_autoeq(text, name or "AutoEQ")
     raise ProfileImportError(
-        "dosya biçimi tanınmadı (AutoEQ/APO, EasyEffects veya .sonarprofile bekleniyor)"
+        i18n.t("import.unknown_format")
     )

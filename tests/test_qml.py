@@ -63,12 +63,16 @@ def test_main_window_loads_offscreen():
         from PySide6.QtQml import QQmlApplicationEngine
         from sonar.gui.app import qml_dir
         from sonar.gui.bridge import SonarBridge
+        from sonar.gui.i18n import QmlI18n
 
         app = QGuiApplication([])
         bridge = SonarBridge(parent=app)
         engine = QQmlApplicationEngine()
         engine.addImportPath(str(qml_dir()))
         engine.rootContext().setContextProperty("bridge", bridge)
+        # `ui/I18n.qml` singleton'ı bu context property'yi okuyor; verilmezse her metin
+        # "ReferenceError" olur ve arayüz sessizce boş çizilir.
+        engine.rootContext().setContextProperty("i18nBackend", QmlI18n(app))
         engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
         print("ROOTS", len(engine.rootObjects()))
         """

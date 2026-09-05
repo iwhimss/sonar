@@ -487,8 +487,19 @@ def test_profile_actions_reach_the_daemon(fx):
 
 
 def test_channel_of_returns_the_strip_row(fx):
-    assert fx.channelOf("game")["name"] == "Game"
+    # Gömülü kanalların **gösterilen** adı çevriliyor; yapılandırmadaki ad (ve dolayısıyla
+    # PipeWire cihaz açıklaması) İngilizce ve sabit kalıyor.
+    assert fx.channelOf("game")["name"] == "Oyun"
     assert fx.channelOf("yok") == {}
+
+
+def test_a_renamed_channel_keeps_the_users_name(fx):
+    """Çeviri yalnızca ada hiç dokunulmamışsa devreye girer."""
+    from sonar.gui.bridge import display_name
+
+    assert display_name("channel", "game", "Game") == "Oyun"
+    assert display_name("channel", "game", "Valorant") == "Valorant"
+    assert display_name("channel", "kendi_kanalim", "Kendi Kanalım") == "Kendi Kanalım"
 
 
 def test_profile_names(fx):
