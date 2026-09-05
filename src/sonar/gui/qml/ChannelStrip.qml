@@ -287,15 +287,33 @@ Item {
                             font.pixelSize: Theme.fontSmall
                             renderType: Text.NativeRendering
                         }
+                        /* Mute düğmesi fader'ın **altında** durmalı, sütunun değil:
+                           sütunun genişliğini `SonarValueField` (58 px) belirliyor,
+                           fader+metre satırı 30 px ve sola yaslı. `horizontalCenter`
+                           mute'u 29'a, fader'ın merkezini ise 11'e düşürüyordu —
+                           kullanıcının bildirdiği 18 px'lik kayma buydu. Fader ve mute
+                           artık ortak bir sütunda, metre yanlarında. */
                         Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
                             spacing: 3
-                            SonarFader {
-                                height: busColumn.barHeight
-                                maximum: Theme.maxVolume
-                                value: busColumn.vol
-                                muted: busColumn.mute
-                                accent: root.accent
-                                onMoved: (v) => root.setVolume(busColumn.bus, v)
+
+                            Column {
+                                spacing: Theme.s1
+                                SonarFader {
+                                    height: busColumn.barHeight
+                                    maximum: Theme.maxVolume
+                                    value: busColumn.vol
+                                    muted: busColumn.mute
+                                    accent: root.accent
+                                    onMoved: (v) => root.setVolume(busColumn.bus, v)
+                                }
+                                SonarIconButton {
+                                    icon: "mute"
+                                    active: busColumn.mute
+                                    accent: Theme.danger
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    onClicked: root.toggleMute(busColumn.bus, !busColumn.mute)
+                                }
                             }
                             /* Metre kanal sink monitöründen besleniyor: DSP ve fader
                                öncesi, yani uygulamanın çaldığı seviye. İki bus için de
@@ -306,13 +324,6 @@ Item {
                                 holdDb: root.level.hold_db
                                 clipped: root.level.clipped === true
                             }
-                        }
-                        SonarIconButton {
-                            icon: "mute"
-                            active: busColumn.mute
-                            accent: Theme.danger
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            onClicked: root.toggleMute(busColumn.bus, !busColumn.mute)
                         }
                     }
                 }

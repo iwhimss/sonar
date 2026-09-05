@@ -13,17 +13,41 @@ Item {
         bridge ? (bridge.revision, bridge.chatmixIsHardware()) : false
 
     /* Şeritler yatay kaydırılabilir: kanal sayısı arttıkça pencereye sığmıyordu ve
-       "＋ Kanal ekle" paneli ekrandan yarım taşıyordu. */
+       "＋ Kanal ekle" paneli ekrandan yarım taşıyordu.
+
+       Ölçüldü (test turu 5): kaydırma **çalışıyordu** — 900 px pencerede
+       `contentWidth = 1002`, `width = 852`. Eksik olan görünür bir tutamaktı:
+       `AsNeeded` politikası Basic stilinde duran ekranda hiçbir işaret bırakmıyor ve
+       tekerlek `SonarFader.onWheel` tarafından yeniyor, yani şeridin üstünde tekerlek
+       kaydırmıyor. Kullanıcı bu yüzden "kaydıramıyorum" dedi.
+
+       Artık içerik taştığında kendi çubuğumuz **her zaman** duruyor (aşağıda), ve
+       `Shift`+tekerlek yatay kaydırıyor — düz tekerlek fader'ın kalıyor. */
     C.ScrollView {
         id: scroller
+        objectName: "mixerScroller"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: chatmix.top
-        anchors.bottomMargin: Theme.s2
+        anchors.bottom: scrollbar.top
         clip: true
-        C.ScrollBar.horizontal.policy: C.ScrollBar.AsNeeded
+        // Controls'un kendi çubukları kapalı; yatayı kendimiz çiziyoruz.
+        C.ScrollBar.horizontal.policy: C.ScrollBar.AlwaysOff
         C.ScrollBar.vertical.policy: C.ScrollBar.AlwaysOff
+
+        readonly property real overflow: Math.max(0, contentWidth - availableWidth)
+
+        /* Shift + tekerlek yatay kaydırır. Düz tekerlek bilinçli olarak fader'ın:
+           şeridin üstünde tekerlek çevirmek ses seviyesini değiştiriyor ve bu
+           davranış üç turdur kullanımda. */
+        WheelHandler {
+            acceptedModifiers: Qt.ShiftModifier
+            onWheel: (event) => {
+                const step = event.angleDelta.y > 0 ? -60 : 60
+                scroller.contentItem.contentX = Math.max(
+                    0, Math.min(scroller.overflow, scroller.contentItem.contentX + step))
+            }
+        }
 
         Row {
             id: strips
@@ -62,6 +86,60 @@ Item {
                     onClicked: addDialog.open()
                 }
             }
+        }
+    }
+
+    /* Yatay kaydırma tutamağı. Yalnızca içerik taştığında görünüyor; genişliği
+       görünen oranı, konumu kaydırma konumunu gösteriyor. Yuvarlatma yok. */
+    Item {
+        id: scrollbar
+        objectName: "mixerScrollbar"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: chatmix.top
+        anchors.bottomMargin: Theme.s2
+        height: visible ? 10 : 0
+        visible: scroller.overflow > 0.5
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: 2
+            anchors.bottomMargin: 2
+            color: Theme.sunken
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        Rectangle {
+            id: handle
+            objectName: "mixerScrollHandle"
+            y: 2
+            height: parent.height - 4
+            width: Math.max(40, scrollbar.width * scroller.availableWidth
+                                / Math.max(1, scroller.contentWidth))
+            x: scroller.overflow > 0
+               ? (scrollbar.width - width) * scroller.contentItem.contentX / scroller.overflow
+               : 0
+            // Tutamak oluğun içinde kaybolmamalı: `borderStrong` denendi, ekran
+            // görüntüsünde oluktan ayırt edilemiyordu.
+            color: barMouse.containsMouse || barMouse.pressed
+                   ? Qt.lighter(Theme.master, 1.2) : Theme.master
+        }
+
+        MouseArea {
+            id: barMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            /* Tutamağın kendisini sürüklemek yerine **tıklanan yere** git: dar bir
+               tutamağı yakalamak zorunda kalmadan da kaydırılabiliyor. */
+            function seek(mouseX) {
+                const span = Math.max(1, scrollbar.width - handle.width)
+                const ratio = Math.max(0, Math.min(1, (mouseX - handle.width / 2) / span))
+                scroller.contentItem.contentX = ratio * scroller.overflow
+            }
+            onPressed: (mouse) => seek(mouse.x)
+            onPositionChanged: (mouse) => { if (pressed) seek(mouse.x) }
         }
     }
 

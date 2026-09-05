@@ -103,16 +103,20 @@ Window {
         }
     }
 
+    /* `bridge: bridge` **yazmayın**: sağdaki ad bileşenin kendi (tanımsız) özelliğine
+       çözülüyor, context property'ye değil. Test turu 5'te üç hata birden buradan
+       çıktı — dil değişmiyor, kutucuklar tıklanmıyor, kaldır bir şey yapmıyor.
+       `tests/test_qml.py` artık bu deseni yakalıyor. */
     SettingsDialog {
         id: settingsDialog
-        bridge: bridge
+        bridge: window.bridgeRef()
         onWelcomeRequested: window.welcomeForced = true
         onUninstallRequested: uninstallDialog.open()
     }
 
     UninstallDialog {
         id: uninstallDialog
-        bridge: bridge
+        bridge: window.bridgeRef()
     }
 
     // --- uyarı şeridi ------------------------------------------------------

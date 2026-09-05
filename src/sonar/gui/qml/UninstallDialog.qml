@@ -25,6 +25,18 @@ SonarDialog {
 
     function open() { purge = false; done = false; visible = true }
 
+    /* Pencere yalnızca **gerçekten** kaldırıldıysa sonuç paneline geçiyor. Eskiden
+       düğmeye basar basmaz `done = true` yapıyordu; köprü çağrısı başarısız olduğunda
+       bile "kalan işler" listesi açılıyordu ve kullanıcı "kaldırıldı dedi ama hiçbir şey
+       olmadı" diye bildirdi. */
+    Connections {
+        target: root.bridge
+        function onDeprovisionFinished(ok, purged) {
+            root.done = ok
+            if (!ok) root.close()
+        }
+    }
+
     Column {
         width: parent.width
         spacing: Theme.s3
@@ -68,7 +80,7 @@ SonarDialog {
                           ? I18n.t("uninstall.working") : I18n.t("uninstall.confirm")
                     variant: "danger"
                     enabled: !(root.bridge && root.bridge.busy)
-                    onClicked: { root.done = true; root.bridge.deprovision(root.purge) }
+                    onClicked: root.bridge.deprovision(root.purge)
                 }
             }
         }

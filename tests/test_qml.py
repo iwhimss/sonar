@@ -124,17 +124,29 @@ def test_value_field_parses_and_never_writes_its_own_value():
             print("ERRORS", component.errorString())
             sys.exit(1)
 
+        from PySide6.QtCore import QObject
+
         seen = []
         field.edited.connect(seen.append)
-        field.setProperty("value", 1.0)
         field.setProperty("maximum", 3.0)
 
+        # Metin `value`'yu **aynı turda** izlemeli. Eskiden handler ayrı bir
+        # `display` binding'ini okuyordu ve metin tam bir adım geride kalıyordu:
+        # 0.5 → "50%", 1.0 → "50%", 0.25 → "100%" (test turu 5'te ölçüldü).
+        entry = [c for c in field.findChildren(QObject)
+                 if c.metaObject().className().startswith("QQuickTextInput")][0]
+        texts = []
+        for value in (0.5, 1.0, 0.25):
+            field.setProperty("value", value)
+            texts.append(entry.property("text"))
+        print("TEXTS", texts)
+
+        field.setProperty("value", 1.0)
         for text in ("250", "%150", "150,5", "", "abc", "999"):
             field.commit(text)
 
         print("EMITTED", [round(v, 4) for v in seen])
         print("VALUE", round(field.property("value"), 4))
-        print("DISPLAY", field.property("display"))
         """
     )
     result = subprocess.run(
@@ -150,7 +162,8 @@ def test_value_field_parses_and_never_writes_its_own_value():
     assert "EMITTED [2.5, 1.5, 1.505, 3.0]" in out, out
     # Bileşen kendi değerine dokunmadı: bağlama sağlam.
     assert "VALUE 1.0" in out, out
-    assert "DISPLAY 100%" in out, out
+    # Metin değeri gecikmeden izliyor.
+    assert "TEXTS ['50%', '100%', '25%']" in out, out
 
 
 #: Kullanıcıya görünen metin taşıyan QML özellikleri.
@@ -195,3 +208,26 @@ def test_user_visible_text_goes_through_the_catalog(path):
     assert offenders == [], (
         f"{path.name} içinde katalogdan geçmeyen kullanıcı metni var: {offenders}"
     )
+
+
+#: `bridge: bridge` gibi kendine referans veren atama. Sağdaki ad QML'de **nesnenin
+#: kendi** özelliğine çözülüyor, dıştaki context property'ye değil; sonuç sessiz bir
+#: `undefined` oluyor.
+SELF_REFERENCE = re.compile(r"^\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*$")
+
+
+@pytest.mark.parametrize("path", QML_FILES, ids=lambda p: p.name)
+def test_no_self_referencing_property_assignment(path):
+    """`x: x` yazmayın.
+
+    Test turu 5'te `SettingsDialog { bridge: bridge }` üç hataya birden yol açtı: dil
+    değişmiyor, ayar kutucukları tıklanmıyor, kaldırma hiçbir şey yapmıyordu. QML hata
+    vermiyor, yalnızca `undefined` bir nesneyle devam ediyor — bu yüzden kural burada.
+    Doğrusu değeri açıkça nitelemek: `bridge: window.bridgeRef()`.
+    """
+    offenders = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        match = SELF_REFERENCE.match(line)
+        if match is not None and match.group(1) == match.group(2):
+            offenders.append(f"{number}: {line.strip()}")
+    assert offenders == [], f"{path.name} içinde kendine referans veren atama: {offenders}"

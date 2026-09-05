@@ -142,7 +142,8 @@ Item {
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: I18n.t("welcome.devices.body")
+                        text: root.review ? I18n.t("welcome.devices.body.installed")
+                                          : I18n.t("welcome.devices.body")
                         color: Theme.textDim
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
@@ -243,8 +244,13 @@ Item {
     }
 
     function pageTitle() {
+        /* Gözden geçirme kipinde ("Tanıtımı tekrar göster") liste **kurulu olanları**
+           gösteriyor — kullanıcının sonradan eklediği kanallar da içinde. Liste doğru;
+           yanlış olan "neler oluşturulacak" başlığıydı (test turu 5). */
+        const devices = root.review ? I18n.t("welcome.devices.title.installed")
+                                    : I18n.t("welcome.devices.title")
         const titles = [I18n.t("welcome.language.title"), I18n.t("welcome.what.title"),
-                        I18n.t("welcome.devices.title"), I18n.t("welcome.install.title")]
+                        devices, I18n.t("welcome.install.title")]
         return titles[root.page]
     }
 

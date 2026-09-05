@@ -195,6 +195,11 @@ Item {
                             onEdited: (v) => root.bridge.setMasterVolume(busColumn.modelData.key, v)
                         }
                         SonarFader {
+                            // Sütunun genişliğini `SonarValueField` (58 px) belirliyor;
+                            // ortalanmazsa fader sola yaslanıyor ve altındaki mute
+                            // düğmesiyle hizasız kalıyordu (kanal şeridindeki hatanın
+                            // aynısı, test turu 5).
+                            anchors.horizontalCenter: parent.horizontalCenter
                             height: Math.max(60, faders.height - 130)
                             maximum: Theme.maxVolume
                             value: busColumn.vol

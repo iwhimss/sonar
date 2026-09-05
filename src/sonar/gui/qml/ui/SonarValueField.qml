@@ -28,15 +28,22 @@ Item {
     property color accent: Theme.master
     //: Sıfırlamanın gittiği değer. Fader'ın çift tık davranışıyla aynı olmalı.
     readonly property real unity: 1.0
-    readonly property string display: Math.round(root.value * 100) + "%"
 
     signal edited(real value)
 
     implicitWidth: 58
     implicitHeight: 16
 
-    onValueChanged: if (!field.activeFocus) field.text = root.display
-    Component.onCompleted: field.text = root.display
+    /* Metin **yerinde** hesaplanıyor, `root.display` okunmuyor.
+       Ölçüldü (test turu 5): `display` ayrı bir binding ve `onValueChanged` çalıştığında
+       henüz tazelenmemiş oluyor — metin tam bir adım geride kalıyordu.
+           value 0.5 → "50%" ✓ · value 1.0 → "50%" ✗ · value 0.25 → "100%" ✗
+       Fader `value`'ya doğrudan bağlı olduğu için doğru yere gidiyordu; kullanıcının
+       gördüğü "slider sıfırlanıyor ama metin sıfırlanmıyor" tam olarak buydu. */
+    function percentText(value) { return Math.round(value * 100) + "%" }
+
+    onValueChanged: if (!field.activeFocus) field.text = root.percentText(root.value)
+    Component.onCompleted: field.text = root.percentText(root.value)
 
     /* "150", "%150", " 150,5 " — hepsi kabul. Türkçe klavyede ondalık ayracı virgül;
        `parseFloat` virgülü tanımadığı için sessizce 150 okunurdu. */
@@ -97,13 +104,13 @@ Item {
                         selectAll()
                     } else {
                         root.commit(text)
-                        text = root.display
+                        text = root.percentText(root.value)
                     }
                 }
                 Keys.onReturnPressed: focus = false
                 Keys.onEnterPressed: focus = false
                 Keys.onEscapePressed: {
-                    text = root.display
+                    text = root.percentText(root.value)
                     focus = false
                 }
             }

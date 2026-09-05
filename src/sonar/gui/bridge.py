@@ -311,6 +311,8 @@ class SonarBridge(QObject):
     languageChanged = Signal(str)
     #: Kurulum bitti: `(başarılı mı, mesaj)`. Karşılama ekranı bunu dinliyor.
     provisionFinished = Signal(bool, str)
+    #: Kaldırma bitti: `(başarılı mı, ayarlar da silindi mi)`.
+    deprovisionFinished = Signal(bool, bool)
     busyChanged = Signal()
 
     def __init__(
@@ -693,9 +695,15 @@ class SonarBridge(QObject):
             self._set_busy(False)
         self.refresh()
         if result is None:
+            # Çağrı reddedildi ya da daemon gitti. Pencere "kaldırıldı" demesin:
+            # test turu 5'te kullanıcı "kaldırıldı dedi ama hiçbir şey olmadı" dedi ve
+            # haklıydı — köprü `undefined`di, diyalog yine de başarı panelini açıyordu.
+            self.noticeRaised.emit(i18n.t("uninstall.failed"), True)
+            self.deprovisionFinished.emit(False, False)
             return
         self._manual_steps = result.get("manual_steps") or []
         self.noticeRaised.emit(i18n.t("uninstall.done"), False)
+        self.deprovisionFinished.emit(True, bool(result.get("purged")))
 
     @Slot(result="QVariant")
     def manualSteps(self) -> list:
