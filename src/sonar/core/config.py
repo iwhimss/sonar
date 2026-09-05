@@ -24,10 +24,12 @@ from pathlib import Path
 
 from sonar.core import tomlio
 from sonar.core.model import (
+    CHAIN_ORDER,
     DEFAULT_FILTER_PARAMS,
     DEFAULT_OUTPUT_BUS,
     SCHEMA_VERSION,
     STREAM_BUS,
+    FilterStage,
     Profile,
     SonarConfig,
     default_config,
@@ -42,6 +44,7 @@ __all__ = [
     "Paths",
     "load",
     "load_profile",
+    "migrate_profile",
     "save",
     "save_profile",
     "store",
@@ -316,7 +319,7 @@ class ConfigStore:
             return default_profile(name)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            profile = from_jsonable(Profile, raw)
+            profile = from_jsonable(Profile, migrate_profile(raw))
         except (OSError, json.JSONDecodeError, SerdeError, TypeError, ValueError) as exc:
             log.warning("Profil okunamadı (%s/%s): %s", target, name, exc)
             return default_profile(name)
@@ -464,6 +467,47 @@ def save(config: SonarConfig) -> None:
     store().save(config)
 
 
+def migrate_profile(raw: dict) -> dict:
+    """Profil şema 6 → 7: sabit `filters` sözlüğü → sıralı `effects` listesi.
+
+    Şema 6'ya kadar yedi aşamanın hepsi her profilde duruyordu; kapalı olanlar bypass'ta
+    bekliyordu ve arayüzde yine de görünüyordu. Şema 7'de zincir bir liste ve **yalnızca
+    kullanıcının eklediği** efektler var.
+
+    Göç kuralı: EQ her zaman başta, sonra `CHAIN_ORDER` sırasıyla **açık** olan aşamalar.
+    Kapalı aşamalar düşüyor — parametreleri zaten varsayılandaydı, bilgi kaybı yok ve
+    kullanıcının açık isteği bu ("sadece ekolayzer gözüksün").
+
+    `serde` bilinmeyen anahtarları sessizce atıyor; bu yüzden dönüşüm çözümlemeden
+    **önce**, ham sözlük üzerinde yapılıyor (`config.migrate`'in aynı gerekçesi).
+    """
+    if "effects" in raw or not isinstance(raw.get("filters"), dict):
+        return raw
+    filters = raw["filters"]
+    effects: list[dict] = [
+        {"kind": FilterStage.EQ.value, "slot": FilterStage.EQ.value,
+         "enabled": bool((raw.get("eq") or {}).get("enabled", False)), "params": {}}
+    ]  # fmt: skip
+    for stage in CHAIN_ORDER:
+        if stage is FilterStage.EQ:
+            continue
+        state = filters.get(stage.value)
+        if not isinstance(state, dict) or not state.get("enabled"):
+            continue
+        effects.append(
+            {
+                "kind": stage.value,
+                "slot": stage.value,
+                "enabled": True,
+                "params": dict(state.get("params") or {}),
+            }
+        )
+    migrated = dict(raw)
+    migrated.pop("filters", None)
+    migrated["effects"] = effects
+    return migrated
+
+
 def _normalise_filters(profile: Profile) -> None:
     """Aşama parametrelerini bugünkü tanıma uydurur.
 
@@ -473,13 +517,33 @@ def _normalise_filters(profile: Profile) -> None:
     eksik olanlar varsayılanla dolar — böylece kullanıcının profili sessizce
     kullanılamaz hâle gelmiyor.
     """
-    for stage, state in profile.filters.items():
-        defaults = DEFAULT_FILTER_PARAMS.get(stage)
-        if defaults is None:  # pragma: no cover - bilinmeyen aşama
-            continue
-        state.params = {
-            key: state.params.get(key, default) for key, default in defaults.items()
-        }
+    seen: set[str] = set()
+    kept: list = []
+    for effect in profile.effects:
+        # Slot kimliği profil içinde benzersiz olmalı: elle düzenlenmiş bir dosya iki
+        # aynı ada sahip slot taşıyorsa graf node adları çakışır ve `pipewire -c`
+        # zinciri hiç kuramaz.
+        if not effect.slot or effect.slot in seen:
+            effect.slot = _unique_slot(effect.kind.value, seen)
+        seen.add(effect.slot)
+        # EQ'nun parametreleri `profile.eq`'te; `DEFAULT_FILTER_PARAMS`'ta karşılığı yok
+        # ve slotu **düşürülmemeli** (zincirin ilk üyesi o).
+        defaults = DEFAULT_FILTER_PARAMS.get(effect.kind)
+        if defaults is not None:
+            effect.params = {
+                key: effect.params.get(key, default) for key, default in defaults.items()
+            }
+        kept.append(effect)
+    profile.effects = kept
+
+
+def _unique_slot(base: str, used: set[str]) -> str:
+    if base not in used:
+        return base
+    index = 2
+    while f"{base}{index}" in used:
+        index += 1
+    return f"{base}{index}"
 
 
 def load_profile(target: str, name: str) -> Profile:

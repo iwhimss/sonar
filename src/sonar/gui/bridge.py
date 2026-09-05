@@ -821,10 +821,42 @@ class SonarBridge(QObject):
         return (self._state.get("profiles") or {}).get(target) or {}
 
     @Slot(str, str, result="QVariant")
-    def filterOf(self, target: str, stage: str) -> dict:
-        """Tek bir aşamanın durumu; tanımsızsa boş sözlük."""
-        filters = (self.profileOf(target).get("filters")) or {}
-        return filters.get(stage) or {}
+    def filterOf(self, target: str, slot: str) -> dict:
+        """Tek bir slotun durumu; zincirde yoksa boş sözlük.
+
+        `stage` yerine artık **slot kimliği** (şema 7): aynı efektten birden fazla
+        eklenebiliyor ve her birinin kendi ayarları var.
+        """
+        for effect in self.profileOf(target).get("effects") or []:
+            if effect.get("slot") == slot:
+                return effect
+        return {}
+
+    @Slot(str, result="QVariant")
+    def effectsOf(self, target: str) -> list:
+        """Hedefin efekt zinciri, sinyal sırasıyla. FX sayfasının panel listesi bu."""
+        return list(self.profileOf(target).get("effects") or [])
+
+    @Slot(str, result="QVariant")
+    def effectKinds(self, target: str) -> list:
+        """Bu hedefe eklenebilecek efektler — kurulu olmayanlar listede yok."""
+        return self._call("ListEffectKinds", target) or []
+
+    @Slot(str, str)
+    def addEffect(self, target: str, kind: str) -> None:
+        """Zincirin sonuna efekt ekler. **Yapısal**: graf yeniden kurulur (~200 ms)."""
+        self._call("AddEffect", target, kind, -1)
+        self.refresh()
+
+    @Slot(str, str)
+    def removeEffect(self, target: str, slot: str) -> None:
+        self._call("RemoveEffect", target, slot)
+        self.refresh()
+
+    @Slot(str, str, int)
+    def moveEffect(self, target: str, slot: str, index: int) -> None:
+        self._call("MoveEffect", target, slot, index)
+        self.refresh()
 
     @Slot(str, result="QVariant")
     def profileNames(self, target: str) -> list:
@@ -1060,13 +1092,19 @@ class SonarBridge(QObject):
                 return
         self._bump()
 
-    def _patch_filter(self, target: str, stage: str, values: dict | None) -> dict | None:
+    def _patch_filter(self, target: str, slot: str, values: dict | None) -> dict | None:
+        """İyimser güncelleme: slotu bellekteki profilde günceller.
+
+        Slot zincirde yoksa `None` döner — daemon çağrısı da reddedilecek, uydurma bir
+        slot yaratmak arayüzü daemon'la uyumsuz bırakırdı.
+        """
         profile = self._profile_dict(target)
         if profile is None:
             return None
-        state = profile.setdefault("filters", {}).setdefault(
-            stage, {"enabled": False, "params": {}}
-        )
+        effects = profile.setdefault("effects", [])
+        state = next((e for e in effects if e.get("slot") == slot), None)
+        if state is None:
+            return None
         if values:
             state.update(values)
             self._bump()

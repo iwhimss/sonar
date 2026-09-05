@@ -389,10 +389,21 @@ def test_masters_expose_buses_and_mic(bridge):
 
 
 def profile_state() -> dict:
-    from sonar.core.model import default_profile
+    from sonar.core.model import DEFAULT_FILTER_PARAMS, EffectSlot, FilterStage, default_profile
 
-    profile = to_jsonable(default_profile())
-    return make_state(profiles={"game": profile, "mic": to_jsonable(default_profile())})
+    profile = default_profile()
+    # Şema 7: yeni profilde yalnızca ekolayzer var. Slot testleri için bir gate ekliyoruz.
+    profile.effects.append(
+        EffectSlot(
+            kind=FilterStage.GATE,
+            slot="gate",
+            enabled=False,
+            params=dict(DEFAULT_FILTER_PARAMS[FilterStage.GATE]),
+        )
+    )
+    return make_state(
+        profiles={"game": to_jsonable(profile), "mic": to_jsonable(default_profile())}
+    )
 
 
 @pytest.fixture
@@ -415,11 +426,24 @@ def test_eq_json_for_unknown_target_is_empty(fx):
     assert json.loads(fx.eqJson("yok")) == {}
 
 
-def test_filter_of_returns_the_stage(fx):
+def test_filter_of_returns_the_slot(fx):
     gate = fx.filterOf("game", "gate")
     assert gate["enabled"] is False
     assert gate["params"]["threshold_db"] == -40.0
     assert fx.filterOf("game", "yok") == {}
+
+
+def test_effects_of_returns_the_chain_in_signal_order(fx):
+    assert [e["slot"] for e in fx.effectsOf("game")] == ["eq", "gate"]
+    assert [e["slot"] for e in fx.effectsOf("mic")] == ["eq"]
+
+
+def test_patching_an_unknown_slot_does_not_invent_one(fx):
+    """Uydurma bir slot arayüzü daemon'la uyumsuz bırakırdı."""
+    before = fx.revision
+    fx.setFilterEnabled("game", "yok", True)
+    assert fx.filterOf("game", "yok") == {}
+    assert fx.revision == before
 
 
 def test_eq_band_change_is_optimistic(fx):
@@ -464,9 +488,12 @@ def test_filter_enabled_is_optimistic(fx):
 
 
 def test_filter_param_is_optimistic(fx):
-    fx.setFilterParam("game", "comp", "ratio", 8.0)
-    assert fx.filterOf("game", "comp")["params"]["ratio"] == 8.0
-    assert fx._client.calls[-1] == ("SetFilterParam", ("game", "comp", "ratio", 8.0))
+    fx.setFilterParam("game", "gate", "threshold_db", -12.0)
+    assert fx.filterOf("game", "gate")["params"]["threshold_db"] == -12.0
+    assert fx._client.calls[-1] == (
+        "SetFilterParam",
+        ("game", "gate", "threshold_db", -12.0),
+    )
 
 
 def test_every_optimistic_edit_bumps_the_revision(fx):

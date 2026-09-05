@@ -15,6 +15,7 @@ bir preset arasında yapısal fark yok.
 from __future__ import annotations
 
 from sonar.core.model import (
+    EffectSlot,
     EqBandType,
     FilterStage,
     Profile,
@@ -56,6 +57,7 @@ def _profile(
     """
     profile = default_profile(name, band_count=band_count)
     profile.eq.enabled = True
+    profile.effects[0].enabled = True
 
     for freq, gain in (gains or {}).items():
         index = _band_index(freq, band_count)
@@ -68,10 +70,20 @@ def _profile(
         band.gain_db = gain
         band.q = q
 
+    # Şema 7: preset'in istediği efektler zincire **eklenir**. Öncesinde yedi aşama her
+    # profilde hazır duruyordu ve preset yalnızca bayrağı açıyordu; artık zincirde
+    # yalnızca gerçekten kullanılan efektler var.
     for stage, spec in (filters or {}).items():
-        state = profile.filter(stage)
-        state.enabled = bool(spec.get("enabled", True))
-        state.params.update(spec.get("params", {}))
+        if not spec.get("enabled", True):
+            continue
+        profile.effects.append(
+            EffectSlot(
+                kind=stage,
+                slot=profile.next_slot_id(stage),
+                enabled=True,
+                params=dict(spec.get("params", {})),
+            )
+        )
 
     return profile
 

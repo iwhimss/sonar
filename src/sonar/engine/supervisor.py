@@ -30,7 +30,7 @@ from pathlib import Path
 from sonar.core import config as config_mod
 from sonar.core.dsp.chain import plan_chain
 from sonar.core.dsp.params import db_to_linear, profile_to_params
-from sonar.core.model import CHAIN_ORDER, FilterStage, Profile, SonarConfig
+from sonar.core.model import Profile, SonarConfig
 from sonar.engine import confgen
 from sonar.engine.control import Control
 from sonar.engine.pwstate import GraphState, PwMonitor
@@ -97,9 +97,7 @@ def live_params(
 ) -> dict[str, dict[str, float]]:
     """Her DSP node'una yazılacak port değerleri: `{node adı: {port: değer}}`."""
     nodes = confgen.dsp_nodes(cfg)
-    mic_stages = _stages_for(mic=True)
-    playback_stages = _stages_for(mic=False)
-    mic_ids = {mic.id for mic in cfg.mic_chains}
+    slots = confgen.effect_slots(cfg, load_profile)
     shared = {mic.id for mic in cfg.mic_chains if mic.share_chain_with_mic}
 
     out: dict[str, dict[str, float]] = {}
@@ -109,8 +107,9 @@ def live_params(
             # Zinciri paylaşan mikrofonun kendi DSP'si yok; birincilinki geçerli.
             continue
         profile = load_profile(target, _active_profile(cfg, target))
-        stages = mic_stages if target in mic_ids else playback_stages
-        out[node] = profile_to_params(profile, stages=stages, channels=2)
+        # Kurulu olmayan eklentinin slotu grafta yok; ona parametre yazmaya çalışmayalım.
+        plan = plan_chain(slots[target], channels=2, band_count=cfg.settings.default_band_count)
+        out[node] = profile_to_params(profile, slots=plan.slots, channels=2)
     return out
 
 
@@ -166,14 +165,6 @@ def _active_profile(cfg: SonarConfig, target: str) -> str:
         return mic.active_profile
     bus = cfg.bus(target)
     return bus.active_profile if bus is not None else "Default"
-
-
-def _stages_for(*, mic: bool) -> tuple[FilterStage, ...]:
-    """Zincirde gerçekten kurulmuş aşamalar — kurulu olmayan eklentiye yazmayalım."""
-    wanted = CHAIN_ORDER
-    if not mic:
-        wanted = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
-    return plan_chain(wanted, channels=2 if not mic else 1).stages
 
 
 # --------------------------------------------------------------------------- süpervizör
@@ -232,8 +223,14 @@ class Supervisor:
     # ------------------------------------------------------------------ ana akış
 
     def reconcile(self, cfg: SonarConfig) -> Reconciliation:
-        """Yapılandırmayı grafa uygular. Gerekiyorsa yeniden inşa eder."""
-        text = confgen.generate(cfg)
+        """Yapılandırmayı grafa uygular. Gerekiyorsa yeniden inşa eder.
+
+        Şema 7'den beri conf **profilin efekt listesini** de taşıyor: aktif profili
+        değiştirmek, efekt eklemek/silmek/sıralamak metni değiştirir ve buradaki
+        karşılaştırma grafı kendiliğinden yeniden kurar. Listesi aynı olan profiller
+        arasında geçiş yine kesintisiz.
+        """
+        text = confgen.generate(cfg, self.load_profile)
         with self._lock:
             unchanged = text == self._conf_text and self._is_alive()
 

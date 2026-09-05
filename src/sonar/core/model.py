@@ -20,6 +20,7 @@ __all__ = [
     "CHAIN_ORDER",
     "DEFAULT_OUTPUT_BUS",
     "DYNAMIC_STAGES",
+    "MIC_ONLY_STAGES",
     "PLAYBACK_ONLY_STAGES",
     "SCHEMA_VERSION",
     "STREAM_BUS",
@@ -28,6 +29,7 @@ __all__ = [
     "Channel",
     "ChatMixConfig",
     "DuckingConfig",
+    "EffectSlot",
     "EqBand",
     "EqBandType",
     "EqState",
@@ -103,6 +105,11 @@ DYNAMIC_STAGES: tuple[FilterStage, ...] = (
 #: Yalnızca oynatma zincirlerinde anlamlı aşamalar. Mikrofonda kulaklık simülasyonu
 #: yapmanın karşılığı yok.
 PLAYBACK_ONLY_STAGES: tuple[FilterStage, ...] = (FilterStage.SPATIAL,)
+
+#: Yalnızca mikrofon zincirlerinde anlamlı aşamalar. DeepFilterNet bir **gürültü**
+#: engelleyici; oynatma zincirinde işi yok ve pahalı (ölçüldü: mikrofon kullanımdayken
+#: +%43 CPU).
+MIC_ONLY_STAGES: tuple[FilterStage, ...] = (FilterStage.DEEPFILTER,)
 
 
 class BusKind(StrEnum):
@@ -246,23 +253,63 @@ class DuckingConfig:
 
 
 @dataclass(slots=True)
+class EffectSlot:
+    """Zincire yerleştirilmiş **bir** efekt.
+
+    Şema 7'ye kadar zincir sabitti: `CHAIN_ORDER`'daki yedi aşama her profilde vardı ve
+    "kapalı" olanlar bypass'ta duruyordu. Kullanıcı EasyEffects'teki gibi *"diğer
+    ayarları kendim ekleyeyim, ekledikçe görünsün"* isteyince zincir bir **liste** oldu.
+
+    `slot` grafın içindeki node adı ve profil içinde benzersiz: aynı efektten iki tane
+    eklenebiliyor (`comp1`, `comp2`). Canlı parametre anahtarı `"<slot>:<port>"`, yani
+    şema 6'daki `"eq:g_3"` deseninin aynısı — yalnızca ad artık slot kimliği.
+    """
+
+    kind: FilterStage = FilterStage.EQ
+    slot: str = "eq"
+    enabled: bool = True
+    #: Sonar'ın kendi parametre adları (`threshold_db`, `attack_ms`, …), port sembolleri
+    #: değil. Eşleme `core.dsp.params` içinde.
+    params: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class Profile:
     """Bir kanalın tüm DSP durumu. Kanal başına birden fazla profil kaydedilebilir."""
 
     name: str = "Default"
     eq: EqState = field(default_factory=EqState)
-    filters: dict[FilterStage, FilterState] = field(default_factory=dict)
+    #: Zincirdeki efektler, **sinyal sırasıyla**. Kullanıcı sürükleyerek diziyor.
+    effects: list[EffectSlot] = field(default_factory=list)
     #: Smart Volume — bu kanal konuşurken diğerlerini kıs. Şema 4'te ayarlardan buraya
     #: taşındı: kullanıcı her profilde ayrı olmasını istedi.
     ducking: DuckingConfig = field(default_factory=DuckingConfig)
 
-    def filter(self, stage: FilterStage) -> FilterState:
-        """Aşamanın durumunu döndürür; tanımlı değilse varsayılanı üretir."""
-        state = self.filters.get(stage)
-        if state is None:
-            state = FilterState(enabled=False, params=dict(DEFAULT_FILTER_PARAMS[stage]))
-            self.filters[stage] = state
-        return state
+    def slot(self, slot_id: str) -> EffectSlot | None:
+        return next((e for e in self.effects if e.slot == slot_id), None)
+
+    def state(self, slot_id: str) -> FilterState:
+        """Slotun `FilterState` görünümü — `core.dsp.params` bu biçimi bekliyor.
+
+        EQ'nun aç/kapa durumu `profile.eq.enabled`'da duruyor (eğri, bandlar ve içe/dışa
+        aktarma hep oradan okuyor); slotun kendi bayrağı EQ için yok sayılıyor.
+        """
+        effect = self.slot(slot_id)
+        if effect is None:
+            return FilterState(enabled=False, params={})
+        enabled = self.eq.enabled if effect.kind is FilterStage.EQ else effect.enabled
+        defaults = DEFAULT_FILTER_PARAMS.get(effect.kind, {})
+        return FilterState(enabled=enabled, params={**defaults, **effect.params})
+
+    def next_slot_id(self, kind: FilterStage) -> str:
+        """Bu profilde benzersiz bir node adı üretir: `comp`, `comp2`, `comp3` …"""
+        used = {e.slot for e in self.effects}
+        if kind.value not in used:
+            return kind.value
+        index = 2
+        while f"{kind.value}{index}" in used:
+            index += 1
+        return f"{kind.value}{index}"
 
 
 # --------------------------------------------------------------------------- kanallar & bus'lar
@@ -645,17 +692,20 @@ DEFAULT_FILTER_PARAMS: dict[FilterStage, dict[str, float]] = {
 
 
 def default_profile(name: str = "Default", band_count: int = 10) -> Profile:
-    """Düz EQ ve tüm filtreleri kapalı bir profil."""
+    """Düz EQ'lu, **başka hiçbir efekti olmayan** profil.
+
+    Şema 6'ya kadar yedi aşamanın hepsi (kapalı hâlde) profilin içindeydi ve arayüzde
+    hepsi görünüyordu. Kullanıcının isteği: *"Profil ayarlarına girince sadece ekolayzer
+    ayarı gözüksün. Diğer ayarları tıpkı EasyEffects programındaki gibi kullanıcı kendisi
+    eklesin."*
+    """
     freqs = default_band_frequencies(band_count)
     q = default_band_q(band_count)
     bands = [EqBand(freq=f, gain_db=0.0, q=q, band_type=EqBandType.PEAK) for f in freqs]
     return Profile(
         name=name,
         eq=EqState(enabled=False, band_count=band_count, preamp_db=0.0, bands=bands),
-        filters={
-            stage: FilterState(enabled=False, params=dict(params))
-            for stage, params in DEFAULT_FILTER_PARAMS.items()
-        },
+        effects=[EffectSlot(kind=FilterStage.EQ, slot=FilterStage.EQ.value, enabled=False)],
     )
 
 

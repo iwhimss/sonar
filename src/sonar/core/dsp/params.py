@@ -6,8 +6,10 @@ yazımının tek kaynağıdır: `profile_to_params()` bir profili doğrudan
 ``{"eq:g_3": 1.6788, "gate:at": 10.0, ...}`` biçimine indirger; `engine.control` bunu
 olduğu gibi `pw-cli`'ye verir.
 
-Anahtar biçimi ``"<aşama>:<port>"`` — aşama adları `FilterStage` değerleridir ve
-`engine.confgen`'in ürettiği `filter.graph` node adlarıyla birebir aynıdır.
+Anahtar biçimi ``"<slot>:<port>"`` — slot kimlikleri profildeki `EffectSlot.slot`
+değerleridir ve `engine.confgen`'in ürettiği `filter.graph` node adlarıyla birebir
+aynıdır. Şema 7'ye kadar bu ad aşamanın kendisiydi (`eq`, `gate`); artık aynı efektten
+birden fazla eklenebildiği için slot kimliği (`comp`, `comp2`).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import math
 
 from sonar.core.dsp import registry
 from sonar.core.model import (
-    CHAIN_ORDER,
+    EffectSlot,
     EqBand,
     EqBandType,
     EqState,
@@ -81,15 +83,15 @@ def linear_to_db(linear: float) -> float:
     return 20.0 * math.log10(linear)
 
 
-def param_key(stage: FilterStage, port: str) -> str:
+def param_key(slot: str, port: str) -> str:
     """``"eq:g_3"`` biçiminde canlı yazım anahtarı üretir."""
-    return f"{stage.value}:{port}"
+    return f"{slot}:{port}"
 
 
 # --------------------------------------------------------------------------- EQ
 
 
-def eq_params(eq: EqState, capacity: int) -> dict[str, float]:
+def eq_params(eq: EqState, capacity: int, *, slot: str = "eq") -> dict[str, float]:
     """Ekolayzer durumunu LSP port değerlerine çevirir.
 
     `capacity` kullanılan eklentinin band kapasitesidir (8/16/32). Kullanılmayan bandlar
@@ -108,7 +110,7 @@ def eq_params(eq: EqState, capacity: int) -> dict[str, float]:
     for index in range(capacity):
         band = bands[index] if index < len(bands) else None
         out.update(_band_params(index, band, spec))
-    return {param_key(FilterStage.EQ, port): value for port, value in out.items()}
+    return {param_key(slot, port): value for port, value in out.items()}
 
 
 def _band_params(index: int, band: EqBand | None, spec: registry.PluginSpec) -> dict[str, float]:
@@ -211,34 +213,35 @@ SPATIAL_DELAY_MAX_S = 0.0008
 
 
 def multi_stage_params(
-    stage: FilterStage, state: FilterState, channels: int = 2
+    stage: FilterStage, state: FilterState, channels: int = 2, slot: str = ""
 ) -> dict[str, float]:
     """Çok node'lu aşamaların port değerleri; anahtarlar tam nitelikli (`"boost_l:Mult"`)."""
+    slot = slot or stage.value
     if stage is FilterStage.BOOST:
-        return _boost_params(state, channels)
+        return _boost_params(slot, state, channels)
     if stage is FilterStage.SPATIAL:
-        return _spatial_params(state)
+        return _spatial_params(slot, state)
     raise ValueError(f"{stage} çok node'lu bir aşama değil")
 
 
-def _boost_names(channels: int) -> tuple[str, ...]:
-    return ("boost",) if channels == 1 else ("boost_l", "boost_r")
+def _boost_names(slot: str, channels: int) -> tuple[str, ...]:
+    return (slot,) if channels == 1 else (f"{slot}_l", f"{slot}_r")
 
 
-def _boost_params(state: FilterState, channels: int) -> dict[str, float]:
+def _boost_params(slot: str, state: FilterState, channels: int) -> dict[str, float]:
     """PipeWire `linear`: `Out = In * Mult + Add`. Bypass `Mult = 1.0`."""
     defaults = _default_params(FilterStage.BOOST)
     gain_db = state.params.get("gain_db", defaults["gain_db"]) if state.enabled else 0.0
     gain_db = min(max(float(gain_db), 0.0), MAX_BOOST_DB)
     mult = db_to_linear(gain_db)
     out: dict[str, float] = {}
-    for name in _boost_names(channels):
+    for name in _boost_names(slot, channels):
         out[f"{name}:Mult"] = mult
         out[f"{name}:Add"] = 0.0
     return out
 
 
-def _spatial_params(state: FilterState) -> dict[str, float]:
+def _spatial_params(slot: str, state: FilterState) -> dict[str, float]:
     """Crossfeed ayarları → gecikme, alçak geçiren kesim ve sızıntı kazancı.
 
     Kullanıcıya iki kaydırıcı gösteriliyor (SteelSeries'teki gibi):
@@ -255,7 +258,7 @@ def _spatial_params(state: FilterState) -> dict[str, float]:
     """
     defaults = _default_params(FilterStage.SPATIAL)
     if not state.enabled:
-        return {"spatial_mix_l:Gain 2": 0.0, "spatial_mix_r:Gain 2": 0.0}
+        return {f"{slot}_mix_l:Gain 2": 0.0, f"{slot}_mix_r:Gain 2": 0.0}
 
     immersion = _unit(state.params.get("immersion", defaults["immersion"]))
     distance = _unit(state.params.get("distance", defaults["distance"]))
@@ -265,16 +268,16 @@ def _spatial_params(state: FilterState) -> dict[str, float]:
     delay = SPATIAL_DELAY_MIN_S + distance * (SPATIAL_DELAY_MAX_S - SPATIAL_DELAY_MIN_S)
 
     return {
-        "spatial_mix_l:Gain 1": 1.0,
-        "spatial_mix_r:Gain 1": 1.0,
-        "spatial_mix_l:Gain 2": bleed,
-        "spatial_mix_r:Gain 2": bleed,
-        "spatial_delay_l:Delay (s)": delay,
-        "spatial_delay_r:Delay (s)": delay,
-        "spatial_lp_l:Freq": cutoff,
-        "spatial_lp_r:Freq": cutoff,
-        "spatial_lp_l:Q": 0.707,
-        "spatial_lp_r:Q": 0.707,
+        f"{slot}_mix_l:Gain 1": 1.0,
+        f"{slot}_mix_r:Gain 1": 1.0,
+        f"{slot}_mix_l:Gain 2": bleed,
+        f"{slot}_mix_r:Gain 2": bleed,
+        f"{slot}_delay_l:Delay (s)": delay,
+        f"{slot}_delay_r:Delay (s)": delay,
+        f"{slot}_lp_l:Freq": cutoff,
+        f"{slot}_lp_r:Freq": cutoff,
+        f"{slot}_lp_l:Q": 0.707,
+        f"{slot}_lp_r:Q": 0.707,
     }
 
 
@@ -305,7 +308,10 @@ def eq_bypass_ports(spec: registry.PluginSpec) -> dict[str, float]:
 
 
 def stage_params(
-    stage: FilterStage, state: FilterState, spec: registry.PluginSpec | None = None
+    stage: FilterStage,
+    state: FilterState,
+    spec: registry.PluginSpec | None = None,
+    slot: str = "",
 ) -> dict[str, float]:
     """Tek bir dinamik aşamanın port değerlerini üretir."""
     if stage is FilterStage.EQ:
@@ -324,7 +330,7 @@ def stage_params(
 
     if spec is not None:
         ports = {port: spec.clamp(port, value) for port, value in ports.items()}
-    return {param_key(stage, port): value for port, value in ports.items()}
+    return {param_key(slot or stage.value, port): value for port, value in ports.items()}
 
 
 def _convert(value: float, kind: str) -> float:
@@ -347,25 +353,26 @@ def _default_params(stage: FilterStage) -> dict[str, float]:
 def profile_to_params(
     profile: Profile,
     *,
-    stages: tuple[FilterStage, ...] = CHAIN_ORDER,
+    slots: tuple[EffectSlot, ...] | None = None,
     channels: int = 2,
 ) -> dict[str, float]:
     """Bir profili canlı yazıma hazır düz parametre sözlüğüne indirger.
 
-    `stages` zincirde gerçekten bulunan aşamalardır — kurulu olmayan bir eklenti
-    zincirden çıkarıldığında `confgen` onu bu listeden de düşürür, böylece var olmayan
-    bir node'a parametre yazmaya çalışmayız.
+    `slots` zincirde gerçekten bulunan efektlerdir — kurulu olmayan bir eklenti zincirden
+    çıkarıldığında `chain.plan_chain` onu düşürür ve `confgen` bu listeyi ona göre verir,
+    böylece var olmayan bir node'a parametre yazmaya çalışmayız.
     """
     out: dict[str, float] = {}
-    for stage in stages:
-        if stage is FilterStage.EQ:
+    for effect in profile.effects if slots is None else slots:
+        state = profile.state(effect.slot)
+        if effect.kind is FilterStage.EQ:
             capacity = registry.eq_plugin_for(profile.eq.band_count, channels).band_capacity
-            out.update(eq_params(profile.eq, capacity))
-        elif stage in MULTI_NODE_STAGES:
-            out.update(multi_stage_params(stage, profile.filter(stage), channels))
+            out.update(eq_params(profile.eq, capacity, slot=effect.slot))
+        elif effect.kind in MULTI_NODE_STAGES:
+            out.update(multi_stage_params(effect.kind, state, channels, slot=effect.slot))
         else:
-            spec = _dynamic_spec(stage, channels)
-            out.update(stage_params(stage, profile.filter(stage), spec))
+            spec = _dynamic_spec(effect.kind, channels)
+            out.update(stage_params(effect.kind, state, spec, slot=effect.slot))
     return out
 
 

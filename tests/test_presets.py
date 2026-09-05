@@ -14,6 +14,13 @@ from sonar.core.presets import (
 )
 
 
+def state_of(profile, kind):
+    """Bir aşamanın profildeki durumu. Şema 7'de zincir slot listesi; testler aşama
+    üzerinden bakmaya devam edebilsin diye ilk eşleşen slot dönüyor."""
+    effect = next((e for e in profile.effects if e.kind is kind), None)
+    return profile.state(effect.slot) if effect else None
+
+
 def gain_at(profile, hz: float) -> float:
     _, db = eq_response(profile.eq, freqs=np.array([hz]))
     return float(db[0])
@@ -83,8 +90,8 @@ def test_no_preset_exceeds_the_gain_limits(name):
 def test_flat_is_transparent():
     profile = builtin_profile("game", "Flat")
     assert profile.eq.enabled is False
-    for stage in (FilterStage.GATE, FilterStage.COMP, FilterStage.LIMITER):
-        assert profile.filter(stage).enabled is False
+    # Şema 7: "Düz" preset'inde zincirde ekolayzerden başka efekt yok.
+    assert [e.kind for e in profile.effects] == [FilterStage.EQ]
 
 
 def test_fps_footsteps_lifts_the_presence_and_cuts_the_rumble():
@@ -114,18 +121,18 @@ def test_music_is_a_v_curve():
 
 def test_night_mode_compresses_and_limits():
     profile = builtin_profile("game", "Night Mode")
-    assert profile.filter(FilterStage.COMP).enabled is True
-    assert profile.filter(FilterStage.COMP).params["ratio"] >= 4.0
-    assert profile.filter(FilterStage.LIMITER).enabled is True
-    assert profile.filter(FilterStage.LIMITER).params["ceiling_db"] <= -3.0
+    assert state_of(profile, FilterStage.COMP).enabled is True
+    assert state_of(profile, FilterStage.COMP).params["ratio"] >= 4.0
+    assert state_of(profile, FilterStage.LIMITER).enabled is True
+    assert state_of(profile, FilterStage.LIMITER).params["ceiling_db"] <= -3.0
 
 
 def test_broadcast_has_a_high_pass_and_a_compressor():
     profile = builtin_profile("mic", "Broadcast")
     types = [b.band_type for b in profile.eq.active_bands()]
     assert "high_pass" in types
-    assert profile.filter(FilterStage.COMP).enabled is True
-    assert profile.filter(FilterStage.LIMITER).enabled is True
+    assert state_of(profile, FilterStage.COMP).enabled is True
+    assert state_of(profile, FilterStage.LIMITER).enabled is True
 
 
 def test_broadcast_removes_the_low_rumble():
@@ -141,7 +148,7 @@ def test_podcast_tames_the_sibilance():
 
 def test_aggressive_cleanup_maxes_the_noise_removal():
     profile = builtin_profile("mic", "Aggressive Cleanup")
-    df = profile.filter(FilterStage.DEEPFILTER)
+    df = state_of(profile, FilterStage.DEEPFILTER)
     assert df.enabled is True
     assert df.params["attenuation_db"] == 100.0
-    assert profile.filter(FilterStage.GATE).enabled is True
+    assert state_of(profile, FilterStage.GATE).enabled is True

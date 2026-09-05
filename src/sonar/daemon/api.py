@@ -64,12 +64,17 @@ from typing import Any
 from sonar.core import config as config_mod
 from sonar.core import i18n, importers, presets, serde
 from sonar.core.dsp import registry
+from sonar.core.dsp.chain import plan_chain
 from sonar.core.model import (
+    CHAIN_ORDER,
     DEFAULT_FILTER_PARAMS,
     EQ_FREQ_MAX,
     EQ_FREQ_MIN,
+    MIC_ONLY_STAGES,
+    PLAYBACK_ONLY_STAGES,
     STREAM_BUS,
     Channel,
+    EffectSlot,
     EqBand,
     EqBandType,
     FilterStage,
@@ -609,11 +614,17 @@ class SonarApi:
     # ------------------------------------------------------------------ filtreler
 
     def set_filter_enabled(self, target: str, stage: str, enabled: bool) -> None:
+        """`stage` artık bir **slot kimliği** (`comp`, `comp2`), aşama adı değil.
+
+        Aç/kapa hâlâ **canlı**: efekt zincirde duruyor, yalnızca bypass portuna yazılıyor.
+        Ekleme/silme yapısal (`add_effect` / `remove_effect`).
+        """
         profile = self._editable(target)
-        if stage == FilterStage.EQ:
+        effect = self._slot(target, profile, stage)
+        if effect.kind is FilterStage.EQ:
+            # EQ'nun bayrağı `profile.eq`'te; eğri ve içe/dışa aktarma oradan okuyor.
             profile.eq.enabled = bool(enabled)
-        else:
-            profile.filter(self._stage(target, stage)).enabled = bool(enabled)
+        effect.enabled = bool(enabled)
         self._live_target(target, {"kind": "filter_enabled", "target": target, "stage": stage})
 
     def set_filter_param(self, target: str, stage: str, name: str, value: float) -> None:
@@ -623,14 +634,95 @@ class SonarApi:
         aşamanın artık kullanılmayan parametrelerini taşıyor olabilir ve o zaman yeni
         parametreler reddedilirdi (Spatial Audio HRTF'ten crossfeed'e geçerken oldu).
         """
-        filter_stage = self._stage(target, stage)
-        if name not in DEFAULT_FILTER_PARAMS[filter_stage]:
+        profile = self._editable(target)
+        effect = self._slot(target, profile, stage)
+        if name not in DEFAULT_FILTER_PARAMS.get(effect.kind, {}):
             raise ApiError("unknown_param", i18n.t("error.unknown_param", stage=stage, name=name))
-        state = self._editable(target).filter(filter_stage)
-        state.params[name] = float(value)
+        effect.params[name] = float(value)
         self._live_target(
             target, {"kind": "filter_param", "target": target, "stage": stage, "param": name}
         )
+
+    # ------------------------------------------------------------------ efekt zinciri
+
+    def add_effect(self, target: str, kind: str, index: int = -1) -> str:
+        """Zincire yeni bir efekt ekler ve slot kimliğini döndürür. **Yapısal**.
+
+        Aynı efektten birden fazla eklenebiliyor (EasyEffects'te olduğu gibi); tek
+        istisna ekolayzer, çünkü band modeli ve eğrisi profilde tek.
+        """
+        profile = self._editable(target)
+        stage = self._stage(target, kind)
+        if stage is FilterStage.EQ and any(e.kind is FilterStage.EQ for e in profile.effects):
+            raise ApiError("duplicate_effect", i18n.t("error.one_eq_only"))
+        effect = EffectSlot(
+            kind=stage,
+            slot=profile.next_slot_id(stage),
+            enabled=True,
+            params=dict(DEFAULT_FILTER_PARAMS.get(stage, {})),
+        )
+        position = len(profile.effects) if index < 0 else max(0, min(index, len(profile.effects)))
+        profile.effects.insert(position, effect)
+        self._structural({"kind": "effect_added", "target": target, "slot": effect.slot})
+        return effect.slot
+
+    def remove_effect(self, target: str, slot: str) -> None:
+        """Efekti zincirden çıkarır. **Yapısal**."""
+        profile = self._editable(target)
+        self._slot(target, profile, slot)
+        profile.effects = [e for e in profile.effects if e.slot != slot]
+        self._structural({"kind": "effect_removed", "target": target, "slot": slot})
+
+    def move_effect(self, target: str, slot: str, index: int) -> None:
+        """Efekti listede taşır — sinyal listedeki sırayla akıyor. **Yapısal**."""
+        profile = self._editable(target)
+        effect = self._slot(target, profile, slot)
+        remaining = [e for e in profile.effects if e.slot != slot]
+        position = max(0, min(index, len(remaining)))
+        remaining.insert(position, effect)
+        if [e.slot for e in remaining] == [e.slot for e in profile.effects]:
+            return  # sıra değişmedi: grafı boşuna yeniden kurma
+        profile.effects = remaining
+        self._structural({"kind": "effect_moved", "target": target, "slot": slot})
+
+    def list_effects(self, target: str) -> list[dict]:
+        """Hedefin zincirindeki efektler, sinyal sırasıyla."""
+        profile = self._editable(target)
+        return [
+            {
+                "slot": effect.slot,
+                "kind": effect.kind.value,
+                "enabled": self.profile(target).state(effect.slot).enabled,
+                "params": dict(self.profile(target).state(effect.slot).params),
+            }
+            for effect in profile.effects
+        ]
+
+    def list_effect_kinds(self, target: str = "") -> list[dict]:
+        """Bu hedefe eklenebilecek efektler.
+
+        Kurulu olmayan eklentiler ve hedefe uymayanlar (mikrofonda Uzamsal Ses, oynatmada
+        DeepFilterNet) listeye girmiyor — kullanıcıya ekleyemeyeceği bir şeyi göstermek
+        onu graf kurulamadığında yalnız bırakır.
+        """
+        is_mic = bool(target) and self.config.mic(target) is not None
+        channels = 2
+        out: list[dict] = []
+        for stage in CHAIN_ORDER:
+            if target:
+                if is_mic and stage in PLAYBACK_ONLY_STAGES:
+                    continue
+                if not is_mic and stage in MIC_ONLY_STAGES:
+                    continue
+            probe = EffectSlot(kind=stage, slot=stage.value)
+            plan = plan_chain((probe,), channels=channels,
+                              band_count=self.config.settings.default_band_count)  # fmt: skip
+            if not plan.slots:
+                continue
+            out.append(
+                {"kind": stage.value, "params": sorted(DEFAULT_FILTER_PARAMS.get(stage, {}))}
+            )
+        return out
 
     def set_eq_enabled(self, target: str, enabled: bool) -> None:
         self.set_filter_enabled(target, FilterStage.EQ.value, enabled)
@@ -1524,6 +1616,18 @@ class SonarApi:
         if found is None:
             raise ApiError("unknown_mic", i18n.t("error.no_such_mic", name=chain))
         return found
+
+    def _slot(self, target: str, profile: Profile, slot: str) -> EffectSlot:
+        """Slot kimliğini çözer.
+
+        Geriye dönük kolaylık: eski istemciler aşama adı (`gate`) gönderiyor olabilir ve
+        tek örnekli zincirlerde slot kimliği zaten aşama adının kendisi.
+        """
+        effect = profile.slot(slot)
+        if effect is None:
+            raise ApiError("unknown_stage", i18n.t("error.no_such_effect", name=slot))
+        del target
+        return effect
 
     def _stage(self, target: str, stage: str) -> FilterStage:
         try:

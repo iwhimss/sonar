@@ -26,21 +26,33 @@ CLI: `python -m sonar.engine.confgen [--config <yol>]` → stdout'a conf basar.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from sonar.core.dsp.chain import build_chain, plan_chain
 from sonar.core.model import (
     DEFAULT_OUTPUT_BUS,
+    MIC_ONLY_STAGES,
+    PLAYBACK_ONLY_STAGES,
     STREAM_BUS,
     Channel,
+    EffectSlot,
     MasterBus,
     MicChain,
+    Profile,
     SonarConfig,
+    default_profile,
 )
 
+#: Hedef ve profil adından profil döndüren çağrılabilir. Daemon kendi bellekteki
+#: çalışılan profilleri veriyor; testler ve `sonar-cli` diskten okuyor.
+ProfileProvider = Callable[[str, str], Profile]
+
 __all__ = [
+    "ProfileProvider",
     "dsp_node_for",
     "dsp_nodes",
+    "effect_slots",
     "generate",
     "generate_modules",
     "live_targets",
@@ -71,8 +83,14 @@ _HEADER = """# Sonar — PipeWire graf yapılandırması
 """
 
 
-def generate(cfg: SonarConfig) -> str:
-    """Tam `graph.conf` metnini üretir."""
+def generate(cfg: SonarConfig, load_profile: ProfileProvider | None = None) -> str:
+    """Tam `graph.conf` metnini üretir.
+
+    `load_profile` verilmezse her hedef **varsayılan** profili (yalnızca ekolayzer)
+    kullanır. Daemon kendi bellekteki çalışılan profilleri veriyor: efekt listesi conf'un
+    parçası olduğu için (şema 7) aktif profil değişince conf da değişiyor ve `supervisor`
+    "metin değişti mi" kuralıyla grafı kendiliğinden yeniden kuruyor.
+    """
     rate = cfg.settings.sample_rate
     body = {
         "context.properties": {
@@ -84,12 +102,14 @@ def generate(cfg: SonarConfig) -> str:
             "audio.convert.*": "audioconvert/libspa-audioconvert",
             "support.*": "support/libspa-support",
         },
-        "context.modules": generate_modules(cfg),
+        "context.modules": generate_modules(cfg, load_profile),
     }
     return _HEADER + "\n" + "\n".join(f"{key} = {_fmt(value, 0)}" for key, value in body.items())
 
 
-def generate_modules(cfg: SonarConfig) -> list[dict]:
+def generate_modules(
+    cfg: SonarConfig, load_profile: ProfileProvider | None = None
+) -> list[dict]:
     """Conf'un `context.modules` listesi — asıl iş burada."""
     modules: list[dict] = [
         {
@@ -105,10 +125,12 @@ def generate_modules(cfg: SonarConfig) -> list[dict]:
     rate = cfg.settings.sample_rate
     bands = cfg.settings.default_band_count
 
+    effects = effect_slots(cfg, load_profile)
+
     for channel in cfg.ordered_channels():
-        modules.append(_channel_chain(channel, rate, bands))
+        modules.append(_channel_chain(channel, rate, bands, effects[channel.id]))
     for bus in cfg.ordered_buses():
-        modules.append(_bus_chain(bus, rate, bands))
+        modules.append(_bus_chain(bus, rate, bands, effects[bus.id]))
     # Her kanaldan **her** bus'a bir gönderi. Kanalın hangi çıkışa gittiği conf'a
     # girmez; yalnızca hangi gönderinin açık olduğu değişir (`supervisor.live_volumes`).
     # Böylece kanalı başka bir cihaza taşımak grafı yeniden kurmuyor.
@@ -116,8 +138,45 @@ def generate_modules(cfg: SonarConfig) -> list[dict]:
         for bus in cfg.ordered_buses():
             modules.append(_send_loopback(channel, bus, rate))
     for mic in cfg.mic_chains:
-        modules.extend(_mic_modules(mic, cfg, rate, bands))
+        modules.extend(_mic_modules(mic, cfg, rate, bands, effects[mic.id]))
     return modules
+
+
+def effect_slots(
+    cfg: SonarConfig, load_profile: ProfileProvider | None = None
+) -> dict[str, tuple[EffectSlot, ...]]:
+    """Her profil hedefi için zincire girecek efektler, aktif profilinden okunmuş.
+
+    Hedefe uymayan efektler burada eleniyor: DeepFilterNet yalnızca mikrofon zincirinde,
+    Uzamsal Ses yalnızca oynatma zincirinde anlamlı. Eskiden bu ayrım `_graph`'in
+    `mic` bayrağıyla yapılıyordu; artık listeyi süzüyor.
+    """
+    provider = load_profile if load_profile is not None else _default_profile_provider
+    mic_ids = {mic.id for mic in cfg.mic_chains}
+    out: dict[str, tuple[EffectSlot, ...]] = {}
+    for target in cfg.profile_targets():
+        profile = provider(target, _active_profile_name(cfg, target))
+        is_mic = target in mic_ids
+        out[target] = tuple(
+            effect
+            for effect in profile.effects
+            if not (is_mic and effect.kind in PLAYBACK_ONLY_STAGES)
+            and not (not is_mic and effect.kind in MIC_ONLY_STAGES)
+        )
+    return out
+
+
+def _default_profile_provider(target: str, name: str) -> Profile:
+    del target
+    return default_profile(name)
+
+
+def _active_profile_name(cfg: SonarConfig, target: str) -> str:
+    for group in (cfg.channels, cfg.mic_chains, cfg.buses):
+        for item in group:
+            if item.id == target:
+                return item.active_profile
+    return "Default"
 
 
 def dsp_nodes(cfg: SonarConfig) -> dict[str, str]:
@@ -149,7 +208,9 @@ def dsp_node_for(cfg: SonarConfig, target: str) -> str | None:
 # --------------------------------------------------------------------------- kanallar
 
 
-def _channel_chain(channel: Channel, rate: int, bands: int) -> dict:
+def _channel_chain(
+    channel: Channel, rate: int, bands: int, effects: tuple[EffectSlot, ...]
+) -> dict:
     """Bir kanal: `sonar_<id>` (Audio/Sink) → DSP → `sonar_<id>_fx`.
 
     `_fx` node'u iki modda kurulur:
@@ -179,7 +240,7 @@ def _channel_chain(channel: Channel, rate: int, bands: int) -> dict:
 
     return _filter_chain(
         description=f"Sonar {channel.name}",
-        graph=_graph(rate, bands, channels=2),
+        graph=_graph(rate, bands, effects, channels=2),
         capture={
             "node.name": channel.sink_node,
             "node.description": f"Sonar {channel.name} — Virtual Output",
@@ -263,7 +324,9 @@ def live_targets(cfg: SonarConfig) -> dict[str, str]:
 # --------------------------------------------------------------------------- bus'lar
 
 
-def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
+def _bus_chain(
+    bus: MasterBus, rate: int, bands: int, effects: tuple[EffectSlot, ...]
+) -> dict:
     """Bir bus: `sonar_<id>` (Audio/Sink) → master DSP → çıkış.
 
     Personal bus'ın çıkışı fiziksel cihaza giden bir akıştır. Stream bus'ın çıkışı ise
@@ -303,7 +366,7 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
 
     return _filter_chain(
         description=f"Sonar {bus.name}",
-        graph=_graph(rate, bands, channels=2),
+        graph=_graph(rate, bands, effects, channels=2),
         capture={
             "node.name": bus.sink_node,
             "node.description": f"Sonar {bus.name}",
@@ -325,7 +388,9 @@ def _bus_chain(bus: MasterBus, rate: int, bands: int) -> dict:
 # --------------------------------------------------------------------------- mikrofon
 
 
-def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list[dict]:
+def _mic_modules(
+    mic: MicChain, cfg: SonarConfig, rate: int, bands: int, effects: tuple[EffectSlot, ...]
+) -> list[dict]:
     """Mikrofon zinciri + opsiyonel sidetone / yayına gönderi loopback'leri."""
     modules: list[dict] = []
 
@@ -368,7 +433,7 @@ def _mic_modules(mic: MicChain, cfg: SonarConfig, rate: int, bands: int) -> list
         modules.append(
             _filter_chain(
                 description=f"Sonar {mic.name}",
-                graph=_graph(rate, bands, channels=2, mic=True),
+                graph=_graph(rate, bands, effects, channels=2, mic=True),
                 capture=capture,
                 playback={
                     "node.name": mic.source_node,
@@ -440,15 +505,12 @@ def _filter_chain(*, description: str, graph: dict, capture: dict, playback: dic
     }
 
 
-def _graph(rate: int, bands: int, *, channels: int, mic: bool = False) -> dict:
-    """DeepFilterNet yalnızca mikrofon zincirinde; oynatma zincirinde anlamı yok."""
-    from sonar.core.model import CHAIN_ORDER, FilterStage
-
-    stages = CHAIN_ORDER
-    if not mic:
-        stages = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
-    del rate  # örnekleme hızı zincire değil, node özelliklerine yazılır
-    return build_chain(plan_chain(stages, channels=channels, band_count=bands))
+def _graph(
+    rate: int, bands: int, effects: tuple[EffectSlot, ...], *, channels: int, mic: bool = False
+) -> dict:
+    """Profilin efekt listesinden `filter.graph` üretir."""
+    del rate, mic  # örnekleme hızı node özelliklerine yazılır; filtreleme `effect_slots`ta
+    return build_chain(plan_chain(effects, channels=channels, band_count=bands))
 
 
 def _stereo(rate: int) -> dict:

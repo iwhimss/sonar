@@ -1,14 +1,14 @@
 """DSP zincirinden PipeWire `filter.graph` sözlüğü üretir.
 
-Zincirin topolojisi **sabittir** — bir efekti açıp kapatmak grafı değiştirmez, yalnızca o
-aşamanın bypass portuna yazar (bkz. `params.stage_params`). Böylece profil değiştirmek veya
-bir filtreyi kapatmak `graph.conf`'u değiştirmez, dolayısıyla süreci yeniden başlatmaz.
+Zincir **profilin efekt listesinden** kuruluyor (şema 7). Bir efekti açıp kapatmak grafı
+değiştirmez, yalnızca o slotun bypass portuna yazar (bkz. `params.stage_params`); ama efekt
+**eklemek, silmek veya sıralamak** conf'u değiştirir ve süreci yeniden başlatır (~200 ms).
+Aynı ayrım kanal ekleme/silmede de geçerli.
 
-Tek istisna: eklenti sistemde **kurulu değilse** o aşama zincirden tamamen çıkarılır ve
-linkler yeniden bağlanır. Bu yapısal bir farktır ve conf'a yansır.
+Eklenti sistemde **kurulu değilse** o slot zincirden düşer ve linkler yeniden bağlanır.
 
-Node adları `FilterStage` değerleriyle birebir aynıdır (`df`, `gate`, `eq`, `comp`, `lim`),
-çünkü canlı parametre anahtarları `"<node>:<port>"` biçimindedir: `"eq:g_3"`.
+Node adları slot kimlikleridir (`eq`, `gate`, `comp2`), çünkü canlı parametre anahtarları
+`"<node>:<port>"` biçimindedir: `"eq:g_3"`.
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from dataclasses import dataclass
 
 from sonar.core.dsp import registry
 from sonar.core.dsp.params import eq_bypass_ports, stage_bypass_ports
-from sonar.core.model import CHAIN_ORDER, FilterStage
+from sonar.core.model import EffectSlot, FilterStage
 
-__all__ = ["ChainPlan", "StageBlock", "build_chain", "plan_chain", "stage_block"]
+__all__ = ["ChainPlan", "StageBlock", "build_chain", "effect_block", "plan_chain"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,28 +42,35 @@ class StageBlock:
 
 @dataclass(frozen=True, slots=True)
 class ChainPlan:
-    """Bir zincirin çözülmüş hâli: hangi aşamalar var, her biri hangi eklentiyle."""
+    """Bir zincirin çözülmüş hâli: hangi slotlar var, her biri hangi eklentiyle."""
 
-    stages: tuple[FilterStage, ...]
-    plugins: dict[FilterStage, registry.PluginSpec]
+    slots: tuple[EffectSlot, ...]
+    #: Slot kimliği → eklenti. Builtin bloklar (Spatial, Boost) burada yok.
+    plugins: dict[str, registry.PluginSpec]
     channels: int
-    skipped: tuple[FilterStage, ...]
+    skipped: tuple[EffectSlot, ...]
 
     @property
     def eq_capacity(self) -> int:
         """EQ eklentisinin band kapasitesi; EQ yoksa 0."""
-        spec = self.plugins.get(FilterStage.EQ)
-        return spec.band_capacity if spec else 0
+        for effect in self.slots:
+            if effect.kind is FilterStage.EQ:
+                spec = self.plugins.get(effect.slot)
+                return spec.band_capacity if spec else 0
+        return 0
 
 
 def plan_chain(
-    stages: tuple[FilterStage, ...] = CHAIN_ORDER,
+    slots: tuple[EffectSlot, ...],
     *,
     channels: int = 2,
     band_count: int = 10,
     require_installed: bool = True,
 ) -> ChainPlan:
-    """İstenen aşamalardan kurulabilir olanları seçer.
+    """İstenen slotlardan kurulabilir olanları **verilen sırayla** seçer.
+
+    Sıra artık `CHAIN_ORDER` değil kullanıcının dizdiği sıra: EasyEffects'te olduğu gibi
+    sinyal listedeki sırayla akıyor.
 
     `require_installed` yalnızca testlerde kapatılır; çalışma zamanında eksik eklenti
     zincirden düşmelidir, aksi hâlde `pipewire -c` grafı hiç kuramaz.
@@ -71,32 +78,26 @@ def plan_chain(
     if channels not in (1, 2):
         raise ValueError(f"kanal sayısı 1 veya 2 olmalı, {channels} verildi")
 
-    kept: list[FilterStage] = []
-    skipped: list[FilterStage] = []
-    plugins: dict[FilterStage, registry.PluginSpec] = {}
+    kept: list[EffectSlot] = []
+    skipped: list[EffectSlot] = []
+    plugins: dict[str, registry.PluginSpec] = {}
 
-    for stage in CHAIN_ORDER:
-        if stage not in stages:
-            continue
+    for effect in slots:
         # Boost ve Spatial bir LV2/LADSPA eklentisine dayanmıyor; katalogda yoklar.
-        if stage is FilterStage.BOOST:
-            kept.append(stage)
+        if effect.kind is FilterStage.BOOST:
+            kept.append(effect)
             continue
-        if stage is FilterStage.SPATIAL:
-            # Crossfeed PipeWire'ın kendi bloklarıyla kuruluyor: kurulum gerektirmiyor ve
-            # bypass bedava, bu yüzden diğer aşamalar gibi her zaman zincirde.
+        if effect.kind is FilterStage.SPATIAL:
+            # Crossfeed PipeWire'ın kendi bloklarıyla kuruluyor: kurulum gerektirmiyor.
             # Mono zincirde (mikrofon) kulaklık simülasyonunun karşılığı yok.
-            if channels != 2:
-                skipped.append(stage)
-            else:
-                kept.append(stage)
+            (kept if channels == 2 else skipped).append(effect)
             continue
-        key = _plugin_key(stage, channels, band_count)
-        if require_installed and not registry.is_available(key):
-            skipped.append(stage)
+        key = _plugin_key(effect.kind, channels, band_count)
+        if key is None or (require_installed and not registry.is_available(key)):
+            skipped.append(effect)
             continue
-        plugins[stage] = registry.plugin(key)
-        kept.append(stage)
+        plugins[effect.slot] = registry.plugin(key)
+        kept.append(effect)
 
     return ChainPlan(tuple(kept), plugins, channels, tuple(skipped))
 
@@ -104,14 +105,14 @@ def plan_chain(
 def build_chain(plan: ChainPlan) -> dict:
     """`ChainPlan`'ı PipeWire `filter.graph` sözlüğüne çevirir.
 
-    Boş bir zincir (hiçbir eklenti kurulu değil) için `None` yerine, aşamaları olmayan bir
-    graf döndürmek anlamsız olurdu — çağıran taraf `plan.stages` boşsa filter-chain yerine
-    düz bir loopback kurmalıdır. Bu durumda `ValueError` atılır.
+    Boş bir zincir (kullanıcı tüm efektleri sildi, ya da hiçbir eklenti kurulu değil) için
+    aşamasız bir graf döndürmek anlamsız olurdu — çağıran taraf `plan.slots` boşsa
+    filter-chain yerine düz bir loopback kurmalıdır. Bu durumda `ValueError` atılır.
     """
-    if not plan.stages:
-        raise ValueError("zincirde hiç aşama yok; filter-chain yerine loopback kullanın")
+    if not plan.slots:
+        raise ValueError("zincirde hiç efekt yok; filter-chain yerine loopback kullanın")
 
-    blocks = [stage_block(stage, plan, plan.channels) for stage in plan.stages]
+    blocks = [effect_block(effect, plan, plan.channels) for effect in plan.slots]
 
     nodes: list[dict] = []
     links: list[dict] = []
@@ -137,30 +138,30 @@ def build_chain(plan: ChainPlan) -> dict:
     return graph
 
 
-def stage_block(stage: FilterStage, plan: ChainPlan, channels: int) -> StageBlock:
-    """Bir aşamanın node'ları, iç linkleri ve dışarı açılan portları."""
-    if stage is FilterStage.SPATIAL:
-        return _spatial_block(channels)
-    if stage is FilterStage.BOOST:
-        return _boost_block(channels)
-    spec = plan.plugins[stage]
+def effect_block(effect: EffectSlot, plan: ChainPlan, channels: int) -> StageBlock:
+    """Bir slotun node'ları, iç linkleri ve dışarı açılan portları."""
+    if effect.kind is FilterStage.SPATIAL:
+        return _spatial_block(effect.slot, channels)
+    if effect.kind is FilterStage.BOOST:
+        return _boost_block(effect.slot, channels)
+    spec = plan.plugins[effect.slot]
     return StageBlock(
-        nodes=(_node(stage, spec),),
-        audio_in=tuple(f"{stage.value}:{p}" for p in spec.audio_in[:channels]),
-        audio_out=tuple(f"{stage.value}:{p}" for p in spec.audio_out[:channels]),
+        nodes=(_node(effect, spec),),
+        audio_in=tuple(f"{effect.slot}:{p}" for p in spec.audio_in[:channels]),
+        audio_out=tuple(f"{effect.slot}:{p}" for p in spec.audio_out[:channels]),
     )
 
 
 # --------------------------------------------------------------------------- Volume Boost
 
 
-def _boost_block(channels: int) -> StageBlock:
+def _boost_block(slot: str, channels: int) -> StageBlock:
     """Kanal başına bir PipeWire `linear` node'u.
 
     `linear` mono: `Out = In * Mult + Add`. Bypass `Mult = 1.0`, yani conf bypass'ta
     doğuyor ve boost'u açıp kapatmak grafı değiştirmiyor.
     """
-    names = _channel_names(FilterStage.BOOST, channels)
+    names = _channel_names(slot, channels)
     nodes = tuple(
         {
             "type": registry.PluginKind.BUILTIN.value,
@@ -180,7 +181,7 @@ def _boost_block(channels: int) -> StageBlock:
 # --------------------------------------------------------------------------- Spatial Audio
 
 
-def _spatial_block(channels: int) -> StageBlock:
+def _spatial_block(slot: str, channels: int) -> StageBlock:
     """Spatial Audio — kulaklar arası sızıntı (crossfeed).
 
     Alt graf (stereo):
@@ -215,30 +216,30 @@ def _spatial_block(channels: int) -> StageBlock:
         raise ValueError("Spatial Audio yalnızca stereo zincirde kurulabilir")
 
     nodes = (
-        _builtin("spatial_copy_l", "copy"),
-        _builtin("spatial_copy_r", "copy"),
-        _delay("spatial_delay_l"),
-        _delay("spatial_delay_r"),
-        _lowpass("spatial_lp_l"),
-        _lowpass("spatial_lp_r"),
-        _mixer("spatial_mix_l"),
-        _mixer("spatial_mix_r"),
+        _builtin(f"{slot}_copy_l", "copy"),
+        _builtin(f"{slot}_copy_r", "copy"),
+        _delay(f"{slot}_delay_l"),
+        _delay(f"{slot}_delay_r"),
+        _lowpass(f"{slot}_lp_l"),
+        _lowpass(f"{slot}_lp_r"),
+        _mixer(f"{slot}_mix_l"),
+        _mixer(f"{slot}_mix_r"),
     )
     links = (
-        {"output": "spatial_copy_l:Out", "input": "spatial_mix_l:In 1"},
-        {"output": "spatial_copy_r:Out", "input": "spatial_mix_r:In 1"},
-        {"output": "spatial_copy_l:Out", "input": "spatial_delay_l:In"},
-        {"output": "spatial_copy_r:Out", "input": "spatial_delay_r:In"},
-        {"output": "spatial_delay_l:Out", "input": "spatial_lp_l:In"},
-        {"output": "spatial_delay_r:Out", "input": "spatial_lp_r:In"},
+        {"output": f"{slot}_copy_l:Out", "input": f"{slot}_mix_l:In 1"},
+        {"output": f"{slot}_copy_r:Out", "input": f"{slot}_mix_r:In 1"},
+        {"output": f"{slot}_copy_l:Out", "input": f"{slot}_delay_l:In"},
+        {"output": f"{slot}_copy_r:Out", "input": f"{slot}_delay_r:In"},
+        {"output": f"{slot}_delay_l:Out", "input": f"{slot}_lp_l:In"},
+        {"output": f"{slot}_delay_r:Out", "input": f"{slot}_lp_r:In"},
         # Sol kanalın sızıntısı **sağ** kulağa gider, sağınki sola.
-        {"output": "spatial_lp_l:Out", "input": "spatial_mix_r:In 2"},
-        {"output": "spatial_lp_r:Out", "input": "spatial_mix_l:In 2"},
+        {"output": f"{slot}_lp_l:Out", "input": f"{slot}_mix_r:In 2"},
+        {"output": f"{slot}_lp_r:Out", "input": f"{slot}_mix_l:In 2"},
     )
     return StageBlock(
         nodes=nodes,
-        audio_in=("spatial_copy_l:In", "spatial_copy_r:In"),
-        audio_out=("spatial_mix_l:Out", "spatial_mix_r:Out"),
+        audio_in=(f"{slot}_copy_l:In", f"{slot}_copy_r:In"),
+        audio_out=(f"{slot}_mix_l:Out", f"{slot}_mix_r:Out"),
         links=links,
     )
 
@@ -277,22 +278,22 @@ def _sofa(name: str, config: dict) -> dict:
     }
 
 
-def _channel_names(stage: FilterStage, channels: int) -> tuple[str, ...]:
+def _channel_names(slot: str, channels: int) -> tuple[str, ...]:
     """Kanal başına node adı. Mono zincirde sonek yok, stereo'da `_l` / `_r`."""
     if channels == 1:
-        return (stage.value,)
-    return (f"{stage.value}_l", f"{stage.value}_r")
+        return (slot,)
+    return (f"{slot}_l", f"{slot}_r")
 
 
-def _node(stage: FilterStage, spec: registry.PluginSpec) -> dict:
+def _node(effect: EffectSlot, spec: registry.PluginSpec) -> dict:
     node: dict = {
         "type": spec.kind.value,
-        "name": stage.value,
+        "name": effect.slot,
         "plugin": registry.plugin_reference(spec),
     }
     if spec.kind is registry.PluginKind.LADSPA:
         node["label"] = spec.label
-    node["control"] = _neutral_control(stage, spec)
+    node["control"] = _neutral_control(effect.kind, spec)
     return node
 
 
@@ -307,7 +308,8 @@ def _neutral_control(stage: FilterStage, spec: registry.PluginSpec) -> dict[str,
     return {port: spec.clamp(port, value) for port, value in ports.items()}
 
 
-def _plugin_key(stage: FilterStage, channels: int, band_count: int) -> str:
+def _plugin_key(stage: FilterStage, channels: int, band_count: int) -> str | None:
+    """Aşamanın eklenti anahtarı; katalogda karşılığı yoksa `None`."""
     if stage is FilterStage.EQ:
         return registry.eq_plugin_for(band_count, channels=channels).key
     suffix = "mono" if channels == 1 else "stereo"
@@ -316,4 +318,4 @@ def _plugin_key(stage: FilterStage, channels: int, band_count: int) -> str:
         FilterStage.GATE: f"lsp_gate_{suffix}",
         FilterStage.COMP: f"lsp_compressor_{suffix}",
         FilterStage.LIMITER: f"lsp_limiter_{suffix}",
-    }[stage]
+    }.get(stage)

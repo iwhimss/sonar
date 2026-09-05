@@ -72,6 +72,13 @@ class FakeMonitor:
         return True
 
 
+def state_of(profile, kind):
+    """Bir aşamanın profildeki durumu. Şema 7'de zincir slot listesi; testler aşama
+    üzerinden bakmaya devam edebilsin diye ilk eşleşen slot dönüyor."""
+    effect = next((e for e in profile.effects if e.kind is kind), None)
+    return profile.state(effect.slot) if effect else None
+
+
 @pytest.fixture
 def api(config_store):
     supervisor = FakeSupervisor()
@@ -160,6 +167,13 @@ def test_level_changes_are_live(api, call, args):
     ],
 )
 def test_dsp_changes_are_live(api, call, args):
+    """Bunların hiçbiri grafı yeniden kurmamalı.
+
+    Efekt **eklemek** yapısal (`add_effect`), ama var olan bir efektin parametresini
+    değiştirmek ya da açıp kapatmak canlı yazım — şema 7'de de böyle.
+    """
+    api.add_effect("game", "gate")
+    api.supervisor.calls.clear()
     getattr(api, call)(*args)
     assert api.supervisor.kinds == ["target"]
     assert api.supervisor.calls[0][1] == "game"
@@ -219,7 +233,7 @@ def test_live_changes_never_touch_the_conf(api):
         ("set_channel_volume", ("game", "personal", -1.0), "invalid_value"),
         ("set_mic_volume", ("yok", 0.5), "unknown_mic"),
         ("set_filter_enabled", ("game", "hayali", True), "unknown_stage"),
-        ("set_filter_param", ("game", "gate", "yok", 1.0), "unknown_param"),
+        ("set_filter_param", ("game", "eq", "yok", 1.0), "unknown_param"),
         ("set_eq_band", ("game", 99, "gain_db", 1.0), "unknown_band"),
         ("set_eq_band", ("game", 0, "yok", 1.0), "unknown_field"),
         ("set_eq_band", ("game", 0, "band_type", "hayali"), "unknown_field"),
@@ -247,10 +261,15 @@ def test_invalid_arguments_raise_api_errors(api, call, args, code):
 def test_deepfilter_is_refused_on_playback_channels(api):
     """Oynatma zincirinde gürültü engelleme yok; sessizce yok saymak yerine söylüyoruz."""
     with pytest.raises(ApiError) as excinfo:
-        api.set_filter_enabled("game", "df", True)
+        api.add_effect("game", "df")
     assert excinfo.value.code == "stage_not_in_chain"
-    api.set_filter_enabled("mic", "df", True)  # mikrofonda sorun yok
-    assert api.profile("mic").filter(FilterStage.DEEPFILTER).enabled is True
+    # Listede de görünmemeli: kullanıcıya ekleyemeyeceği bir şeyi göstermek onu graf
+    # kurulamadığında yalnız bırakır.
+    assert "df" not in [e["kind"] for e in api.list_effect_kinds("game")]
+
+    slot = api.add_effect("mic", "df")  # mikrofonda sorun yok
+    assert api.profile("mic").state(slot).enabled is True
+    assert "df" in [e["kind"] for e in api.list_effect_kinds("mic")]
 
 
 # --------------------------------------------------------------------------- profiller
@@ -866,12 +885,13 @@ def test_copy_refuses_a_preset_name(api):
 def test_reset_flattens_the_active_profile(api):
     api.set_eq_enabled("game", True)
     api.set_eq_band("game", 4, "gain_db", 9.0)
-    api.set_filter_enabled("game", "gate", True)
+    api.add_effect("game", "gate")
     api.reset_profile("game")
     profile = api.profile("game")
     assert profile.eq.enabled is False
     assert profile.eq.bands[4].gain_db == 0.0
-    assert profile.filter(FilterStage.GATE).enabled is False
+    # Sıfırlama zinciri de düz hâle döndürüyor: yalnızca ekolayzer kalıyor.
+    assert [e.kind for e in profile.effects] == [FilterStage.EQ]
     assert profile.name == "Default", "sıfırlama adı korumalı"
 
 
@@ -1044,9 +1064,10 @@ def test_filter_params_are_validated_against_the_definition(api):
     Spatial Audio HRTF'ten crossfeed'e geçerken oldu: profilde `width_deg` duruyordu ve
     yeni `immersion` reddediliyordu.
     """
-    api.profile("game").filter(FilterStage.SPATIAL).params = {"width_deg": 30.0}
-    api.set_filter_param("game", "spatial", "immersion", 80.0)
-    assert api.profile("game").filter(FilterStage.SPATIAL).params["immersion"] == 80.0
+    slot = api.add_effect("game", "spatial")
+    api.profile("game").slot(slot).params = {"width_deg": 30.0}
+    api.set_filter_param("game", slot, "immersion", 80.0)
+    assert api.profile("game").slot(slot).params["immersion"] == 80.0
 
 
 # --------------------------------------------------------------------------- EQ noktaları
@@ -1207,3 +1228,77 @@ def test_provisioning_again_after_removal_works(api):
     assert api.supervisor.kinds.count("monitor") == 1
     assert "reconcile" in api.supervisor.kinds
     assert api.config.settings.provisioned is True
+
+
+# --------------------------------------------------------------------------- efekt zinciri
+
+
+def test_a_new_profile_only_has_the_equalizer(api):
+    """Kullanıcının isteği: profil ayarlarında başlangıçta yalnızca ekolayzer."""
+    assert [e.kind for e in api.profile("game").effects] == [FilterStage.EQ]
+
+
+def test_adding_an_effect_rebuilds_the_graph(api):
+    """Efekt eklemek topolojiyi değiştiriyor: ~200 ms sessizlik, kanal eklemekle aynı."""
+    api.supervisor.calls.clear()
+    slot = api.add_effect("game", "comp")
+    assert slot == "comp"
+    assert [e.kind for e in api.profile("game").effects] == [FilterStage.EQ, FilterStage.COMP]
+    assert "reconcile" in api.supervisor.kinds
+
+
+def test_the_same_effect_can_be_added_twice(api):
+    """EasyEffects'te olduğu gibi; slot kimlikleri grafta çakışmamalı."""
+    first = api.add_effect("game", "comp")
+    second = api.add_effect("game", "comp")
+    assert (first, second) == ("comp", "comp2")
+
+
+def test_only_one_equalizer_per_profile(api):
+    """Band modeli ve eğri profilde tek; ikinci bir EQ'nun oturacağı yer yok."""
+    with pytest.raises(ApiError) as excinfo:
+        api.add_effect("game", "eq")
+    assert excinfo.value.code == "duplicate_effect"
+
+
+def test_effects_can_be_reordered(api):
+    """Sinyal listedeki sırayla akıyor: limitleyiciyi başa almak mümkün."""
+    api.add_effect("game", "comp")
+    api.add_effect("game", "lim")
+    api.move_effect("game", "lim", 0)
+    assert [e.slot for e in api.profile("game").effects] == ["lim", "eq", "comp"]
+
+
+def test_reordering_to_the_same_place_does_not_rebuild(api):
+    api.add_effect("game", "comp")
+    api.supervisor.calls.clear()
+    api.move_effect("game", "comp", 1)
+    assert api.supervisor.kinds == [], "sıra değişmediyse graf yeniden kurulmamalı"
+
+
+def test_removing_an_effect_takes_it_out_of_the_chain(api):
+    slot = api.add_effect("game", "comp")
+    api.remove_effect("game", slot)
+    assert [e.kind for e in api.profile("game").effects] == [FilterStage.EQ]
+
+
+def test_unknown_slot_is_reported(api):
+    for call, args in (
+        (api.remove_effect, ("game", "yok")),
+        (api.set_filter_enabled, ("game", "yok", True)),
+    ):
+        with pytest.raises(ApiError) as excinfo:
+            call(*args)
+        assert excinfo.value.code == "unknown_stage"
+
+
+def test_effect_kinds_drop_what_cannot_be_built(api, monkeypatch):
+    """Kurulu olmayan bir eklentiyi listelemek kullanıcıyı çıkmaza sokardı."""
+    from sonar.core.dsp import registry
+
+    monkeypatch.setattr(registry, "is_available", lambda key: not key.startswith("lsp_gate"))
+    kinds = [e["kind"] for e in api.list_effect_kinds("game")]
+    assert "gate" not in kinds
+    assert "eq" in kinds
+    # Boost ve Spatial PipeWire'ın kendi blokları: eklenti olmadan da kurulabiliyorlar.
+    assert {"boost", "spatial"} <= set(kinds)

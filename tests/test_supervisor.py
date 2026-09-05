@@ -123,8 +123,21 @@ def test_live_params_use_the_active_profile(config_store: ConfigStore):
 
 
 def test_only_the_mic_chain_gets_deepfilter_params(config_store: ConfigStore):
+    """Şema 7: efektler profilden geliyor, o yüzden önce zincire ekleniyorlar.
+
+    Gürültü engelleme oynatma zincirinde anlamsız; profile elle yazılsa bile
+    `confgen.effect_slots` onu süzüyor.
+    """
+    from sonar.core.model import EffectSlot, FilterStage
+
     config = config_store.load()
-    params = live_params(config, config_store.load_profile)
+
+    def with_deepfilter(target: str, name: str):
+        profile = config_store.load_profile(target, name)
+        profile.effects.append(EffectSlot(kind=FilterStage.DEEPFILTER, slot="df"))
+        return profile
+
+    params = live_params(config, with_deepfilter)
     assert any(key.startswith("df:") for key in params["sonar_mic_capture"])
     assert not any(key.startswith("df:") for key in params["sonar_game"])
 

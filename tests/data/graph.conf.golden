@@ -1656,74 +1656,6 @@ context.modules = [
                     }
                     {
                         type = "builtin"
-                        name = "spatial_copy_l"
-                        label = "copy"
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_copy_r"
-                        label = "copy"
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_delay_l"
-                        label = "delay"
-                        control = {
-                            "Delay (s)" = 0.0
-                        }
-                        config = {
-                            max-delay = 0.01
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_delay_r"
-                        label = "delay"
-                        control = {
-                            "Delay (s)" = 0.0
-                        }
-                        config = {
-                            max-delay = 0.01
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_lp_l"
-                        label = "bq_lowpass"
-                        control = {
-                            Freq = 1000.0
-                            Q = 0.707
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_lp_r"
-                        label = "bq_lowpass"
-                        control = {
-                            Freq = 1000.0
-                            Q = 0.707
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_mix_l"
-                        label = "mixer"
-                        control = {
-                            "Gain 1" = 1.0
-                            "Gain 2" = 0.0
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_mix_r"
-                        label = "mixer"
-                        control = {
-                            "Gain 1" = 1.0
-                            "Gain 2" = 0.0
-                        }
-                    }
-                    {
-                        type = "builtin"
                         name = "boost_l"
                         label = "linear"
                         control = {
@@ -1778,50 +1710,10 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "spatial_copy_l:In"
-                    }
-                    {
-                        output = "comp:out_r"
-                        input = "spatial_copy_r:In"
-                    }
-                    {
-                        output = "spatial_copy_l:Out"
-                        input = "spatial_mix_l:In 1"
-                    }
-                    {
-                        output = "spatial_copy_r:Out"
-                        input = "spatial_mix_r:In 1"
-                    }
-                    {
-                        output = "spatial_copy_l:Out"
-                        input = "spatial_delay_l:In"
-                    }
-                    {
-                        output = "spatial_copy_r:Out"
-                        input = "spatial_delay_r:In"
-                    }
-                    {
-                        output = "spatial_delay_l:Out"
-                        input = "spatial_lp_l:In"
-                    }
-                    {
-                        output = "spatial_delay_r:Out"
-                        input = "spatial_lp_r:In"
-                    }
-                    {
-                        output = "spatial_lp_l:Out"
-                        input = "spatial_mix_r:In 2"
-                    }
-                    {
-                        output = "spatial_lp_r:Out"
-                        input = "spatial_mix_l:In 2"
-                    }
-                    {
-                        output = "spatial_mix_l:Out"
                         input = "boost_l:In"
                     }
                     {
-                        output = "spatial_mix_r:Out"
+                        output = "comp:out_r"
                         input = "boost_r:In"
                     }
                     {
@@ -1952,74 +1844,6 @@ context.modules = [
                     }
                     {
                         type = "builtin"
-                        name = "spatial_copy_l"
-                        label = "copy"
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_copy_r"
-                        label = "copy"
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_delay_l"
-                        label = "delay"
-                        control = {
-                            "Delay (s)" = 0.0
-                        }
-                        config = {
-                            max-delay = 0.01
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_delay_r"
-                        label = "delay"
-                        control = {
-                            "Delay (s)" = 0.0
-                        }
-                        config = {
-                            max-delay = 0.01
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_lp_l"
-                        label = "bq_lowpass"
-                        control = {
-                            Freq = 1000.0
-                            Q = 0.707
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_lp_r"
-                        label = "bq_lowpass"
-                        control = {
-                            Freq = 1000.0
-                            Q = 0.707
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_mix_l"
-                        label = "mixer"
-                        control = {
-                            "Gain 1" = 1.0
-                            "Gain 2" = 0.0
-                        }
-                    }
-                    {
-                        type = "builtin"
-                        name = "spatial_mix_r"
-                        label = "mixer"
-                        control = {
-                            "Gain 1" = 1.0
-                            "Gain 2" = 0.0
-                        }
-                    }
-                    {
-                        type = "builtin"
                         name = "boost_l"
                         label = "linear"
                         control = {
@@ -2074,50 +1898,10 @@ context.modules = [
                     }
                     {
                         output = "comp:out_l"
-                        input = "spatial_copy_l:In"
-                    }
-                    {
-                        output = "comp:out_r"
-                        input = "spatial_copy_r:In"
-                    }
-                    {
-                        output = "spatial_copy_l:Out"
-                        input = "spatial_mix_l:In 1"
-                    }
-                    {
-                        output = "spatial_copy_r:Out"
-                        input = "spatial_mix_r:In 1"
-                    }
-                    {
-                        output = "spatial_copy_l:Out"
-                        input = "spatial_delay_l:In"
-                    }
-                    {
-                        output = "spatial_copy_r:Out"
-                        input = "spatial_delay_r:In"
-                    }
-                    {
-                        output = "spatial_delay_l:Out"
-                        input = "spatial_lp_l:In"
-                    }
-                    {
-                        output = "spatial_delay_r:Out"
-                        input = "spatial_lp_r:In"
-                    }
-                    {
-                        output = "spatial_lp_l:Out"
-                        input = "spatial_mix_r:In 2"
-                    }
-                    {
-                        output = "spatial_lp_r:Out"
-                        input = "spatial_mix_l:In 2"
-                    }
-                    {
-                        output = "spatial_mix_l:Out"
                         input = "boost_l:In"
                     }
                     {
-                        output = "spatial_mix_r:Out"
+                        output = "comp:out_r"
                         input = "boost_r:In"
                     }
                     {

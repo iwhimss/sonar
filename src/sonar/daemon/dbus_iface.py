@@ -194,6 +194,31 @@ class SonarDBusInterface(QObject):
 
     # ------------------------------------------------------------------ filtreler
 
+    @Slot(str, str, int, result=str)
+    def AddEffect(self, target: str, kind: str, index: int) -> str:
+        """Zincire efekt ekler; sonuç slot kimliği. **Yapısal**."""
+        return reply(lambda: self.api.add_effect(target, kind, index))
+
+    @Slot(str, str, result=str)
+    def RemoveEffect(self, target: str, slot: str) -> str:
+        """Efekti zincirden çıkarır. **Yapısal**."""
+        return reply(lambda: self.api.remove_effect(target, slot))
+
+    @Slot(str, str, int, result=str)
+    def MoveEffect(self, target: str, slot: str, index: int) -> str:
+        """Efekti listede taşır — sinyal listedeki sırayla akıyor. **Yapısal**."""
+        return reply(lambda: self.api.move_effect(target, slot, index))
+
+    @Slot(str, result=str)
+    def ListEffects(self, target: str) -> str:
+        """Hedefin zincirindeki efektler, sinyal sırasıyla."""
+        return reply(lambda: self.api.list_effects(target))
+
+    @Slot(str, result=str)
+    def ListEffectKinds(self, target: str) -> str:
+        """Bu hedefe eklenebilecek efektler; kurulu olmayan eklentiler listede yok."""
+        return reply(lambda: self.api.list_effect_kinds(target))
+
     @Slot(str, str, bool, result=str)
     def SetFilterEnabled(self, target: str, stage: str, enabled: bool) -> str:
         """Bir DSP aşamasını açar/kapatır (canlı bypass)."""

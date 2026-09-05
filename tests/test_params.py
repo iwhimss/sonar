@@ -8,6 +8,8 @@ import pytest
 from sonar.core.dsp import params, registry
 from sonar.core.model import (
     CHAIN_ORDER,
+    DEFAULT_FILTER_PARAMS,
+    EffectSlot,
     EqBand,
     EqBandType,
     EqState,
@@ -183,9 +185,34 @@ def test_eq_via_stage_params_is_rejected():
 
 # --------------------------------------------------------------------------- profil
 
+def full_profile(**kw):
+    """Tüm aşamaları içeren bir profil. Şema 7'de varsayılan profilde yalnızca EQ var;
+    zincirin tamamını sınayan testler efektleri kendisi ekliyor."""
+    profile = default_profile(**kw)
+    profile.effects = [
+        # `enabled=False`: şema 6'daki "hepsi var ama kapalı" hâlinin karşılığı.
+        # Kullanıcının **eklediği** bir efekt açık geliyor (`EffectSlot` varsayılanı).
+        EffectSlot(
+            kind=k, slot=k.value, enabled=False, params=dict(DEFAULT_FILTER_PARAMS.get(k, {}))
+        )
+        for k in CHAIN_ORDER
+    ]
+    return profile
+
+
+def without(profile, kind):
+    profile.effects = [e for e in profile.effects if e.kind is not kind]
+    return profile
+
+
+def slot_of(profile, kind):
+    return next(e for e in profile.effects if e.kind is kind)
+
+
+
 
 def test_profile_to_params_covers_the_whole_chain():
-    out = params.profile_to_params(default_profile())
+    out = params.profile_to_params(full_profile())
     prefixes = {key.split(":", 1)[0] for key in out}
     # Spatial ve Boost kanal başına ayrı node'lara yayılıyor; anahtar öneki node adı.
     # Spatial kapalıyken yalnızca mikserin sızıntı kazancı yazılıyor (bypass).
@@ -197,24 +224,23 @@ def test_profile_to_params_covers_the_whole_chain():
 
 def test_spatial_params_are_skipped_when_the_stage_is_not_in_the_chain():
     """Spatial yapısal; kapalıyken node'lar grafta yok, onlara yazmak kayıp olurdu."""
-    stages = tuple(s for s in CHAIN_ORDER if s is not FilterStage.SPATIAL)
-    out = params.profile_to_params(default_profile(), stages=stages)
+    out = params.profile_to_params(without(full_profile(), FilterStage.SPATIAL))
     assert not any(key.startswith("spatial_") for key in out)
 
 
 def test_spatial_bypass_is_bit_transparent():
     """Sızıntı kazancı 0 → çıkış girişe birebir eşit (ölçüldü: R = -240 dBFS)."""
-    out = params.profile_to_params(default_profile(), stages=CHAIN_ORDER)
+    out = params.profile_to_params(full_profile())
     assert out["spatial_mix_l:Gain 2"] == 0.0
     assert out["spatial_mix_r:Gain 2"] == 0.0
 
 
 def test_spatial_maps_its_two_sliders_onto_the_crossfeed():
-    profile = default_profile()
-    spatial = profile.filter(FilterStage.SPATIAL)
+    profile = full_profile()
+    spatial = slot_of(profile, FilterStage.SPATIAL)
     spatial.enabled = True
     spatial.params = {"immersion": 100.0, "distance": 100.0}
-    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+    out = params.profile_to_params(profile)
 
     assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MAX)
     assert out["spatial_delay_l:Delay (s)"] == pytest.approx(params.SPATIAL_DELAY_MAX_S)
@@ -222,45 +248,55 @@ def test_spatial_maps_its_two_sliders_onto_the_crossfeed():
     assert out["spatial_lp_l:Freq"] == pytest.approx(params.SPATIAL_CUTOFF_MIN_HZ)
 
     spatial.params = {"immersion": 0.0, "distance": 0.0}
-    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+    out = params.profile_to_params(profile)
     assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MIN)
     assert out["spatial_lp_l:Freq"] == pytest.approx(params.SPATIAL_CUTOFF_MAX_HZ)
 
 
 def test_spatial_values_are_clamped():
-    profile = default_profile()
-    spatial = profile.filter(FilterStage.SPATIAL)
+    profile = full_profile()
+    spatial = slot_of(profile, FilterStage.SPATIAL)
     spatial.enabled = True
     spatial.params = {"immersion": 500.0, "distance": -20.0}
-    out = params.profile_to_params(profile, stages=CHAIN_ORDER)
+    out = params.profile_to_params(profile)
     assert out["spatial_mix_l:Gain 2"] == pytest.approx(params.SPATIAL_BLEED_MAX)
     assert out["spatial_delay_l:Delay (s)"] == pytest.approx(params.SPATIAL_DELAY_MIN_S)
 
 
 def test_profile_to_params_honours_a_shorter_chain():
     """DeepFilterNet kurulu değilse zincirden düşer; ona parametre yazmaya çalışmamalıyız."""
-    stages = tuple(s for s in CHAIN_ORDER if s is not FilterStage.DEEPFILTER)
-    out = params.profile_to_params(default_profile(), stages=stages)
+    out = params.profile_to_params(without(full_profile(), FilterStage.DEEPFILTER))
     assert not any(key.startswith("df:") for key in out)
 
 
 def test_profile_to_params_picks_the_right_eq_capacity():
-    profile = default_profile(band_count=32)
+    profile = full_profile(band_count=32)
     out = params.profile_to_params(profile)
     assert "eq:ft_31" in out
     assert "eq:ft_32" not in out
 
 
-def test_default_profile_is_transparent():
-    """Varsayılan profil hiçbir şeyi değiştirmemeli: tüm filtreler bypass, tüm bandlar 0 dB."""
+def test_default_profile_only_has_the_equalizer():
+    """Şema 7: yeni profil yalnızca ekolayzerle geliyor, o da kapalı.
+
+    Kullanıcının isteği (test turu 6): *"Profil ayarlarına girince sadece ekolayzer ayarı
+    gözüksün. Diğer ayarları kullanıcı kendisi eklesin."*
+    """
     out = params.profile_to_params(default_profile())
+    assert {key.split(":", 1)[0] for key in out} == {"eq"}
+    assert out["eq:enabled"] == 0.0
+    for index in range(10):
+        assert out[f"eq:g_{index}"] == pytest.approx(1.0)
+
+
+def test_a_full_chain_is_transparent_while_every_effect_is_off():
+    """Zincirdeki her efekt kapalıyken graf hiçbir şeyi değiştirmemeli."""
+    out = params.profile_to_params(full_profile())
     assert out["eq:enabled"] == 0.0
     assert out["gate:enabled"] == 0.0
     assert out["comp:enabled"] == 0.0
     assert out["lim:enabled"] == 0.0
     assert out["df:Attenuation Limit (dB)"] == 0.0
-    for index in range(10):
-        assert out[f"eq:g_{index}"] == pytest.approx(1.0)
 
 
 def test_all_values_are_finite():

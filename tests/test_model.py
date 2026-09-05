@@ -5,9 +5,9 @@ import pytest
 from sonar.core.model import (
     CHAIN_ORDER,
     DEFAULT_FILTER_PARAMS,
-    DYNAMIC_STAGES,
     SUGGESTED_RULES,
     Channel,
+    EffectSlot,
     EqBand,
     FilterStage,
     MatchKey,
@@ -99,37 +99,54 @@ def test_chatmix_endpoints_are_real_channels():
 # --------------------------------------------------------------------------- profil
 
 
-def test_default_profile_is_off_everywhere():
+def test_default_profile_only_carries_the_equalizer():
+    """Şema 7: zincir kullanıcının eklediklerinden oluşuyor, EQ hazır geliyor."""
     profile = default_profile()
+    assert [e.kind for e in profile.effects] == [FilterStage.EQ]
     assert profile.eq.enabled is False
-    assert all(not profile.filter(stage).enabled for stage in DYNAMIC_STAGES)
     assert all(band.gain_db == 0.0 for band in profile.eq.bands)
 
 
-def test_default_profile_has_params_for_every_dynamic_stage():
+def test_state_fills_in_the_defaults_of_a_slot():
+    """Slot yalnızca kullanıcının değiştirdiklerini taşıyabilir; gerisi tanımdan gelir."""
     profile = default_profile()
-    for stage in DYNAMIC_STAGES:
-        assert profile.filter(stage).params == DEFAULT_FILTER_PARAMS[stage]
+    profile.effects.append(EffectSlot(kind=FilterStage.COMP, slot="comp"))
+    assert profile.state("comp").params == DEFAULT_FILTER_PARAMS[FilterStage.COMP]
+    assert profile.state("comp").enabled is True
 
 
-def test_filter_creates_missing_stage_lazily():
+def test_state_of_an_unknown_slot_is_inert():
+    assert default_profile().state("yok").enabled is False
+
+
+def test_eq_enabled_comes_from_the_eq_state_not_the_slot():
+    """EQ'nun bayrağı `profile.eq`'te: eğri, bandlar ve içe/dışa aktarma hep oradan okuyor."""
     profile = default_profile()
-    profile.filters.clear()
-    state = profile.filter(FilterStage.COMP)
-    assert state.params["ratio"] == 4.0
-    assert FilterStage.COMP in profile.filters
+    profile.effects[0].enabled = True
+    assert profile.state("eq").enabled is False
+    profile.eq.enabled = True
+    assert profile.state("eq").enabled is True
 
 
-def test_filter_returns_the_same_object():
+def test_slot_ids_are_unique_within_a_profile():
+    """Aynı efektten ikinci bir örnek: graf node adları çakışmamalı."""
     profile = default_profile()
-    assert profile.filter(FilterStage.GATE) is profile.filter(FilterStage.GATE)
+    assert profile.next_slot_id(FilterStage.COMP) == "comp"
+    profile.effects.append(EffectSlot(kind=FilterStage.COMP, slot="comp"))
+    assert profile.next_slot_id(FilterStage.COMP) == "comp2"
+    profile.effects.append(EffectSlot(kind=FilterStage.COMP, slot="comp2"))
+    assert profile.next_slot_id(FilterStage.COMP) == "comp3"
 
 
 def test_default_filter_params_mutation_does_not_leak():
     """Varsayılan sözlük paylaşılmamalı; bir profili düzenlemek diğerlerini etkilememeli."""
     first = default_profile()
-    first.filter(FilterStage.GATE).params["threshold_db"] = -12.0
-    assert default_profile().filter(FilterStage.GATE).params["threshold_db"] == -40.0
+    first.state("eq")
+    DEFAULT_FILTER_PARAMS[FilterStage.GATE]["threshold_db"] = -40.0
+    profile = default_profile()
+    profile.effects.append(EffectSlot(kind=FilterStage.GATE, slot="gate"))
+    profile.state("gate").params["threshold_db"] = -12.0
+    assert DEFAULT_FILTER_PARAMS[FilterStage.GATE]["threshold_db"] == -40.0
 
 
 @pytest.mark.parametrize("count", [5, 10, 16, 32])

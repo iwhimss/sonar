@@ -7,10 +7,38 @@ import subprocess
 import pytest
 
 from sonar.core.dsp import registry
-from sonar.core.model import Channel, default_config, default_profile
+from sonar.core.model import (
+    CHAIN_ORDER,
+    DEFAULT_FILTER_PARAMS,
+    Channel,
+    EffectSlot,
+    default_config,
+    default_profile,
+)
 from sonar.engine import confgen
 
 GOLDEN = "tests/data/graph.conf.golden"
+
+
+def full_chain(target: str, name: str):
+    """Her aşamayı içeren bir profil sağlayıcısı.
+
+    Şema 7'de zincir profilden geliyor ve yeni profilde yalnızca ekolayzer var. Altın
+    dosya her node türünü kapsamalı, bu yüzden burada zincirin tamamı kuruluyor —
+    `CHAIN_ORDER` sırasıyla, yani şema 6'daki sabit topolojinin birebir aynısı.
+    """
+    del target
+    profile = default_profile(name)
+    profile.effects = [
+        EffectSlot(
+            kind=kind,
+            slot=kind.value,
+            enabled=False,
+            params=dict(DEFAULT_FILTER_PARAMS.get(kind, {})),
+        )
+        for kind in CHAIN_ORDER
+    ]
+    return profile
 
 
 @pytest.fixture
@@ -27,7 +55,7 @@ def portable(monkeypatch):
 
 @pytest.fixture
 def conf(portable):
-    return confgen.generate(default_config())
+    return confgen.generate(default_config(), full_chain)
 
 
 # --------------------------------------------------------------------------- determinizm
@@ -35,7 +63,7 @@ def conf(portable):
 
 def test_output_is_deterministic(portable):
     config = default_config()
-    assert confgen.generate(config) == confgen.generate(config)
+    assert confgen.generate(config, full_chain) == confgen.generate(config, full_chain)
 
 
 def test_matches_the_golden_file(conf):
@@ -223,7 +251,7 @@ def test_shared_mic_chain_uses_a_loopback_instead_of_a_second_dsp(portable):
 
 def test_deepfilter_is_only_in_the_mic_chain(portable):
     """Oynatma zincirinde gürültü engelleme anlamsız ve pahalı."""
-    modules = confgen.generate_modules(default_config())
+    modules = confgen.generate_modules(default_config(), full_chain)
     chains = {
         m["args"]["capture.props"]["node.name"]: m["args"]["filter.graph"]
         for m in modules
@@ -238,6 +266,12 @@ def test_deepfilter_is_only_in_the_mic_chain(portable):
     assert [n["name"] for n in chains["sonar_game"]["nodes"]] == playback
     assert [n["name"] for n in chains["sonar_personal"]["nodes"]] == playback
     assert chains["sonar_mic_capture"]["nodes"][0]["name"] == "df"
+    # Uzamsal Ses (crossfeed) mikrofon zincirinde anlamsız. Şema 6'da `_graph` yalnızca
+    # DeepFilterNet'i süzüyordu ve crossfeed node'ları mikrofon zincirinde de duruyordu;
+    # `PLAYBACK_ONLY_STAGES` vardı ama kullanılmıyordu. Şema 7'de `effect_slots` süzüyor.
+    assert not any(
+        n["name"].startswith("spatial") for n in chains["sonar_mic_capture"]["nodes"]
+    )
 
 
 def test_missing_deepfilter_does_not_break_the_mic_chain(monkeypatch):
@@ -298,7 +332,7 @@ def test_pipewire_can_parse_the_generated_conf(conf, tmp_path):
 def test_quoted_keys_survive_the_roundtrip(portable, tmp_path):
     """DeepFilterNet'in port adlarında boşluk ve parantez var: "Attenuation Limit (dB)"."""
     path = tmp_path / "graph.conf"
-    path.write_text(confgen.generate(default_config()), encoding="utf-8")
+    path.write_text(confgen.generate(default_config(), full_chain), encoding="utf-8")
     parsed = json.loads(
         subprocess.run(
             ["spa-json-dump", str(path)], capture_output=True, text=True, check=True

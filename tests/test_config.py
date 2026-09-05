@@ -5,7 +5,7 @@ import tomllib
 
 import pytest
 
-from sonar.core.config import ConfigStore, Paths, safe_name, write_atomic
+from sonar.core.config import ConfigStore, Paths, migrate_profile, safe_name, write_atomic
 from sonar.core.model import (
     BusSend,
     EqBand,
@@ -17,6 +17,13 @@ from sonar.core.model import (
 from sonar.core.serde import SerdeError
 
 # --------------------------------------------------------------------------- config.toml
+
+
+def state_of(profile, kind):
+    """Bir aşamanın profildeki durumu. Şema 7'de zincir slot listesi; testler aşama
+    üzerinden bakmaya devam edebilsin diye ilk eşleşen slot dönüyor."""
+    effect = next((e for e in profile.effects if e.kind is kind), None)
+    return profile.state(effect.slot) if effect else None
 
 
 def test_first_run_creates_config_and_profiles(config_store: ConfigStore):
@@ -131,11 +138,22 @@ def test_write_atomic_keeps_old_content_on_failure(tmp_path, monkeypatch):
 
 
 def test_profile_roundtrip(config_store: ConfigStore):
+    from sonar.core.model import EffectSlot
+
     profile = default_profile("CS2")
     profile.eq.enabled = True
     profile.eq.bands[3].gain_db = 5.5
-    profile.filter(FilterStage.GATE).enabled = True
-    profile.filter(FilterStage.GATE).params["threshold_db"] = -35.0
+    from sonar.core.model import DEFAULT_FILTER_PARAMS
+
+    # Yükleme parametreleri tanıma tamamlıyor (`_normalise_filters`); karşılaştırma
+    # anlamlı olsun diye slot da tam parametreyle kuruluyor.
+    profile.effects.append(
+        EffectSlot(
+            kind=FilterStage.GATE,
+            slot="gate",
+            params={**DEFAULT_FILTER_PARAMS[FilterStage.GATE], "threshold_db": -35.0},
+        )
+    )
 
     config_store.save_profile("game", profile)
     assert config_store.load_profile("game", "CS2") == profile
@@ -190,7 +208,8 @@ def test_profile_json_is_readable(config_store: ConfigStore):
     config_store.save_profile("mic", profile)
     raw = json.loads(config_store.paths.profile_file("mic", "Test").read_text(encoding="utf-8"))
     assert raw["eq"]["bands"][0]["gain_db"] == 3.0
-    assert raw["filters"]["gate"]["enabled"] is False
+    # Şema 7: zincir sıralı bir liste ve yeni profilde yalnızca ekolayzer var.
+    assert [e["kind"] for e in raw["effects"]] == ["eq"]
 
 
 # --------------------------------------------------------------------------- dosya adı güvenliği
@@ -402,18 +421,22 @@ def test_stale_filter_params_are_normalised(config_store: ConfigStore):
     config_store.save_profile("game", profile)
     path = config_store.paths.profile_file("game", "Eski")
     raw = json.loads(path.read_text(encoding="utf-8"))
-    raw["filters"]["spatial"] = {
-        "enabled": True,
-        "params": {"width_deg": 30.0, "elevation_deg": 0.0, "distance_m": 1.0},
-    }
+    raw["effects"].append(
+        {
+            "kind": "spatial",
+            "slot": "spatial",
+            "enabled": True,
+            "params": {"width_deg": 30.0, "elevation_deg": 0.0, "distance_m": 1.0},
+        }
+    )
     path.write_text(json.dumps(raw), encoding="utf-8")
 
     loaded = config_store.load_profile("game", "Eski")
 
-    assert set(loaded.filter(FilterStage.SPATIAL).params) == set(
+    assert set(loaded.state("spatial").params) == set(
         DEFAULT_FILTER_PARAMS[FilterStage.SPATIAL]
     )
-    assert loaded.filter(FilterStage.SPATIAL).enabled is True, "açık/kapalı korunmalı"
+    assert loaded.state("spatial").enabled is True, "açık/kapalı korunmalı"
 
 
 # --------------------------------------------------------------------------- şema 5 → 6
@@ -443,3 +466,65 @@ def test_an_existing_config_counts_as_provisioned(config_store: ConfigStore):
 
     assert loaded.settings.provisioned is True
     assert loaded.schema_version == 6
+
+
+# --------------------------------------------------------------------------- profil şema 6 → 7
+
+
+def test_profile_migration_keeps_only_the_enabled_stages(config_store: ConfigStore):
+    """Şema 6'da yedi aşamanın hepsi profilde duruyordu; kapalı olanlar da görünüyordu.
+
+    Kullanıcının isteği (test turu 6): *"Profil ayarlarına girince sadece ekolayzer
+    gözüksün."* Göç bu yüzden kapalı aşamaları düşürüyor — parametreleri zaten
+    varsayılandaydı, bilgi kaybı yok.
+    """
+    raw = {
+        "name": "Eski",
+        "eq": {"enabled": True, "band_count": 10, "preamp_db": 0.0, "bands": []},
+        "filters": {
+            "gate": {"enabled": False, "params": {"threshold_db": -30.0}},
+            "comp": {"enabled": True, "params": {"ratio": 8.0}},
+            "lim": {"enabled": True, "params": {}},
+        },
+    }
+
+    migrated = migrate_profile(raw)
+
+    assert [e["kind"] for e in migrated["effects"]] == ["eq", "comp", "lim"]
+    assert migrated["effects"][0]["enabled"] is True, "EQ'nun bayrağı `eq`'ten geliyor"
+    assert migrated["effects"][1]["params"]["ratio"] == 8.0
+    assert "filters" not in migrated
+
+
+def test_profile_migration_keeps_the_chain_order(config_store: ConfigStore):
+    """Göçte sıra `CHAIN_ORDER`: kullanıcının duyduğu ses değişmemeli."""
+    raw = {
+        "name": "Eski",
+        "eq": {"enabled": False, "band_count": 10, "preamp_db": 0.0, "bands": []},
+        "filters": {stage: {"enabled": True, "params": {}} for stage in ("lim", "gate", "comp")},
+    }
+    assert [e["kind"] for e in migrate_profile(raw)["effects"]] == ["eq", "gate", "comp", "lim"]
+
+
+def test_an_already_migrated_profile_is_left_alone(config_store: ConfigStore):
+    raw = {"name": "Yeni", "effects": [{"kind": "eq", "slot": "eq"}]}
+    assert migrate_profile(raw) is raw
+
+
+def test_duplicate_slot_ids_are_repaired_on_load(config_store: ConfigStore):
+    """Elle düzenlenmiş bir dosya aynı node adını iki kez taşıyabilir.
+
+    Graf node adları çakışırsa `pipewire -c` zinciri hiç kuramaz — sessiz bir felaket.
+    """
+    from sonar.core.model import EffectSlot, FilterStage
+
+    profile = default_profile("Bozuk")
+    profile.effects.append(EffectSlot(kind=FilterStage.COMP, slot="comp"))
+    profile.effects.append(EffectSlot(kind=FilterStage.COMP, slot="comp"))
+    config_store.save_profile("game", profile)
+
+    loaded = config_store.load_profile("game", "Bozuk")
+
+    slots = [e.slot for e in loaded.effects]
+    assert slots == ["eq", "comp", "comp2"]
+    assert len(set(slots)) == len(slots)

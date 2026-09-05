@@ -4,9 +4,18 @@ import pytest
 
 from sonar.core.dsp import registry
 from sonar.core.dsp.chain import build_chain, plan_chain
-from sonar.core.model import CHAIN_ORDER, FilterStage
+from sonar.core.model import CHAIN_ORDER, EffectSlot, FilterStage
 
 S = FilterStage
+
+
+def slots(*kinds: FilterStage) -> tuple[EffectSlot, ...]:
+    """Aşama listesinden slot demeti. Şema 7'de zincir bir slot listesi (bkz. `EffectSlot`)."""
+    return tuple(EffectSlot(kind=k, slot=k.value) for k in kinds)
+
+
+def kinds(plan) -> tuple[FilterStage, ...]:
+    return tuple(effect.kind for effect in plan.slots)
 
 
 @pytest.fixture
@@ -18,16 +27,19 @@ def all_installed(monkeypatch):
 # --------------------------------------------------------------------------- planlama
 
 
-def test_plan_keeps_chain_order_regardless_of_input_order(all_installed):
-    plan = plan_chain((S.LIMITER, S.EQ, S.DEEPFILTER, S.COMP, S.GATE))
-    assert plan.stages == tuple(
-        s for s in CHAIN_ORDER if s not in (S.SPATIAL, S.BOOST)
-    ), "istenmeyen aşama zincire girmemeli"
+def test_plan_keeps_the_users_order(all_installed):
+    """Sıra artık `CHAIN_ORDER` değil kullanıcının dizdiği sıra (şema 7).
+
+    EasyEffects'te olduğu gibi sinyal listedeki sırayla akıyor: limitleyiciyi zincirin
+    başına koymak isteyen koyabiliyor.
+    """
+    wanted = (S.LIMITER, S.EQ, S.DEEPFILTER, S.COMP, S.GATE)
+    assert kinds(plan_chain(slots(*wanted))) == wanted
 
 
-def test_boost_is_always_in_the_chain(all_installed):
-    """Boost bypass'ta bedava (`Mult = 1`), bu yüzden her zaman kurulu."""
-    assert S.BOOST in plan_chain().stages
+def test_boost_needs_no_plugin(all_installed):
+    """Boost PipeWire'ın kendi `linear` bloğu; katalogda yok ve hep kurulabilir."""
+    assert kinds(plan_chain(slots(S.BOOST))) == (S.BOOST,)
 
 
 def test_spatial_is_always_in_a_stereo_chain(all_installed):
@@ -36,45 +48,45 @@ def test_spatial_is_always_in_a_stereo_chain(all_installed):
     HRTF sürümü yapısaldı çünkü bir konvolveri bypass etmek onu ucuzlatmıyordu
     (ölçüldü: boşta CPU %0.0 → %14.4). Crossfeed'de böyle bir bedel yok.
     """
-    assert plan_chain().stages == CHAIN_ORDER
+    assert kinds(plan_chain(slots(*CHAIN_ORDER))) == CHAIN_ORDER
 
 
 def test_spatial_is_dropped_from_a_mono_chain(all_installed):
     """Kulaklık simülasyonunun mikrofon zincirinde karşılığı yok."""
-    plan = plan_chain(channels=1)
-    assert S.SPATIAL not in plan.stages
-    assert S.SPATIAL in plan.skipped
-    assert S.BOOST in plan.stages
+    plan = plan_chain(slots(*CHAIN_ORDER), channels=1)
+    assert S.SPATIAL not in kinds(plan)
+    assert S.SPATIAL in [e.kind for e in plan.skipped]
+    assert S.BOOST in kinds(plan)
 
 
 def test_plan_skips_missing_plugins(monkeypatch):
     monkeypatch.setattr(registry, "is_available", lambda key: not key.startswith("deepfilter"))
-    plan = plan_chain()
-    assert S.DEEPFILTER not in plan.stages
-    assert plan.skipped == (S.DEEPFILTER,)
-    assert plan.stages[0] is S.GATE
+    plan = plan_chain(slots(*CHAIN_ORDER))
+    assert S.DEEPFILTER not in kinds(plan)
+    assert [e.kind for e in plan.skipped] == [S.DEEPFILTER]
+    assert kinds(plan)[0] is S.GATE
 
 
 def test_plan_ignores_availability_when_asked():
-    plan = plan_chain(require_installed=False)
-    assert plan.stages == CHAIN_ORDER
+    plan = plan_chain(slots(*CHAIN_ORDER), require_installed=False)
+    assert kinds(plan) == CHAIN_ORDER
 
 
 @pytest.mark.parametrize(("bands", "capacity"), [(5, 32), (10, 32), (16, 32), (32, 32)])
 def test_plan_picks_eq_capacity(bands, capacity, all_installed):
-    assert plan_chain(band_count=bands).eq_capacity == capacity
+    assert plan_chain(slots(S.EQ), band_count=bands).eq_capacity == capacity
 
 
 def test_plan_rejects_odd_channel_counts():
     with pytest.raises(ValueError, match="1 veya 2"):
-        plan_chain(channels=3, require_installed=False)
+        plan_chain(slots(S.EQ), channels=3, require_installed=False)
 
 
 # --------------------------------------------------------------------------- graf kurulumu
 
 
 def test_graph_wires_stages_in_order(all_installed):
-    graph = build_chain(plan_chain((S.DEEPFILTER, S.GATE, S.EQ, S.COMP, S.LIMITER)))
+    graph = build_chain(plan_chain(slots(S.DEEPFILTER, S.GATE, S.EQ, S.COMP, S.LIMITER)))
     assert [node["name"] for node in graph["nodes"]] == ["df", "gate", "eq", "comp", "lim"]
     assert graph["inputs"] == ["df:Audio In L", "df:Audio In R"]
     assert graph["outputs"] == ["lim:out_l", "lim:out_r"]
@@ -84,7 +96,7 @@ def test_graph_wires_stages_in_order(all_installed):
 
 def test_multi_node_stages_expose_a_single_pair_of_ports(all_installed):
     """Spatial sekiz node, Boost iki node; zincir bunu bilmek zorunda değil."""
-    graph = build_chain(plan_chain())
+    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
     names = [node["name"] for node in graph["nodes"]]
     assert names == [
         "df", "gate", "eq", "comp",
@@ -104,21 +116,21 @@ def test_multi_node_stages_expose_a_single_pair_of_ports(all_installed):
 
 def test_missing_stage_is_relinked_not_left_dangling(monkeypatch):
     monkeypatch.setattr(registry, "is_available", lambda key: "para_eq" not in key)
-    graph = build_chain(plan_chain())
+    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
     pairs = {(link["output"].split(":")[0], link["input"].split(":")[0]) for link in graph["links"]}
     assert ("gate", "comp") in pairs, "EQ düşünce gate doğrudan comp'a bağlanmalı"
     assert not any("eq" in name for name in {p for pair in pairs for p in pair})
 
 
 def test_single_stage_chain_has_no_links(all_installed):
-    graph = build_chain(plan_chain((S.EQ,)))
+    graph = build_chain(plan_chain(slots(S.EQ)))
     assert "links" not in graph
     assert graph["inputs"] == ["eq:in_l", "eq:in_r"]
     assert graph["outputs"] == ["eq:out_l", "eq:out_r"]
 
 
 def test_mono_chain_uses_mono_ports(all_installed):
-    graph = build_chain(plan_chain((S.GATE, S.EQ), channels=1))
+    graph = build_chain(plan_chain(slots(S.GATE, S.EQ), channels=1))
     assert graph["inputs"] == ["gate:in"]
     assert graph["outputs"] == ["eq:out"]
     assert len(graph["links"]) == 1
@@ -137,8 +149,8 @@ def test_boost_survives_even_when_no_plugin_is_installed(monkeypatch):
     ve ses düz geçiyor.
     """
     monkeypatch.setattr(registry, "is_available", lambda _key: False)
-    plan = plan_chain()
-    assert plan.stages == (S.SPATIAL, S.BOOST), "ikisi de PipeWire'ın kendi blokları"
+    plan = plan_chain(slots(*CHAIN_ORDER))
+    assert kinds(plan) == (S.SPATIAL, S.BOOST), "ikisi de PipeWire'ın kendi blokları"
     graph = build_chain(plan)
     assert graph["inputs"] == ["spatial_copy_l:In", "spatial_copy_r:In"]
 
@@ -148,7 +160,7 @@ def test_boost_survives_even_when_no_plugin_is_installed(monkeypatch):
 
 def test_every_stage_starts_bypassed(all_installed):
     """Conf nötr doğar; gerçek profil canlı yazımla gelir. Bu kuralın testi."""
-    graph = build_chain(plan_chain())
+    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
     controls = {node["name"]: node.get("control", {}) for node in graph["nodes"]}
     # Boost bypass'ı: çarpan 1. Spatial bypass'ı: sızıntı kazancı 0.
     assert controls["boost_l"]["Mult"] == 1.0
@@ -163,7 +175,7 @@ def test_every_stage_starts_bypassed(all_installed):
 
 def test_eq_analyzers_start_disabled(all_installed):
     """LSP'nin FFT'leri bypass'ta bile CPU yakar; kapalı doğmalılar."""
-    graph = build_chain(plan_chain())
+    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
     control = next(n["control"] for n in graph["nodes"] if n["name"] == "eq")
     analyzers = registry.eq_analyzer_ports(registry.eq_plugin_for(10))
     assert analyzers, "analizör portları kataloğdan kaybolmuş"
@@ -171,7 +183,7 @@ def test_eq_analyzers_start_disabled(all_installed):
 
 
 def test_ladspa_node_carries_a_label_and_lv2_does_not(all_installed):
-    graph = build_chain(plan_chain())
+    graph = build_chain(plan_chain(slots(*CHAIN_ORDER)))
     nodes = {node["name"]: node for node in graph["nodes"]}
     assert nodes["df"]["type"] == "ladspa"
     assert nodes["df"]["label"] == "deep_filter_stereo"

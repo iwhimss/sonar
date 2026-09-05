@@ -375,6 +375,35 @@ def _cmd_uninstall(client: Client, args) -> int:
     return 0
 
 
+def _cmd_effect(client: Client, args) -> int:
+    """Efekt zinciri: listele, ekle, sil, taşı.
+
+    Ekleme/silme/taşıma **yapısal**: graf yeniden kurulur (~200 ms sessizlik).
+    """
+    if args.action == "list":
+        chain = client.call("ListEffects", args.target) or []
+        for index, effect in enumerate(chain):
+            mark = " " if effect["enabled"] else "M"
+            print(f"{index:>2} {mark} {effect['slot']:<12} {effect['kind']}")
+        print()
+        kinds = [e["kind"] for e in client.call("ListEffectKinds", args.target) or []]
+        print(i18n.t("cli.effect.available", kinds=", ".join(kinds)))
+        return 0
+    if args.action == "add":
+        slot = client.call("AddEffect", args.target, args.value, -1)
+        print(i18n.t("cli.effect.added", slot=slot))
+        return 0
+    if args.action == "remove":
+        client.call("RemoveEffect", args.target, args.value)
+        print(i18n.t("cli.effect.removed", slot=args.value))
+        return 0
+    if args.index is None:
+        raise SystemExit(i18n.t("cli.effect.move_usage"))
+    client.call("MoveEffect", args.target, args.value, args.index)
+    print(i18n.t("cli.effect.moved", slot=args.value, index=args.index))
+    return 0
+
+
 def _cmd_lang(client: Client, args) -> int:
     if not args.code:
         current = i18n.language()
@@ -703,6 +732,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("what", choices=["stream", "sidetone"])
     p.add_argument("state", choices=["on", "off"])
 
+    p = sub.add_parser("effect", help=i18n.t("cli.help.effect"))
+    p.add_argument("action", choices=("list", "add", "remove", "move"))
+    p.add_argument("target")
+    p.add_argument("value", nargs="?", default="", help=i18n.t("cli.help.effect_value"))
+    p.add_argument("--index", type=int, help=i18n.t("cli.help.effect_index"))
+
     sub.add_parser("install", help=i18n.t("cli.help.install"))
     p = sub.add_parser("uninstall", help=i18n.t("cli.help.uninstall"))
     p.add_argument("--purge", action="store_true", help=i18n.t("cli.help.purge"))
@@ -726,6 +761,7 @@ _COMMANDS = {
     "rules": _cmd_rules,
     "move": _cmd_move,
     "chatmix": _cmd_chatmix,
+    "effect": _cmd_effect,
     "install": _cmd_install,
     "uninstall": _cmd_uninstall,
     "lang": _cmd_lang,
