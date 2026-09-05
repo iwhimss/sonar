@@ -13,6 +13,11 @@ SonarPanel {
     property string target: ""
     property color accent: Theme.master
     property var profile: ({})
+    //: Zincirdeki diğer paneller gibi sürüklenip silinebilsin diye (şema 7).
+    property bool movable: false
+    property bool removable: false
+    readonly property alias grip: eqGrip
+    signal removeRequested()
 
     readonly property var eq: profile.eq !== undefined ? profile.eq : ({})
     readonly property int bandCount: eq.band_count !== undefined ? eq.band_count : 10
@@ -29,6 +34,31 @@ SonarPanel {
         Row {
             width: parent.width
             spacing: Theme.s2
+
+            Item {
+                width: root.movable ? 10 : 0
+                height: 16
+                visible: root.movable
+                anchors.verticalCenter: parent.verticalCenter
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            width: 10
+                            height: 2
+                            color: eqGrip.containsMouse ? root.accent : Theme.borderStrong
+                        }
+                    }
+                }
+                MouseArea {
+                    id: eqGrip
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.SizeVerCursor
+                }
+            }
 
             Rectangle {
                 width: 30; height: 16
@@ -71,6 +101,24 @@ SonarPanel {
                         {value:"24",label:"±24 dB"},{value:"36",label:"±36 dB"}]
                 currentValue: curve ? String(curve.rangeDb) : "15"
                 onActivated: (v) => { if (curve) curve.rangeDb = parseFloat(v) }
+            }
+
+            /* Sil düğmesi sağa yaslı: başlık satırı bir `Row` olduğu için araya esnek
+               bir boşluk konuyor. */
+            Item {
+                width: Math.max(0, parent.width - eqRemove.width - x - Theme.s2)
+                height: 1
+            }
+            SonarIconButton {
+                id: eqRemove
+                visible: root.removable
+                width: visible ? 20 : 0
+                icon: "close"
+                accent: Theme.danger
+                implicitWidth: 20
+                implicitHeight: 18
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: root.removeRequested()
             }
         }
 

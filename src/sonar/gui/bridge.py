@@ -348,6 +348,8 @@ class SonarBridge(QObject):
         self._busy = False
         #: Kaldırmadan sonra kullanıcıya gösterilecek, root gerektiren adımlar.
         self._manual_steps: list = []
+        #: Efekt türü → parametre meta verisi (aralık, birim, etiket anahtarı).
+        self._effect_meta_cache: dict = {}
 
         self._reconnect = QTimer(self)
         self._reconnect.setInterval(RECONNECT_MS)
@@ -834,8 +836,34 @@ class SonarBridge(QObject):
 
     @Slot(str, result="QVariant")
     def effectsOf(self, target: str) -> list:
-        """Hedefin efekt zinciri, sinyal sırasıyla. FX sayfasının panel listesi bu."""
-        return list(self.profileOf(target).get("effects") or [])
+        """Hedefin efekt zinciri, sinyal sırasıyla. FX sayfasının panel listesi bu.
+
+        Slot/açık-kapalı/değerler **bellekteki profilden** okunuyor ki fader ve kaydırıcı
+        iyimser güncellemeyle anında hareket etsin; parametrelerin **meta verisi** (aralık,
+        birim, etiket) efekt türüne bağlı ve değişmediği için bir kez alınıp saklanıyor.
+        """
+        meta = self._effect_meta()
+        out = []
+        for effect in self.profileOf(target).get("effects") or []:
+            spec = meta.get(effect.get("kind"), {})
+            out.append(
+                {
+                    "slot": effect.get("slot", ""),
+                    "kind": effect.get("kind", ""),
+                    "enabled": bool(effect.get("enabled")),
+                    "params": spec.get("params", []),
+                    "hint": spec.get("hint", ""),
+                    "category": spec.get("category", ""),
+                }
+            )
+        return out
+
+    def _effect_meta(self) -> dict:
+        """Efekt türü → parametre meta verisi. Tür başına sabit; bir kez alınıyor."""
+        if not self._effect_meta_cache:
+            for kind in self._call("ListEffectKinds", "") or []:
+                self._effect_meta_cache[kind["kind"]] = kind
+        return self._effect_meta_cache
 
     @Slot(str, result="QVariant")
     def effectKinds(self, target: str) -> list:

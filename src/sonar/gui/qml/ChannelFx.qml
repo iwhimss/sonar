@@ -227,83 +227,151 @@ Item {
             }
         }
 
-        // --- EQ ------------------------------------------------------------
-        EqPanel {
-            width: parent.width
-            //: Eğrinin okunabilir kaldığı en kısa boy. Pencere daha kısaysa sayfa kayar.
-            height: Math.max(360, root.height - 86 - dynamics.implicitHeight - Theme.s2 * 4)
-            bridge: root.bridge
-            target: root.target
-            accent: root.accent
-            profile: root.profile
-        }
-
-        // --- dinamikler ----------------------------------------------------
+        // --- efekt zinciri -------------------------------------------------
         //
-        // `Flow`: paneller sığdığı kadar yan yana, sığmayınca alt satıra sarıyor.
-        // Eskiden sabit yükseklikli bir `Row`du ve iki şey birden bozuluyordu —
-        // içerik kutunun dışına taşıyor, panel sayısı yanlış hesaplandığı için
-        // sonuncusu ekrandan çıkıyordu (test turu 3).
-        Flow {
+        // Paneller **alt alta**, sinyal sırasıyla (kullanıcının isteği, test turu 6).
+        // Eskiden `Flow` içinde yan yana sarıyorlardı; zincirin sırası görünmüyordu ve
+        // sıra artık kullanıcının kararı olduğu için yanıltıcı olurdu.
+        Column {
             id: dynamics
             width: parent.width
             spacing: Theme.s2
 
-            //: Bir panelin en dar hâli. Pencere daraldıkça sütun sayısı düşüyor.
-            readonly property int minPanelWidth: 300
-            readonly property int columns:
-                Math.max(1, Math.floor((width + spacing) / (minPanelWidth + spacing)))
-            readonly property real panelWidth:
-                (width - spacing * (columns - 1)) / columns
+            readonly property real panelWidth: width
 
             Repeater {
-                model: root.panels
-                SonarFilterPanel {
-                    id: panel
+                model: root.effects
+                Item {
+                    id: effectItem
                     required property var modelData
+                    required property int index
                     width: dynamics.panelWidth
-                    height: body.implicitHeight + 26 + Theme.s3 * 2
-                    title: modelData.title
-                    accent: root.accent
-                    active: root.stageOn(modelData.stage)
-                    note: modelData.note !== undefined ? modelData.note : ""
-                    onToggled: (v) => root.bridge.setFilterEnabled(root.target,
-                                                                   panel.modelData.stage, v)
-                    Column {
-                        id: body
-                        anchors.fill: parent
-                        spacing: 2
-                        Repeater {
-                            model: panel.modelData.params
-                            SonarParamRow {
-                                required property var modelData
+                    height: eqPanel.visible ? eqPanel.height : panel.height
+
+                    /* Ekolayzer zincirin bir üyesi ama gövdesi eğri editörü. Ayrı bir
+                       panelde dursaydı listede ikinci kez görünür ve sırası anlamsız
+                       kalırdı — sinyal listedeki sırayla akıyor. */
+                    EqPanel {
+                        id: eqPanel
+                        visible: effectItem.modelData.kind === "eq"
+                        width: parent.width
+                        //: Eğrinin okunabilir kaldığı en kısa boy.
+                        height: visible ? 400 : 0
+                        bridge: root.bridge
+                        target: root.target
+                        accent: root.accent
+                        profile: root.profile
+                        movable: true
+                        removable: true
+                        onRemoveRequested: root.bridge.removeEffect(
+                            root.target, effectItem.modelData.slot)
+                    }
+
+                    SonarFilterPanel {
+                        id: panel
+                        visible: effectItem.modelData.kind !== "eq"
+                        width: parent.width
+                        height: visible ? body.implicitHeight + 26 + Theme.s3 * 2 : 0
+                        title: I18n.t("effect." + effectItem.modelData.kind)
+                        accent: root.accent
+                        active: effectItem.modelData.enabled === true
+                        movable: true
+                        removable: true
+                        note: (root.isMic && effectItem.modelData.kind === "gate"
+                               && root.stageOn("df")) ? I18n.t("fx.gate.disabled_by_df") : ""
+                        onToggled: (v) => root.bridge.setFilterEnabled(
+                            root.target, effectItem.modelData.slot, v)
+                        onRemoveRequested: root.bridge.removeEffect(
+                            root.target, effectItem.modelData.slot)
+
+                        Column {
+                            id: body
+                            anchors.fill: parent
+                            spacing: 2
+
+                            Repeater {
+                                model: effectItem.modelData.params
+                                SonarParamRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    label: I18n.t(modelData.label)
+                                    from: modelData.from
+                                    to: modelData.to
+                                    unit: modelData.unit
+                                    decimals: modelData.digits
+                                    accent: root.accent
+                                    enabled: effectItem.modelData.enabled === true
+                                    value: root.paramOf(effectItem.modelData.slot,
+                                                        modelData.name, modelData.fallback)
+                                    onMoved: (v) => root.bridge.setFilterParam(
+                                        root.target, effectItem.modelData.slot,
+                                        modelData.name, v)
+                                }
+                            }
+
+                            Text {
+                                visible: effectItem.modelData.hint !== ""
                                 width: parent.width
-                                label: modelData.label
-                                from: modelData.from; to: modelData.to
-                                unit: modelData.unit
-                                decimals: modelData.digits !== undefined ? modelData.digits : 1
-                                accent: root.accent
-                                enabled: root.stageOn(panel.modelData.stage)
-                                       && !(root.isMic && panel.modelData.stage === "gate"
-                                            && root.stageOn("df"))
-                                value: root.paramOf(modelData.stage, modelData.key,
-                                                    modelData.fallback)
-                                onMoved: (v) => root.bridge.setFilterParam(
-                                    root.target, modelData.stage, modelData.key, v)
+                                wrapMode: Text.WordWrap
+                                text: effectItem.modelData.hint !== ""
+                                      ? I18n.t(effectItem.modelData.hint) : ""
+                                color: Theme.textFaint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSmall
+                                renderType: Text.NativeRendering
                             }
                         }
-                        Text {
-                            visible: panel.modelData.hint !== undefined
-                            width: parent.width
-                            wrapMode: Text.WordWrap
-                            text: panel.modelData.hint !== undefined ? panel.modelData.hint : ""
-                            color: Theme.textFaint
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSmall
-                            renderType: Text.NativeRendering
+                    }
+
+                    /* Sıralama: tutamağı sürükle, panel bırakıldığı yere geçsin.
+                       Favori şeridindeki desenin aynısı — orada da `DropArea` komşunun
+                       indeksini okuyup listeyi yeniden diziyor. */
+                    Drag.active: dragArea.drag.active
+                    Drag.hotSpot.x: 10
+                    Drag.hotSpot.y: 8
+                    property int dragIndex: effectItem.index
+
+                    MouseArea {
+                        id: dragArea
+                        x: 0
+                        y: 0
+                        width: 24
+                        height: 24
+                        cursorShape: Qt.SizeVerCursor
+                        drag.target: effectItem
+                        drag.axis: Drag.YAxis
+                        drag.threshold: 6
+                        onReleased: { effectItem.Drag.drop(); effectItem.y = 0 }
+                    }
+
+                    DropArea {
+                        anchors.fill: parent
+                        onEntered: (event) => {
+                            const from = event.source.dragIndex
+                            if (from === effectItem.index) return
+                            root.bridge.moveEffect(root.target,
+                                                   root.effects[from].slot, effectItem.index)
                         }
                     }
                 }
+            }
+
+            SonarButton {
+                text: "＋ " + I18n.t("fx.add_effect")
+                variant: "accent"
+                accent: root.accent
+                onClicked: addEffectDialog.open()
+            }
+
+            Text {
+                visible: root.effects.length === 0
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: I18n.t("fx.empty_chain")
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
             }
 
             /* Smart Volume bir DSP aşaması değil, daemon tarafında bir zarf takipçisi —
@@ -415,6 +483,79 @@ Item {
         }
     }
 
+    /* Efekt ekleme penceresi. Kategorilere ayrılmış; kurulu olmayan eklentiler ve bu
+       hedefte anlamsız olanlar (mikrofonda Uzamsal Ses, oynatmada gürültü engelleme)
+       listede hiç görünmüyor — kullanıcıya ekleyemeyeceği bir şeyi göstermek onu graf
+       kurulamadığında yalnız bırakır. */
+    SonarDialog {
+        id: addEffectDialog
+        objectName: "addEffectDialog"
+        title: I18n.t("fx.add_effect")
+        accent: root.accent
+        preferredWidth: 460
+
+        property var kinds: []
+
+        function open() {
+            kinds = root.bridge ? root.bridge.effectKinds(root.target) : []
+            visible = true
+        }
+
+        Column {
+            width: parent.width
+            spacing: Theme.s3
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: I18n.t("fx.add_effect.note")
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+
+            Repeater {
+                model: ["dynamics", "tone", "space", "utility"]
+                Column {
+                    required property var modelData
+                    width: addEffectDialog.bodyWidth
+                    spacing: Theme.s1
+                    visible: addEffectDialog.inCategory(modelData).length > 0
+
+                    SonarSectionLabel { text: I18n.t("effect.category." + modelData) }
+
+                    Flow {
+                        width: parent.width
+                        spacing: Theme.s1
+                        Repeater {
+                            model: addEffectDialog.inCategory(modelData)
+                            SonarButton {
+                                required property var modelData
+                                text: I18n.t("effect." + modelData.kind)
+                                onClicked: {
+                                    root.bridge.addEffect(root.target, modelData.kind)
+                                    addEffectDialog.close()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            SonarButton { text: I18n.t("common.close"); onClicked: addEffectDialog.close() }
+        }
+
+        function inCategory(category) {
+            /* Zincirde zaten bir ekolayzer varsa ikincisi eklenemiyor (band modeli ve
+               eğri profilde tek); listede göstermek "tıkladım, hata verdi" demekti. */
+            const hasEq = root.effects.some(function (e) { return e.kind === "eq" })
+            return (kinds || []).filter(function (k) {
+                return k.category === category && !(k.kind === "eq" && hasEq)
+            })
+        }
+    }
+
     // --- içe / dışa aktarma --------------------------------------------------
     Dialogs.FileDialog {
         id: importDialog
@@ -469,48 +610,14 @@ Item {
         return value !== undefined ? value : fallback
     }
 
-    /* Sayfadaki dinamik paneller. Mikrofonda Spatial yok (kulaklık simülasyonunun
-       karşılığı yok), Compressor ve Limiter artık ayrı — kullanıcı isteğiyle. */
-    readonly property var panels: {
-        const out = []
-        if (isMic)
-            out.push({ stage: "df", title: I18n.t("fx.stage.df"), params: dfParams })
-        out.push({ stage: "gate", title: I18n.t("fx.stage.gate"), params: gateParams,
-                   note: (isMic && stageOn("df")) ? I18n.t("fx.gate.disabled_by_df") : "" })
-        out.push({ stage: "comp", title: I18n.t("fx.stage.comp"), params: compParams })
-        out.push({ stage: "lim", title: I18n.t("fx.stage.lim"), params: limParams })
-        if (!isMic)
-            out.push({ stage: "spatial", title: I18n.t("fx.stage.spatial"),
-                       params: spatialParams, hint: I18n.t("fx.spatial.hint") })
-        out.push({ stage: "boost", title: I18n.t("fx.stage.boost"), params: boostParams,
-                   hint: I18n.t("fx.boost.hint") })
-        return out
-    }
-
-    readonly property var gateParams: [
-        { stage:"gate", key:"threshold_db", label:I18n.t("param.threshold"), from:-80, to:0,   unit:"dB", fallback:-40 },
-        { stage:"gate", key:"attack_ms",    label:I18n.t("param.attack"), from:0,   to:200, unit:"ms", fallback:10 },
-        { stage:"gate", key:"release_ms",   label:I18n.t("param.release"), from:5,   to:1000,unit:"ms", fallback:100 },
-        { stage:"gate", key:"reduction_db", label:I18n.t("param.reduction_amount"), from:-80, to:0,   unit:"dB", fallback:-24 }
-    ]
-    readonly property var compParams: [
-        { stage:"comp", key:"threshold_db", label:I18n.t("param.threshold"), from:-60, to:0,   unit:"dB", fallback:-18 },
-        { stage:"comp", key:"ratio",        label:I18n.t("param.ratio"), from:1,   to:20,  unit:": 1", fallback:4 },
-        { stage:"comp", key:"attack_ms",    label:I18n.t("param.attack"), from:0,   to:200, unit:"ms", fallback:5 },
-        { stage:"comp", key:"release_ms",   label:I18n.t("param.release"), from:5,   to:1000,unit:"ms", fallback:120 },
-        { stage:"comp", key:"makeup_db",    label:I18n.t("param.makeup"), from:0,   to:24,  unit:"dB", fallback:0 }
-    ]
-    readonly property var limParams: [
-        { stage:"lim", key:"ceiling_db",   label:I18n.t("param.ceiling"), from:-24, to:0,  unit:"dB", fallback:-1 },
-        { stage:"lim", key:"lookahead_ms", label:I18n.t("param.lookahead"),from:0.1, to:20, unit:"ms", fallback:5 },
-        { stage:"lim", key:"release_ms",   label:I18n.t("param.release"), from:0.25,to:20, unit:"ms", fallback:5 }
-    ]
-    readonly property var dfParams: [
-        { stage:"df", key:"attenuation_db",   label:I18n.t("param.reduction_amount"), from:0, to:100, unit:"dB",
-          fallback:40, digits:0 },
-        { stage:"df", key:"post_filter_beta", label:I18n.t("param.post_filter"), from:0, to:0.05, unit:"",
-          fallback:0.02, digits:3 }
-    ]
+    /* Zincirdeki efektler — **daemon'dan**, sıralarıyla birlikte.
+     *
+     * Şema 6'ya kadar bu liste burada elle yazılıydı: her panelin başlığı, parametreleri,
+     * aralıkları ve birimleri QML'de duruyordu ve yeni bir efekt eklemek QML yazmayı
+     * gerektiriyordu. Artık `core/dsp/effects.py` tek kaynak; panel de parametre satırı
+     * da o meta veriden çiziliyor.
+     */
+    readonly property var effects: bridge ? (tick, bridge.effectsOf(target)) : []
 
     /* `tick` (yani `bridge.revision`) bilerek okunuyor.
 

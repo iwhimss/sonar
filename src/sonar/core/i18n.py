@@ -105,6 +105,10 @@ def t(key: str, /, **kwargs: object) -> str:
     eksik veya fazla yer tutucu) ham metin döner — bir çeviri hatası yüzünden çağrının
     istisna atması, gösterilecek metnin kaybolmasından daha kötü.
     """
+    if not key:
+        # Boş anahtar bir hata değil: arayüzde "ipucu varsa göster" gibi koşullu
+        # bağlamalar boş anahtarla da değerleniyor.
+        return ""
     text = catalog(_language).get(key)
     if text is None:
         log.warning("çeviri yok: %s (%s)", key, _language)
