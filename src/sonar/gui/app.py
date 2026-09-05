@@ -17,11 +17,13 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from sonar.core import config as config_mod
+from sonar.core import i18n as core_i18n
 
 # `EqCurve` QML tipi olarak kaydedilmesi için içe aktarılmalı (yan etkili import).
 from sonar.gui import eqcurve  # noqa: F401
 from sonar.gui.bridge import SonarBridge
 from sonar.gui.dbus_client import DBusClient
+from sonar.gui.i18n import QmlI18n
 
 __all__ = ["main", "qml_dir"]
 
@@ -60,9 +62,19 @@ def main(argv: list[str] | None = None) -> int:
     bridge.attach(client)
     client.connect_signals(bridge)
 
+    paths = config_mod.Paths.default()
+    # Dil daemon'a bağlanmadan **önce** kuruluyor: "servis çalışmıyor" paneli ve
+    # karşılama ekranının ilk sayfası daemon olmadan çiziliyor, dili D-Bus'tan
+    # soramazlar. Kaynak `ui.json`; daemon bağlanınca `config.toml` doğrulatıyor.
+    store = config_mod.ConfigStore(paths)
+    core_i18n.set_language(str(store.load_ui_state().get("language") or core_i18n.DEFAULT_LANGUAGE))
+    i18n = QmlI18n(app)
+    bridge.languageChanged.connect(lambda code: _apply_language(i18n, store, code))
+
     engine = QQmlApplicationEngine()
     engine.addImportPath(str(qml_dir()))
     engine.rootContext().setContextProperty("bridge", bridge)
+    engine.rootContext().setContextProperty("i18nBackend", i18n)
     engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
     if not engine.rootObjects():
         log.error("arayüz yüklenemedi")
@@ -72,13 +84,25 @@ def main(argv: list[str] | None = None) -> int:
     bridge.subscribeMeters(True)
     tray = _install_tray(app, engine)
 
-    paths = config_mod.Paths.default()
     _restore_window(engine, paths)
     exit_code = app.exec()
     del tray
     bridge.subscribeMeters(False)
     _save_window(engine, paths)
     return exit_code
+
+
+def _apply_language(i18n: QmlI18n, store: config_mod.ConfigStore, code: str) -> None:
+    """Dili arayüze uygular ve `ui.json`'a yazar.
+
+    `ui.json` kopyası daemon'ın `config.toml`'daki kaydının yerini almıyor, onu
+    tamamlıyor: arayüz açılışta daemon'dan **önce** ekran çiziyor ve dili oradan okuyor.
+    """
+    i18n.setProperty("language", code)
+    state = store.load_ui_state()
+    if state.get("language") != i18n.property("language"):
+        state["language"] = i18n.property("language")
+        store.save_ui_state(state)
 
 
 def _install_tray(app: QApplication, engine: QQmlApplicationEngine):

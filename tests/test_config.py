@@ -46,7 +46,7 @@ def test_config_file_is_valid_toml_and_hand_editable(config_store: ConfigStore):
     text = config_store.paths.config_file.read_text(encoding="utf-8")
     assert text.startswith("# Sonar yapılandırması")
     raw = tomllib.loads(text)
-    assert raw["schema_version"] == 5
+    assert raw["schema_version"] == 6
     assert raw["channels"][0]["id"] == "game"
 
 
@@ -257,20 +257,20 @@ def test_favorites_move_from_profile_files_to_the_config(config_store: ConfigSto
     # Yapılandırmayı şema 1'e geri düşür ki göç tetiklensin.
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 5", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 6", "schema_version = 1"),
         encoding="utf-8",
     )
 
     config = config_store.load()
     assert config.favorites["game"] == ["Arc", "CS2"], "eski slot numarası sırayı belirler"
-    assert config.schema_version == 5
+    assert config.schema_version == 6
 
 
 def test_a_config_without_old_favorites_migrates_to_an_empty_list(config_store: ConfigStore):
     config_store.save(default_config())
     config_path = config_store.paths.config_file
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace("schema_version = 5", "schema_version = 1"),
+        config_path.read_text(encoding="utf-8").replace("schema_version = 6", "schema_version = 1"),
         encoding="utf-8",
     )
     assert config_store.load().favorites == {}
@@ -328,7 +328,7 @@ def test_schema_2_sends_move_into_the_bus_dictionary(config_store: ConfigStore):
     channel = config.channel("game")
     assert channel.send("personal").volume == 0.42
     assert channel.send("stream") == BusSend(volume=0.7, muted=True)
-    assert config.schema_version == 5
+    assert config.schema_version == 6
 
 
 def test_schema_2_buses_get_their_kind(config_store: ConfigStore):
@@ -369,7 +369,7 @@ def test_ducking_moves_from_settings_into_the_active_profiles(config_store: Conf
     config_store.save_profile("chat", default_profile("Oyun"))
 
     path = config_store.paths.config_file
-    text = path.read_text(encoding="utf-8").replace("schema_version = 5", "schema_version = 3")
+    text = path.read_text(encoding="utf-8").replace("schema_version = 6", "schema_version = 3")
     path.write_text(
         text
         + "\n[ducking]\nenabled = true\ntrigger_channels = [\"chat\"]\n"
@@ -379,7 +379,7 @@ def test_ducking_moves_from_settings_into_the_active_profiles(config_store: Conf
 
     loaded = config_store.load()
 
-    assert loaded.schema_version == 5
+    assert loaded.schema_version == 6
     duck = config_store.load_profile("chat", "Oyun").ducking
     assert duck.enabled is True
     assert duck.reduction_db == -9.0
@@ -414,3 +414,32 @@ def test_stale_filter_params_are_normalised(config_store: ConfigStore):
         DEFAULT_FILTER_PARAMS[FilterStage.SPATIAL]
     )
     assert loaded.filter(FilterStage.SPATIAL).enabled is True, "açık/kapalı korunmalı"
+
+
+# --------------------------------------------------------------------------- şema 5 → 6
+
+
+def test_a_fresh_config_is_not_provisioned_yet(config_store: ConfigStore):
+    """Yeni kullanıcı karşılama ekranını görmeli: kanallar henüz kurulmadı."""
+    config = config_store.load()
+    assert config.settings.provisioned is False
+    assert config.settings.language == "tr"
+
+
+def test_an_existing_config_counts_as_provisioned(config_store: ConfigStore):
+    """Diskte config.toml varsa o kullanıcının grafı bugün zaten ayakta.
+
+    Göç olmasaydı mevcut kullanıcılar bir güncellemeden sonra kanallarını kaybedip
+    kurulum ekranıyla karşılaşırdı.
+    """
+    config_store.save(default_config())
+    path = config_store.paths.config_file
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("schema_version = 6", "schema_version = 5"),
+        encoding="utf-8",
+    )
+
+    loaded = config_store.load()
+
+    assert loaded.settings.provisioned is True
+    assert loaded.schema_version == 6

@@ -44,6 +44,7 @@ packages = ["src/sonar"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/sonar/gui/qml" = "sonar/gui/qml"
+"src/sonar/i18n" = "sonar/i18n"
 
 [tool.ruff]
 line-length = 100
@@ -62,6 +63,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # Türkçe metinlerde belirsiz Unicode 
 # bu adlarla bağlanılıyor.
 "src/sonar/gui/bridge.py" = ["N802", "N815"]
 "src/sonar/gui/eqcurve.py" = ["N802", "N815"]
+"src/sonar/gui/i18n.py" = ["N802", "N815"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

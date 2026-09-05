@@ -298,6 +298,8 @@ class SonarBridge(QObject):
     errorRaised = Signal(str, str)
     noticeRaised = Signal(str, bool)  # (metin, hata mı)
     graphRebuilt = Signal()
+    #: Dil değişti — `app.py` bunu çeviri nesnesine ve `ui.json`'a bağlıyor.
+    languageChanged = Signal(str)
 
     def __init__(
         self,
@@ -366,7 +368,12 @@ class SonarBridge(QObject):
 
     def apply_state(self, state: dict) -> None:
         """Tam durumu uygular. Açılışta ve `GraphRebuilt` sonrasında çağrılır."""
+        previous = self._settings().get("language")
         self._state = state
+        language = self._settings().get("language")
+        # Dil `sonar-cli lang` ile de değişebiliyor; arayüz daemon'ı takip etsin.
+        if language and language != previous:
+            self.languageChanged.emit(str(language))
         self._refresh_models()
         self._bump()
         self.stateChanged.emit()
@@ -552,6 +559,35 @@ class SonarBridge(QObject):
         return output_bus_id(self._state.get("config") or {})
 
     outputBusId = Property(str, _get_output_bus_id, notify=mastersChanged)
+
+    def _settings(self) -> dict:
+        return (self._state.get("config") or {}).get("settings") or {}
+
+    def _get_language(self) -> str:
+        return str(self._settings().get("language") or "tr")
+
+    language = Property(str, _get_language, notify=stateChanged)
+
+    @Slot(str)
+    def setLanguage(self, code: str) -> None:
+        """Dili daemon'a yazar ve arayüzü hemen çevirir.
+
+        Arayüz daemon'ın yanıtını beklemiyor: `languageChanged` burada yayılıyor, çünkü
+        daemon kapalıyken de (karşılama ekranı, "servis çalışmıyor" paneli) dil seçici
+        çalışmalı. Daemon açıksa `apply_state` aynı değeri geri getirir ve ikinci bir
+        yayım olmaz.
+        """
+        self._call("SetLanguage", code)
+        self.languageChanged.emit(code)
+
+    def _get_provisioned(self) -> bool:
+        """Sanal kanallar kuruldu mu. Daemon'a bağlı değilken `True` sayılır —
+        bilinmeyen bir durumda karşılama ekranını açmak yanlış olurdu."""
+        if not self._connected:
+            return True
+        return bool(self._settings().get("provisioned", True))
+
+    provisioned = Property(bool, _get_provisioned, notify=stateChanged)
 
     def _get_conflicts(self) -> list:
         return self._state.get("conflicts", [])

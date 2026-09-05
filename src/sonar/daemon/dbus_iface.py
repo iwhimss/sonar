@@ -321,6 +321,11 @@ class SonarDBusInterface(QObject):
         """Donanım ChatMix tekerinin yönünü ters çevirir."""
         return reply(lambda: self.api.set_chatmix_invert(enabled))
 
+    @Slot(str, result=str)
+    def SetLanguage(self, code: str) -> str:
+        """Arayüz ve mesaj dili (`tr` / `en`). Grafa dokunmaz."""
+        return reply(lambda: self.api.set_language(code))
+
     @Slot(result=str)
     def StreamSetup(self) -> str:
         """Yayın kurulumunun canlı tanısı — OBS ne dinliyor, mikrofon yayında mı."""

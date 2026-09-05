@@ -1107,3 +1107,25 @@ def test_an_unknown_band_index_is_rejected(api):
 def test_added_band_frequency_is_clamped(api):
     index = api.add_eq_band("game", 5.0)
     assert api.profile("game").eq.bands[index].freq == pytest.approx(31.25)
+
+
+# --------------------------------------------------------------------------- dil
+
+
+def test_set_language_persists_and_does_not_touch_the_graph(api):
+    """Dil değişimi grafı yeniden kurmamalı — kurarsa OBS'teki seçili aygıt kaybolur."""
+    from sonar.core import i18n
+
+    before = list(api.supervisor.kinds)
+    try:
+        assert api.set_language("en") == "en"
+        assert api.config.settings.language == "en"
+        assert i18n.language() == "en"
+        assert api.supervisor.kinds == before, "dil değişimi grafa dokunmamalı"
+    finally:
+        api.set_language("tr")
+
+
+def test_unknown_language_falls_back_to_the_default(api):
+    assert api.set_language("de") == "tr"
+    assert api.config.settings.language == "tr"

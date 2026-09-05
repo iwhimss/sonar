@@ -47,7 +47,7 @@ __all__ = [
     "default_profile",
 ]
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 #: Varsayılan EQ bandlarının yayıldığı aralık. 31.25 Hz – 16 kHz tam 9 oktav olduğu için
 #: 10 bandda tam oktav aralıklı klasik grafik ekolayzer frekansları çıkar.
@@ -473,6 +473,19 @@ class Settings:
     #: yolu yok. Ters geliyorsa tek anahtarla düzeliyor; tahmin edip yanlış yapmaktansa
     #: kullanıcının bir kez söylemesi daha iyi.
     chatmix_invert: bool = False
+    #: Arayüz dili. `sonar.core.i18n.LANGUAGES` içindeki kodlardan biri.
+    #:
+    #: Yalnızca **gösterilen** metinleri etkiler. Kanal ve bus adları (dolayısıyla
+    #: PipeWire cihaz açıklamaları) kullanıcı verisidir ve dile göre değişmez —
+    #: değişseydi OBS'te seçili aygıt her dil değişiminde kaybolurdu.
+    language: str = "tr"
+    #: Sanal kanallar kuruldu mu.
+    #:
+    #: `False` iken daemon D-Bus'ta ayakta durur ama PipeWire'a **hiç** dokunmaz:
+    #: graf kurulmaz, varsayılan çıkış devralınmaz, ChatMix tekeri okunmaz. Kurulum
+    #: kullanıcının karşılama ekranındaki düğmesine basmasıyla olur (`api.provision`).
+    #: Kaldırıcı bunu `False`'a döndürerek sistemi Sonar hiç kurulmamış hâle getirir.
+    provisioned: bool = False
 
 
 # --------------------------------------------------------------------------- kök

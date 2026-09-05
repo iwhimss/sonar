@@ -60,7 +60,7 @@ from collections.abc import Callable
 from typing import Any
 
 from sonar.core import config as config_mod
-from sonar.core import importers, presets, serde
+from sonar.core import i18n, importers, presets, serde
 from sonar.core.dsp import registry
 from sonar.core.model import (
     DEFAULT_FILTER_PARAMS,
@@ -144,6 +144,8 @@ class SonarApi:
         self.on_rebuild = on_rebuild
 
         self.config: SonarConfig = store.load()
+        # Hata mesajları daemon'da üretiliyor; kullanıcının dili burada da geçerli olmalı.
+        i18n.set_language(self.config.settings.language)
         store.ensure_default_profiles(self.config)
         #: Bellekte tutulan **çalışılan** profiller. Kullanıcı EQ'yu kurcaladığında burada
         #: değişir; diske yazım gecikmeli, grafa yazım anında.
@@ -1069,6 +1071,18 @@ class SonarApi:
         """
         self.config.settings.chatmix_invert = bool(enabled)
         self._touch_config({"kind": "chatmix_invert", "enabled": bool(enabled)})
+
+    def set_language(self, code: str) -> str:
+        """Arayüz ve mesaj dilini değiştirir.
+
+        Daemon'ın kendi mesajları da bu dile geçer (hata metinleri burada üretiliyor).
+        Grafa dokunmaz: cihaz adları yapılandırmadan geliyor ve dile bağlı değil — dil
+        değiştirmek OBS'teki seçili aygıtı bozmaz.
+        """
+        normalized = i18n.set_language(code)
+        self.config.settings.language = normalized
+        self._touch_config({"kind": "language", "code": normalized})
+        return normalized
 
     def set_chatmix_config(self, enabled: bool, left: str, right: str) -> None:
         """`left`/`right` virgülle birden fazla kanal alabilir ("chat,media")."""

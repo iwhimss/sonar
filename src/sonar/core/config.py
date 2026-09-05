@@ -176,9 +176,21 @@ class ConfigStore:
             self._migrate_ducking(raw, config)
         if config.schema_version < 5:
             self._migrate_mic_stream_send(config)
+        if config.schema_version < 6:
+            self._migrate_provisioned(config)
         if config.schema_version != SCHEMA_VERSION:
             config.schema_version = SCHEMA_VERSION
         return config
+
+    def _migrate_provisioned(self, config: SonarConfig) -> None:
+        """Şema 5 → 6: mevcut kurulumlar "kurulu" sayılır.
+
+        `provisioned` varsayılanı `False` — yeni kullanıcı karşılama ekranını görsün diye.
+        Ama diskte bir `config.toml` varsa o kullanıcının grafı bugün **zaten ayakta**;
+        ona kurulum ekranı göstermek kanallarını sessizce söktürürdü. Dosyanın varlığı
+        kurulumun kanıtıdır: bu göç yalnızca okunmuş bir dosya üzerinde çalışıyor.
+        """
+        config.settings.provisioned = True
 
     def _migrate_mic_stream_send(self, config: SonarConfig) -> None:
         """Şema 4 → 5: mikrofon yayın miksine katılır.

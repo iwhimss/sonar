@@ -17,6 +17,8 @@ from typing import Any
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtDBus import QDBus, QDBusConnection, QDBusInterface
 
+from sonar.core import config as config_mod
+from sonar.core import i18n
 from sonar.daemon.dbus_iface import BUS_NAME, INTERFACE, OBJECT_PATH
 
 __all__ = ["main"]
@@ -309,6 +311,19 @@ def _cmd_chatmix(client: Client, args) -> int:
         raise SystemExit("bir değer (0-100) veya --invert on|off verin")
     client.call("SetChatMix", float(args.value))
     print(f"ChatMix: {args.value}")
+    return 0
+
+
+def _cmd_lang(client: Client, args) -> int:
+    if not args.code:
+        current = i18n.language()
+        for entry in i18n.available():
+            mark = "→" if entry["code"] == current else " "
+            print(f"{mark} {entry['code']}  {entry['label']}")
+        return 0
+    code = client.call("SetLanguage", args.code)
+    i18n.set_language(code or args.code)
+    print(i18n.t("cli.lang.set", label=i18n.LANGUAGES.get(i18n.language(), "?")))
     return 0
 
 
@@ -623,6 +638,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("what", choices=["stream", "sidetone"])
     p.add_argument("state", choices=["on", "off"])
 
+    p = sub.add_parser("lang", help="arayüz dili (tr/en) — argümansız listeler")
+    p.add_argument("code", nargs="?", choices=sorted(i18n.LANGUAGES))
+
     sub.add_parser("reload", help="config.toml'u diskten yeniden oku")
     return parser
 
@@ -639,6 +657,7 @@ _COMMANDS = {
     "rules": _cmd_rules,
     "move": _cmd_move,
     "chatmix": _cmd_chatmix,
+    "lang": _cmd_lang,
     "devices": _cmd_devices,
     "device": _cmd_device,
     "obs": _cmd_obs,
@@ -657,6 +676,9 @@ _COMMANDS = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Dil, daemon'a bağlanmadan **önce** ayarlanmalı: `--help` ve bağlantı hatası
+    # metinleri de kullanıcının dilinde çıksın.
+    i18n.set_language(config_mod.ConfigStore().load(create_missing=False).settings.language)
     args = build_parser().parse_args(argv)
     return _COMMANDS[args.command](Client(), args)
 

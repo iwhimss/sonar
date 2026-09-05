@@ -1,5 +1,6 @@
 module ui
 singleton Theme 1.0 Theme.qml
+singleton I18n 1.0 I18n.qml
 SonarPanel 1.0 SonarPanel.qml
 SonarButton 1.0 SonarButton.qml
 SonarIconButton 1.0 SonarIconButton.qml
