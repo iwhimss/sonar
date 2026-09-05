@@ -18,6 +18,11 @@ Window {
     title: "Sonar"
 
     property string currentTab: "mixer"
+    /* Karşılama akışı iki yoldan açılıyor: kanallar hiç kurulmamışsa kendiliğinden,
+       ayarlardan istenirse "gözden geçirme" kipinde (son sayfada kur yerine kapat). */
+    property bool welcomeForced: false
+    readonly property bool showWelcome:
+        bridge.connected && (!bridge.provisioned || window.welcomeForced)
 
     /* Klavye: 1–9 sekmeler, Esc mikser'e döner. Fader'lar ok tuşlarıyla sürülüyor
        (bkz. SonarFader). */
@@ -76,6 +81,8 @@ Window {
             anchors.left: parent.left
             anchors.leftMargin: Theme.s6
             anchors.bottom: parent.bottom
+            // Kurulum bitmeden sekmelerin bir anlamı yok: arkasında kanal yok.
+            visible: !window.showWelcome
             current: window.currentTab
             tabs: window.tabList()
             onSelected: (key) => window.currentTab = key
@@ -91,12 +98,20 @@ Window {
             anchors.topMargin: Theme.s3
             icon: "gear"
             accent: Theme.master
+            visible: !window.showWelcome
             onClicked: settingsDialog.open()
         }
     }
 
     SettingsDialog {
         id: settingsDialog
+        bridge: bridge
+        onWelcomeRequested: window.welcomeForced = true
+        onUninstallRequested: uninstallDialog.open()
+    }
+
+    UninstallDialog {
+        id: uninstallDialog
         bridge: bridge
     }
 
@@ -207,9 +222,22 @@ Window {
 
         /* Mikser kendi içinde yatay kaydırılıyor ve şeritler pencere yüksekliğine
            uyuyor; bu yüzden dikey kaydırmaya ihtiyacı yok. */
+        /* Karşılama akışı. Kanallar kurulmadan mikseri göstermek boş şeritler
+           demekti; kullanıcı da "kod girmeden" kurabilsin diye buradan geçiyor. */
+        Welcome {
+            anchors.fill: parent
+            visible: window.showWelcome
+            bridge: window.bridgeRef()
+            review: bridge.provisioned
+            onFinished: {
+                window.welcomeForced = false
+                window.currentTab = "mixer"
+            }
+        }
+
         Mixer {
             anchors.fill: parent
-            visible: bridge.connected && window.currentTab === "mixer"
+            visible: bridge.connected && !window.showWelcome && window.currentTab === "mixer"
             bridge: window.bridgeRef()
             onOpenFx: (id) => window.currentTab = id
         }
@@ -218,7 +246,7 @@ Window {
            panelleri ezmek yerine sayfayı kaydırıyoruz. */
         C.ScrollView {
             anchors.fill: parent
-            visible: bridge.connected && window.currentTab !== "mixer"
+            visible: bridge.connected && !window.showWelcome && window.currentTab !== "mixer"
             clip: true
             contentWidth: availableWidth
             C.ScrollBar.horizontal.policy: C.ScrollBar.AlwaysOff
@@ -234,7 +262,7 @@ Window {
         SonarPanel {
             anchors.centerIn: parent
             width: 460
-            height: 150
+            height: 176
             visible: !bridge.connected
             Column {
                 anchors.centerIn: parent
@@ -247,11 +275,19 @@ Window {
                     renderType: Text.NativeRendering
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
+                /* Kullanıcının şikâyeti: "uygulama açılırken farklı kodlar vs. girmek
+                   gerekiyor". Artık düğme var; komut yalnızca yedek olarak duruyor. */
+                SonarButton {
+                    text: I18n.t("daemon.start")
+                    variant: "accent"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    onClicked: bridge.startDaemon()
+                }
                 Text {
                     text: "systemctl --user start sonar-daemon"
-                    color: Theme.textDim
+                    color: Theme.textFaint
                     font.family: "monospace"
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.fontSmall
                     renderType: Text.NativeRendering
                     anchors.horizontalCenter: parent.horizontalCenter
                 }

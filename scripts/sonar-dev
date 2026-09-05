@@ -6,7 +6,10 @@
 #   ./scripts/sonar-dev status   durum
 #   ./scripts/sonar-dev stop     her şeyi durdur
 #   ./scripts/sonar-dev cli ...  sonar-cli'ye komut geçir
-#   ./scripts/sonar-dev reset    her şeyi bırak: grafı söker, sesi eski hâline döndürür
+#   ./scripts/sonar-dev reset    sanal kanalları kaldır (ayarlar diskte kalır)
+#
+# Daemon artık açılışta kanal **kurmuyor**: kurulum arayüzdeki karşılama ekranından
+# veya `sonar-dev cli install` ile yapılıyor.
 #
 # Ayarlar ~/.config/sonar altında tutulur; kurulu sürümle aynı yeri kullanır.
 set -euo pipefail
@@ -72,10 +75,13 @@ stop)
     echo "kalan sonar node: $left"
     ;;
 reset)
-    # Sonar'ı bırakırken: graf sökülür, varsayılan cihaz geri verilir, kalan bir şey
-    # olup olmadığı doğrulanır. Daemon SIGTERM'de zaten `take_over_default_sink`
-    # devrini geri alıyor; buradaki iş onu doğrulamak ve kullanıcıya ne kaldığını
-    # göstermek.
+    # Kaldırma tek yoldan geçiyor: `sonar-cli uninstall` → daemon'ın `Deprovision`ı.
+    # İki ayrı sökme yolu tutmak, birinin diğerinden sapması demekti.
+    if [ -n "$(daemon_pids)" ]; then
+        "$PY" -m sonar.cli uninstall || true
+    else
+        echo "daemon çalışmıyor — yalnızca kalan node'lar kontrol edilecek"
+    fi
     "$0" stop          # kalan node sayısını kendisi basıyor
     sleep 1
     left="$(pw-dump 2>/dev/null | grep -c '"node.name": "sonar_' || true)"
@@ -91,7 +97,7 @@ reset)
     echo "    systemctl --user start easyeffects    (veya uygulamayı aç)"
     echo
     echo "Ayarların duruyor: ~/.config/sonar/"
-    echo "Geri dönmek için:  ./scripts/sonar-dev start"
+    echo "Geri dönmek için:  ./scripts/sonar-dev start && ./scripts/sonar-dev cli install"
     ;;
 *)
     grep '^#' "$0" | sed -n '2,12p' | cut -c3-

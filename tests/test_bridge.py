@@ -660,3 +660,56 @@ def test_desktop_capturers_are_listed_but_flagged():
     assert [(r["label"], r["capturesSink"], r["channel"]) for r in rows] == [
         ("OBS", True, "stream")
     ]
+
+
+# --------------------------------------------------------------------------- kurulum
+
+
+def test_provisioned_defaults_to_true_while_disconnected(qt_app):
+    """Daemon'a bağlı değilken karşılama ekranı açılmamalı.
+
+    Bilinmeyen bir durumda "kurulu değil" varsaymak, bağlantı kopan bir kullanıcıya
+    kurulum sihirbazı göstermek demekti.
+    """
+    obj = SonarBridge(FakeClient(make_state()))
+    assert obj.provisioned is True
+
+
+def test_provisioned_follows_the_daemon(bridge):
+    bridge._set_connected(True)
+    assert bridge.provisioned is False, "varsayılan yapılandırma henüz kurulmamış"
+
+    state = make_state()
+    state["config"]["settings"]["provisioned"] = True
+    bridge.apply_state(state)
+
+    assert bridge.provisioned is True
+
+
+def test_provision_is_deferred_so_the_ui_can_paint_first(bridge, qt_app):
+    """Çağrı bloke ediyor; düğmeye basınca ekranın donmaması için sonraki tura atılıyor."""
+    bridge._client.calls.clear()
+
+    bridge.provision()
+
+    assert bridge.busy is True
+    assert not any(call[0] == "Provision" for call in bridge._client.calls)
+    qt_app.processEvents()
+    import time
+
+    time.sleep(0.1)
+    qt_app.processEvents()
+    assert any(call[0] == "Provision" for call in bridge._client.calls)
+    assert bridge.busy is False
+
+
+def test_deprovision_passes_the_purge_flag(bridge, qt_app):
+    import time
+
+    bridge._client.calls.clear()
+    bridge.deprovision(True)
+    qt_app.processEvents()
+    time.sleep(0.1)
+    qt_app.processEvents()
+
+    assert ("Deprovision", (True,)) in bridge._client.calls

@@ -1129,3 +1129,81 @@ def test_set_language_persists_and_does_not_touch_the_graph(api):
 def test_unknown_language_falls_back_to_the_default(api):
     assert api.set_language("de") == "tr"
     assert api.config.settings.language == "tr"
+
+
+# --------------------------------------------------------------------------- kurulum
+
+
+def test_start_does_not_touch_pipewire_before_provisioning(api):
+    """Kurulmamış bir sistemde daemon PipeWire'a hiç dokunmamalı.
+
+    Eskiden kurulum diye bir adım yoktu: daemon açılır açılmaz dört kanal kuruluyordu.
+    Artık kullanıcı karşılama ekranındaki düğmeye basana kadar graf boş kalıyor.
+    """
+    assert api.config.settings.provisioned is False
+
+    api.start()
+
+    assert "monitor" in api.supervisor.kinds, "graf yine de izlenmeli (cihaz listesi için)"
+    assert "reconcile" not in api.supervisor.kinds
+    assert "takeover" not in api.supervisor.kinds
+
+
+def test_start_builds_the_graph_once_provisioned(api):
+    api.config.settings.provisioned = True
+
+    api.start()
+
+    assert "reconcile" in api.supervisor.kinds
+    assert "takeover" in api.supervisor.kinds
+
+
+def test_provision_builds_the_graph_and_reports_what_it_made(api):
+    summary = api.provision()
+
+    assert api.config.settings.provisioned is True
+    assert "reconcile" in api.supervisor.kinds
+    # Özet yapılandırmadan okunuyor, sabit metin değil.
+    assert [c["id"] for c in summary["channels"]] == ["game", "chat", "media", "aux"]
+    assert "Sonar Stream Mix" in [b["device"] for b in summary["buses"]]
+    # Kurulum diske de yazılmalı: daemon yeniden başlayınca kanallar geri gelsin.
+    assert api.store.load().settings.provisioned is True
+
+
+def test_deprovision_tears_everything_down_but_keeps_settings(api):
+    api.provision()
+    api.store.paths.graph_conf.parent.mkdir(parents=True, exist_ok=True)
+    api.store.paths.graph_conf.write_text("x", encoding="utf-8")
+
+    result = api.deprovision()
+
+    assert api.config.settings.provisioned is False
+    assert "stop" in api.supervisor.kinds
+    assert not api.store.paths.graph_conf.exists()
+    assert result["purged"] is False
+    assert api.store.paths.config_file.exists(), "ayarlar varsayılan olarak korunur"
+    # Root'a ait işleri daemon yapmaz, söyler.
+    assert any("udev" in step["command"] for step in result["manual_steps"])
+
+
+def test_deprovision_with_purge_deletes_the_config_directory(api):
+    api.provision()
+
+    result = api.deprovision(purge_settings=True)
+
+    assert result["purged"] is True
+    assert not api.store.paths.config_dir.exists()
+    assert api.config.settings.provisioned is False
+
+
+def test_provisioning_again_after_removal_works(api):
+    """Kaldır → kur yolu çalışmalı: `supervisor.stop()` izleyiciyi de durduruyor."""
+    api.provision()
+    api.deprovision()
+    api.supervisor.calls.clear()
+
+    api.provision()
+
+    assert api.supervisor.kinds.count("monitor") == 1
+    assert "reconcile" in api.supervisor.kinds
+    assert api.config.settings.provisioned is True

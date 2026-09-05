@@ -309,6 +309,9 @@ class SonarBridge(QObject):
     graphRebuilt = Signal()
     #: Dil değişti — `app.py` bunu çeviri nesnesine ve `ui.json`'a bağlıyor.
     languageChanged = Signal(str)
+    #: Kurulum bitti: `(başarılı mı, mesaj)`. Karşılama ekranı bunu dinliyor.
+    provisionFinished = Signal(bool, str)
+    busyChanged = Signal()
 
     def __init__(
         self,
@@ -338,6 +341,11 @@ class SonarBridge(QObject):
         #: onlarca çağrı demek olurdu. Yarım saniyelik pencere tanı için fazlasıyla taze.
         self._setup: dict = {}
         self._setup_at = 0.0
+        #: Kurulum/kaldırma sürüyor. D-Bus çağrısı bloke ediyor; arayüz önce "kuruluyor…"
+        #: yazabilsin diye iş bir sonraki olay döngüsü turuna atılıyor.
+        self._busy = False
+        #: Kaldırmadan sonra kullanıcıya gösterilecek, root gerektiren adımlar.
+        self._manual_steps: list = []
 
         self._reconnect = QTimer(self)
         self._reconnect.setInterval(RECONNECT_MS)
@@ -598,6 +606,101 @@ class SonarBridge(QObject):
         # yeniden kurulmazsa sekme başlıkları eski dilde kalırdı.
         self._refresh_models()
         self._bump()
+
+    @Slot()
+    def startDaemon(self) -> None:
+        """Daemon'ı başlatmayı dener: önce D-Bus etkinleştirmesi, sonra doğrudan süreç.
+
+        Kullanıcının şikâyeti: *"uygulama açılırken farklı kodlar vs. girmek gerekiyor."*
+        Kurulu bir sistemde otobüs daemon'ı kendisi kaldırıyor; depodan çalıştırmada
+        (servis dosyası yok) süreci burada başlatıyoruz.
+        """
+        import subprocess
+        import sys
+
+        starter = getattr(self._client, "start_service", None)
+        if starter is not None and starter():
+            self._try_connect()
+            if self._connected:
+                return
+        command = [sys.executable, "-m", "sonar.daemon.service"]
+        try:
+            subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as error:
+            self.noticeRaised.emit(i18n.t("daemon.start_failed", error=error), True)
+            return
+        # Graf ilk kurulumda birkaç saniye sürüyor; yoklama zamanlayıcısı zaten dönüyor.
+        self.noticeRaised.emit(i18n.t("daemon.starting"), False)
+        self._reconnect.start()
+
+    def _get_busy(self) -> bool:
+        return self._busy
+
+    busy = Property(bool, _get_busy, notify=busyChanged)
+
+    def _set_busy(self, value: bool) -> None:
+        if self._busy != value:
+            self._busy = value
+            self.busyChanged.emit()
+
+    @Slot(result="QVariant")
+    def setupSummary(self) -> dict:
+        """Kurulacak (veya kurulmuş) sanal cihazların listesi."""
+        return self._call("SetupSummary") or {}
+
+    @Slot()
+    def provision(self) -> None:
+        """Sanal kanalları kurar.
+
+        Çağrı bloke ediyor (graf ilk kez ayağa kalkıyor, ~1 sn). Arayüzün "kuruluyor…"
+        yazabilmesi için iş bir sonraki olay döngüsü turuna atılıyor; aksi hâlde kullanıcı
+        düğmeye basıyor ve ekran donuk kalıyor.
+        """
+        if self._busy:
+            return
+        self._set_busy(True)
+        QTimer.singleShot(50, self._provision_now)
+
+    def _provision_now(self) -> None:
+        try:
+            result = self._call("Provision")
+        finally:
+            self._set_busy(False)
+        if result is None:
+            # Hata zaten `errorRaised`/log ile bildirildi; ekran tekrar denemeye izin verir.
+            self.provisionFinished.emit(False, i18n.t("welcome.install_failed"))
+            return
+        self.refresh()
+        self.provisionFinished.emit(True, "")
+
+    @Slot(bool)
+    def deprovision(self, purge_settings: bool) -> None:
+        """Sanal kanalları söker. Sonuçtaki elle yapılacak adımlar bildirim olarak çıkar."""
+        if self._busy:
+            return
+        self._set_busy(True)
+        QTimer.singleShot(50, lambda: self._deprovision_now(bool(purge_settings)))
+
+    def _deprovision_now(self, purge_settings: bool) -> None:
+        try:
+            result = self._call("Deprovision", purge_settings)
+        finally:
+            self._set_busy(False)
+        self.refresh()
+        if result is None:
+            return
+        self._manual_steps = result.get("manual_steps") or []
+        self.noticeRaised.emit(i18n.t("uninstall.done"), False)
+
+    @Slot(result="QVariant")
+    def manualSteps(self) -> list:
+        """Kaldırmadan sonra elle yapılacaklar. Root'a ait işleri daemon yapmıyor."""
+        return self._manual_steps
 
     def _get_take_over_default_sink(self) -> bool:
         return bool(self._settings().get("take_over_default_sink", False))

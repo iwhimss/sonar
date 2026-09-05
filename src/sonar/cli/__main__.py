@@ -81,6 +81,11 @@ def _send_of(channel: dict, bus_id: str) -> dict:
 
 def _print_status(state: dict) -> None:
     config = state["config"]
+    if not state.get("provisioned", True):
+        # Kurulmamış bir sistemde tabloyu basmak yanıltıcı olurdu: yapılandırma var ama
+        # PipeWire'da hiçbir node yok.
+        print(i18n.t("cli.not_provisioned"))
+        print()
     channels = sorted(config["channels"], key=lambda c: (c["order"], c["id"]))
     streams = state["streams"]
 
@@ -149,7 +154,7 @@ def _print_status(state: dict) -> None:
             target = stream.get("channel") or stream["target_node"] or i18n.t("cli.unrouted")
             print(f"  #{stream['id']:<6} {label:<24} ← {target}")
 
-    if not state["graph_ready"]:
+    if state.get("provisioned", True) and not state["graph_ready"]:
         print("\n⚠ " + i18n.t("cli.graph_not_ready"))
     for conflict in state.get("conflicts", []):
         print(f"\n⚠ {conflict['message']}")
@@ -343,6 +348,30 @@ def _cmd_chatmix(client: Client, args) -> int:
         raise SystemExit(i18n.t("cli.chatmix_usage"))
     client.call("SetChatMix", float(args.value))
     print(f"ChatMix: {args.value}")
+    return 0
+
+
+def _cmd_install(client: Client, args) -> int:
+    """Sanal kanalları kurar — karşılama ekranındaki düğmenin terminal karşılığı."""
+    summary = client.call("Provision")
+    print(i18n.t("cli.installed"))
+    for bus in summary["buses"]:
+        print(f"  · {bus['device']}")
+    for channel in summary["channels"]:
+        print(f"  · {channel['device']}")
+    for mic in summary["mics"]:
+        print(f"  · {mic['device']}")
+    return 0
+
+
+def _cmd_uninstall(client: Client, args) -> int:
+    result = client.call("Deprovision", bool(args.purge))
+    print(i18n.t("cli.uninstalled"))
+    if args.purge:
+        print(i18n.t("cli.purged" if result["purged"] else "cli.purge_failed"))
+    print("\n" + i18n.t("cli.manual_steps"))
+    for step in result["manual_steps"]:
+        print(f"  {step['note']}:\n    {step['command']}")
     return 0
 
 
@@ -674,6 +703,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("what", choices=["stream", "sidetone"])
     p.add_argument("state", choices=["on", "off"])
 
+    sub.add_parser("install", help=i18n.t("cli.help.install"))
+    p = sub.add_parser("uninstall", help=i18n.t("cli.help.uninstall"))
+    p.add_argument("--purge", action="store_true", help=i18n.t("cli.help.purge"))
+
     p = sub.add_parser("lang", help=i18n.t("cli.help.lang"))
     p.add_argument("code", nargs="?", choices=sorted(i18n.LANGUAGES))
 
@@ -693,6 +726,8 @@ _COMMANDS = {
     "rules": _cmd_rules,
     "move": _cmd_move,
     "chatmix": _cmd_chatmix,
+    "install": _cmd_install,
+    "uninstall": _cmd_uninstall,
     "lang": _cmd_lang,
     "devices": _cmd_devices,
     "device": _cmd_device,

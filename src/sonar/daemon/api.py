@@ -53,7 +53,9 @@ veriliyor.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -78,6 +80,7 @@ from sonar.core.model import (
     SonarConfig,
     StreamDirection,
     default_band_q,
+    default_config,
     default_profile,
     slugify,
 )
@@ -184,11 +187,24 @@ class SonarApi:
     # ------------------------------------------------------------------ yaşam döngüsü
 
     def start(self) -> None:
-        """Grafı kurar ve mevcut yapılandırmayı uygular."""
-        if self.config.settings.chatmix_source != "software":
-            self.chatmix_reader.start()
+        """Daemon ayağa kalkıyor.
+
+        Sanal kanallar **kurulu değilse** PipeWire'a hiç dokunulmaz: graf kurulmaz,
+        varsayılan çıkış devralınmaz, kulaklık tekeri okunmaz. Daemon yalnızca D-Bus'ta
+        durur ve arayüzün karşılama ekranını beklemesi için grafı **izler** (izleme
+        salt okunur; cihaz listesi kurulum ekranında da lazım).
+
+        Eskiden kurulum diye bir adım yoktu: daemon açılır açılmaz `default_config()`
+        yazılıp dört kanal PipeWire'a kuruluyordu. Kullanıcının onayı hiçbir yerde
+        sorulmuyordu.
+        """
         self.supervisor.start_monitor()
         self.supervisor.monitor.wait_ready(timeout=5.0)
+        if not self.config.settings.provisioned:
+            log.info("sanal kanallar kurulu değil — PipeWire'a dokunulmuyor")
+            return
+        if self.config.settings.chatmix_source != "software":
+            self.chatmix_reader.start()
         self.supervisor.reconcile(self.config)
         self.supervisor.take_over_default_sink(self.config)
 
@@ -197,6 +213,94 @@ class SonarApi:
         self.flush_save()
         self.meters.stop()
         self.supervisor.stop()
+
+    # ------------------------------------------------------------------ kurulum
+
+    def provision(self) -> dict:
+        """Sanal kanalları kurar. Karşılama ekranındaki düğmenin arkasındaki iş.
+
+        Dönen özet **yapılandırmadan** okunuyor, sabit metin değil: arayüz "şunlar
+        oluşturuldu" derken gerçekten oluşturulanı gösteriyor.
+        """
+        self.config.settings.provisioned = True
+        self.supervisor.start_monitor()  # kaldırma sonrası izleyici durmuş olabilir
+        self.supervisor.monitor.wait_ready(timeout=5.0)
+        if self.config.settings.chatmix_source != "software":
+            self.chatmix_reader.start()
+        self._structural({"kind": "provisioned", "enabled": True})
+        self.supervisor.take_over_default_sink(self.config)
+        return self.setup_summary()
+
+    def setup_summary(self) -> dict:
+        """Kurulacak (veya kurulmuş) sanal cihazların listesi.
+
+        Karşılama ekranının "ne kurulacak" sayfası bunu gösteriyor; kurulumdan önce de
+        çağrılabilir, çünkü yalnızca yapılandırmayı okuyor.
+        """
+        return {
+            "provisioned": bool(self.config.settings.provisioned),
+            "channels": [
+                {"id": c.id, "name": c.name, "device": f"Sonar {c.name}", "color": c.color}
+                for c in sorted(self.config.channels, key=lambda c: (c.order, c.id))
+            ],
+            "buses": [
+                {"id": b.id, "name": b.name, "device": f"Sonar {b.name}", "stream": b.is_stream}
+                for b in sorted(self.config.buses, key=lambda b: (b.order, b.id))
+            ],
+            "mics": [
+                {"id": m.id, "name": m.name, "device": f"Sonar {m.name}"}
+                for m in sorted(self.config.mic_chains, key=lambda m: (m.order, m.id))
+            ],
+        }
+
+    def deprovision(self, purge_settings: bool = False) -> dict:
+        """Sanal kanalları söker; sistem Sonar hiç kurulmamış gibi kalır.
+
+        Graf süreci öldürülür, varsayılan ses cihazı kullanıcıya geri verilir ve
+        uygulamalar doğrudan fiziksel cihazlara çalmaya döner. `purge_settings` verilirse
+        yapılandırma dizini de silinir.
+
+        Kalan işler (udev kuralı, systemd unit, paketin kendisi) root'a ait; daemon onlara
+        dokunmaz, yalnızca **söyler**.
+        """
+        self.chatmix_reader.stop()
+        self.meters.stop()
+        self.supervisor.stop(restore_default_sink=True)
+        with contextlib.suppress(OSError):
+            self.store.paths.graph_conf.unlink(missing_ok=True)
+
+        self.config.settings.provisioned = False
+        purged = False
+        if purge_settings:
+            purged = self._purge_settings()
+        else:
+            self._dirty_config = True
+            self.flush_save()
+        self._emit({"kind": "provisioned", "enabled": False})
+        return {
+            "purged": purged,
+            "manual_steps": [
+                {"note": i18n.t("uninstall.step.udev"),
+                 "command": "sudo rm -f /etc/udev/rules.d/60-sonar-headset.rules"},
+                {"note": i18n.t("uninstall.step.service"),
+                 "command": "systemctl --user disable --now sonar-daemon"},
+                {"note": i18n.t("uninstall.step.package"),
+                 "command": "pip uninstall sonar-linux"},
+            ],
+        }
+
+    def _purge_settings(self) -> bool:
+        """Yapılandırma dizinini siler ve belleği sıfırlar."""
+        try:
+            shutil.rmtree(self.store.paths.config_dir)
+        except OSError as error:
+            log.error("yapılandırma dizini silinemedi: %s", error)
+            return False
+        self._dirty_config = False
+        self._dirty_profiles.clear()
+        self.config = default_config()
+        self.profiles = {}
+        return True
 
     # ------------------------------------------------------------------ okuma
 
@@ -218,6 +322,8 @@ class SonarApi:
             "streams": self.get_streams(),
             "devices": self.get_devices(),
             "graph_ready": bool(state.sonar_nodes()),
+            # Arayüz kurulu değilken mikser yerine karşılama ekranını çiziyor.
+            "provisioned": bool(self.config.settings.provisioned),
             "conflicts": self.conflicts(),
             # Arayüz fader'ın altında "ChatMix yönetiyor" rozetini buna bakarak gösteriyor:
             # gösterilen değer taban seviye, duyulan ise taban × bu çarpan.

@@ -214,7 +214,16 @@ def test_api_errors_become_a_clean_exit(cli):
     assert "unknown_channel" in str(excinfo.value)
 
 
+def test_status_says_when_nothing_is_installed_yet(cli, capsys):
+    """Kurulmamış bir sistemde "graf hazır değil" yanıltıcı: kurulacak bir şey yok."""
+    assert run(["status"]) == 0
+    out = capsys.readouterr().out
+    assert "Sanal kanallar kurulu değil" in out
+    assert "Graf henüz hazır değil" not in out
+
+
 def test_status_warns_when_the_graph_is_not_ready(cli, capsys):
+    cli.iface.api.config.settings.provisioned = True
     assert run(["status"]) == 0
     assert "Graf henüz hazır değil" in capsys.readouterr().out
 

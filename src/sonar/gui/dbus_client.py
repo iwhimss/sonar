@@ -35,6 +35,21 @@ class DBusClient(QObject):
     def available(self) -> bool:
         return self.bus.isConnected() and self.iface.isValid()
 
+    def start_service(self) -> bool:
+        """Daemon'ı D-Bus etkinleştirmesiyle başlatmayı dener.
+
+        `packaging/io.github.iwhimss.Sonar.service` kuruluysa otobüs daemon'ı kendisi
+        ayağa kaldırıyor; arayüzün tek yapması gereken istemek. Kullanıcının şikâyeti tam
+        buydu: *"uygulama açılırken farklı kodlar vs. girmek gerekiyor."*
+
+        Depodan çalıştırmada (servis dosyası kurulu değil) bu başarısız olur ve arayüz
+        "servisi başlat" düğmesini gösterir.
+        """
+        interface = self.bus.interface()
+        if interface is None:
+            return False
+        return bool(interface.startService(BUS_NAME).isValid())
+
     def call(self, method: str, *args: Any) -> Any:
         """Metodu çağırır ve JSON zarfını çözer. Hata durumunda yükseltir."""
         if not self.available:

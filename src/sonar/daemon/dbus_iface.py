@@ -321,6 +321,21 @@ class SonarDBusInterface(QObject):
         """Donanım ChatMix tekerinin yönünü ters çevirir."""
         return reply(lambda: self.api.set_chatmix_invert(enabled))
 
+    @Slot(result=str)
+    def Provision(self) -> str:
+        """Sanal kanalları kurar. **Yapısal**: graf ilk kez ayağa kalkar."""
+        return reply(self.api.provision)
+
+    @Slot(bool, result=str)
+    def Deprovision(self, purge_settings: bool) -> str:
+        """Sanal kanalları söker; sistem Sonar hiç kurulmamış gibi kalır."""
+        return reply(lambda: self.api.deprovision(purge_settings))
+
+    @Slot(result=str)
+    def SetupSummary(self) -> str:
+        """Kurulacak (veya kurulmuş) sanal cihazların listesi."""
+        return reply(self.api.setup_summary)
+
     @Slot(str, result=str)
     def SetLanguage(self, code: str) -> str:
         """Arayüz ve mesaj dili (`tr` / `en`). Grafa dokunmaz."""
