@@ -7,12 +7,20 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** — (test turu 8 bekleniyor)
+**Aktif faz:** Faz 11 — Paketleme (onay bekliyor)
 **Son güncelleme:** 2026-09-06
-**Sonraki adım:** Kullanıcı sekizinci test turunu yapacak. Ekrana bakmayı gerektiren
-maddeler `.plan/50-verify.md` içinde: ekolayzer alanları, filtre sıfırlama, profil
-pencereleri. ChatMix tekerinin yönü hâlâ kullanıcının bir kez çevirmesini bekliyor.
-Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
+**Sonraki adım:** **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`. Test turu 8 sorunsuz
+geçti; açık bir hata kalmadı.
+
+> **Test turu 8 (2026-09-06).** Kullanıcı hata bildirmedi. İki uzun süredir açık olan
+> doğrulama maddesi kapandı:
+> * **ChatMix donanım tekeri sorunsuz çalışıyor** — Faz 23'ten (test turu 2) beri açıktı.
+>   Protokol ve yön doğru; `chatmix_invert` kapalı kaldı, `--invert` gerekmedi.
+> * **Mikrofon zinciri kullanıldı** — kullanıcı `mic` zincirine gürültü kapısı ekledi ve
+>   birden fazla giriş kanalıyla denedi. Faz 10'dan beri "hiç test edilmedi" diye
+>   taşınıyordu.
+>
+> Ölçülmemiş kalan tek şey DeepFilterNet: kurulu ve listede, ama henüz eklenmedi.
 
 > **Test turu 7 (2026-09-06).** Bir istek (filtre başına sıfırlama) ve yedi hata.
 > Hataların çoğu **iki** ortak kökten çıktı: `SonarComboBox` bağladığı `currentValue`'ya
@@ -118,8 +126,8 @@ Sonra **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`.
 | 47 | [Hatalar görünür olsun](47-visible-errors.md) | 🟢 Tamamlandı |
 | 48 | [Dosya pencereleri](48-file-dialogs.md) | 🟢 Tamamlandı |
 | 49 | [Filtre başına sıfırlama](49-effect-reset.md) | 🟢 Tamamlandı |
-| 50 | [Yanlış alarm ve doğrulama](50-verify.md) | 🟡 Ekran testleri kullanıcıda |
-| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | ⚪ Bekliyor (test turu 7'den sonra) |
+| 50 | [Yanlış alarm ve doğrulama](50-verify.md) | 🟢 Tamamlandı |
+| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | 🟡 Sıradaki |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
@@ -365,7 +373,8 @@ kurala bağlandı, çünkü üçüne de birden fazla kez düşüldü.
   çağrısı ~10 ms. 3.4 saniyede 12 geçiş: **0 dropout, 0 tık**.
 * **ChatMix yayın miksini hiç bozmuyor.** Kulaklıkta doğru kanal ~40 dB kısılırken yayında
   her iki kanal da sabit -21.9 dB kalıyor.
-* **Donanım ChatMix tekeri okunamıyor:** Arctis 7+ tek USB cihaz olarak görünüyor (planın
+* **Donanım ChatMix tekeri** (bu madde Faz 23/35'te çözüldü, test turu 8'de kullanıcı
+  tarafından doğrulandı): Arctis 7+ tek USB cihaz olarak görünüyor (planın
   öngördüğü iki cihaz değil) ve teker HID'de, `/dev/hidraw*` root'a kapalı. Tespit ve udev
   kuralı hazır; protokol çözümü backlog'da.
 

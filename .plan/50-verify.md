@@ -1,6 +1,6 @@
 # Faz 50 — Yanlış alarm ve doğrulama
 
-**Durum:** 🟡 Ekran testleri kullanıcıda
+**Durum:** 🟢 Tamamlandı
 **Bağımlılık:** Faz 46–49
 
 ---
@@ -52,15 +52,18 @@ yazıyor.
 
 ---
 
-## Kullanıcının bakması gerekenler (test turu 8)
+## Kullanıcının ekran testleri (test turu 8) — 🟢 geçti
 
-- [ ] Ekolayzer: band değeri yaz + Enter → odak kalkmalı; başka banda geç → o bandın
-      değerleri görünmeli; Q'ya 0.707 yaz → 0.707 kalmalı; harf yazılamamalı
-- [ ] Band 1'in filtre tipini değiştir → band 2 kendi tipini göstermeli
-- [ ] Favorilerden profil seç → üstteki açılır liste de değişmeli
-- [ ] Var olan bir adla "Yeni profil" → kırmızı bildirim, pencere açık kalmalı
-- [ ] Dışa aktar → bildirimde tam yol; içe aktar → aynı klasör
-- [ ] Her efekt panelinde ↺ → ayarlar varsayılana dönmeli, ses kesilmemeli
-- [ ] Efekt ekle → "Ses yolu onarıldı" bildirimi **çıkmamalı**
-- [ ] **ChatMix tekerinin yönü** — hâlâ bekliyor
-- [ ] **Mikrofon zinciri** (DeepFilterNet, gate, sidetone) hâlâ hiç ölçülmedi
+- [x] Ekolayzer: band değerleri, filtre tipleri, Q — sorun bildirilmedi
+- [x] Favorilerden profil seçimi, profil pencereleri
+- [x] Filtre başına sıfırlama
+- [x] Efekt ekleme sonrası yanlış bildirim çıkmıyor
+- [x] **ChatMix donanım tekeri sorunsuz çalışıyor.** Faz 23'ten (test turu 2) beri açık
+      olan tek doğrulama maddesi kapandı: `decode_chatmix` protokolü doğru, yön doğru
+      (`chatmix_invert = false` kaldı), `--invert` gerekmedi.
+- [x] **Mikrofon zinciri kullanıldı.** Kullanıcı `mic` zincirine gürültü kapısı ekledi
+      (zincir: `eq → gate`) ve birden fazla giriş kanalıyla denedi; sorun bildirilmedi.
+      Faz 10'dan beri "hiç test edilmedi" diye taşınan madde kapandı.
+
+Geriye ölçülmemiş tek şey **DeepFilterNet**: eklenti kurulu ve listede görünüyor
+(`df`), ama kullanıcı henüz eklemedi.
