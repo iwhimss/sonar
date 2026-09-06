@@ -69,6 +69,44 @@ SonarDialog {
             }
         }
 
+        // --- oturum açılışı -------------------------------------------------
+        Column {
+            width: parent.width
+            spacing: Theme.s3
+            SonarSectionLabel { text: I18n.t("settings.autostart") }
+
+            SonarCheck {
+                width: parent.width
+                enabled: root.bridge ? root.bridge.autostartAvailable : false
+                opacity: enabled ? 1.0 : 0.45
+                checked: root.bridge ? root.bridge.autostartDaemon : false
+                text: I18n.t("settings.autostart.daemon")
+                hint: I18n.t("settings.autostart.daemon.hint")
+                onToggled: (value) => root.bridge.setAutostart(
+                    value, root.bridge.autostartGui)
+            }
+            SonarCheck {
+                width: parent.width
+                enabled: root.bridge ? root.bridge.autostartAvailable : false
+                opacity: enabled ? 1.0 : 0.45
+                checked: root.bridge ? root.bridge.autostartGui : false
+                text: I18n.t("settings.autostart.gui")
+                hint: I18n.t("settings.autostart.gui.hint")
+                onToggled: (value) => root.bridge.setAutostart(
+                    root.bridge.autostartDaemon, value)
+            }
+            Text {
+                width: parent.width
+                visible: root.bridge ? !root.bridge.autostartAvailable : false
+                wrapMode: Text.WordWrap
+                text: I18n.t("settings.autostart.unavailable")
+                color: Theme.warn
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSmall
+                renderType: Text.NativeRendering
+            }
+        }
+
         // --- kurulum --------------------------------------------------------
         Column {
             width: parent.width

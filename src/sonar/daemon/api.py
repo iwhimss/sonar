@@ -61,8 +61,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from sonar.core import autostart, i18n, importers, presets, serde
 from sonar.core import config as config_mod
-from sonar.core import i18n, importers, presets, serde
 from sonar.core.dsp import effects as dsp_effects
 from sonar.core.dsp import registry
 from sonar.core.dsp.chain import plan_chain
@@ -339,6 +339,7 @@ class SonarApi:
             "chatmix_gains": chatmix_gains(self.config),
             "headsets": self.headsets(),
             "chatmix_hardware": self.chatmix_is_hardware(),
+            "autostart": self.autostart(),
         }
 
     def diagnose(self) -> dict:
@@ -1303,6 +1304,43 @@ class SonarApi:
         """
         self.config.settings.chatmix_invert = bool(enabled)
         self._touch_config({"kind": "chatmix_invert", "enabled": bool(enabled)})
+
+    def autostart(self) -> dict:
+        """Otomatik başlatmanın **gerçek** durumu.
+
+        Ayarın kendisi yalnızca niyeti saklıyor; systemd ve dosya sistemi ayrışabilir
+        (kullanıcı `systemctl --user disable` diyebilir, paket kaldırılabilir). Arayüz bu
+        yüzden kaynağa bakıyor.
+        """
+        return {
+            "daemon": autostart.is_daemon_enabled(),
+            "gui": autostart.is_gui_enabled(),
+            #: Depodan çalıştırırken unit ve kısayol kurulu değil; arayüz kutucukları
+            #: pasifleştirip nedenini söyleyebilsin.
+            "available": autostart.is_available(),
+        }
+
+    def set_autostart(self, daemon: bool, gui: bool) -> dict:
+        """Oturum açılışında başlatmayı ayarlar ve **gerçekleşen** durumu döndürür."""
+        problems: list[str] = []
+        for enabled, apply in (
+            (bool(daemon), autostart.set_daemon_enabled),
+            (bool(gui), autostart.set_gui_enabled),
+        ):
+            try:
+                apply(enabled)
+            except autostart.AutostartError as error:
+                problems.append(str(error))
+
+        self.config.settings.autostart_daemon = bool(daemon)
+        self.config.settings.autostart_gui = bool(gui)
+        self._touch_config({"kind": "autostart"})
+        self.flush_save()
+        if problems:
+            raise ApiError(
+                "autostart_failed", i18n.t("error.autostart", reason="; ".join(problems))
+            )
+        return self.autostart()
 
     def set_language(self, code: str) -> str:
         """Arayüz ve mesaj dilini değiştirir.

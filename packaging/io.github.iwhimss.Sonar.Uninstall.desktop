@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Uninstall Sonar
+Name[tr]=Sonar'ı Kaldır
+Comment=Remove Sonar and everything it created
+Comment[tr]=Sonar'ı ve oluşturduğu her şeyi kaldırır
+Exec=sonar-uninstall
+Icon=io.github.iwhimss.Sonar
+Terminal=true
+Categories=AudioVideo;Audio;
+NoDisplay=false

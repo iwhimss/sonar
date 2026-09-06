@@ -529,7 +529,16 @@ class Settings:
     #: Hiçbir kurala uymayan **mikrofon** akışının bağlanacağı giriş zinciri.
     default_mic_chain: str = "mic"
     default_band_count: int = 10
+    #: Arayüz açılırken pencereyi göstermesin, doğrudan tepside beklesin.
     start_minimized: bool = False
+    #: Oturum açılışında ses düzeni hazır olsun (`systemctl --user enable sonar-daemon`).
+    #:
+    #: Ayarın kendisi yalnızca **kullanıcının niyetini** saklıyor; gerçek etkiyi systemd
+    #: yapıyor. İkisi ayrışabilir (unit elle kapatılabilir), bu yüzden arayüz systemd'nin
+    #: gerçek durumunu okuyor — ayarı değil.
+    autostart_daemon: bool = False
+    #: Arayüz de açılsın (tepside). XDG autostart girdisi olarak yazılıyor.
+    autostart_gui: bool = False
     #: ChatMix'i ne sürüyor. `auto` = kulaklık tekeri okunabiliyorsa o, yoksa slider.
     #: Teker yönetirken slider salt okunur olur; iki kaynağın birbirini ezmesi
     #: kullanıcının istemediği şeydi.

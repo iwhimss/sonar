@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sonar-linux"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "PipeWire tabanlı kanal mikseri — Linux için SteelSeries Sonar alternatifi"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,7 @@ Issues = "https://github.com/iwhimss/sonar/issues"
 [project.scripts]
 sonar-daemon = "sonar.daemon.__main__:main"
 sonar-cli = "sonar.cli.__main__:main"
+sonar-uninstall = "sonar.uninstall.__main__:main"
 
 [project.gui-scripts]
 sonar = "sonar.gui.app:main"
@@ -42,9 +43,10 @@ sonar = "sonar.gui.app:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/sonar"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/sonar/gui/qml" = "sonar/gui/qml"
-"src/sonar/i18n" = "sonar/i18n"
+# `force-include` **yok**: hatchling `packages = ["src/sonar"]` altındaki her dosyayı zaten
+# alıyor — QML ve JSON katalogları dâhil. Elle eklemek "A second file is being added to the
+# wheel archive at the same path" hatasıyla tekerleğin kurulmasını tamamen engelliyordu
+# (paket ilk kez Faz 11'de derlendiğinde çıktı).
 
 [tool.ruff]
 line-length = 100

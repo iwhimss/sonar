@@ -713,6 +713,30 @@ class SonarBridge(QObject):
         """Kaldırmadan sonra elle yapılacaklar. Root'a ait işleri daemon yapmıyor."""
         return self._manual_steps
 
+    def _autostart(self) -> dict:
+        return (self._state.get("autostart") or {}) if self._state else {}
+
+    def _get_autostart_daemon(self) -> bool:
+        return bool(self._autostart().get("daemon", False))
+
+    autostartDaemon = Property(bool, _get_autostart_daemon, notify=stateChanged)
+
+    def _get_autostart_gui(self) -> bool:
+        return bool(self._autostart().get("gui", False))
+
+    autostartGui = Property(bool, _get_autostart_gui, notify=stateChanged)
+
+    def _get_autostart_available(self) -> bool:
+        """Uygulama kurulu mu — depodan çalıştırırken unit ve kısayol yok."""
+        return bool(self._autostart().get("available", False))
+
+    autostartAvailable = Property(bool, _get_autostart_available, notify=stateChanged)
+
+    @Slot(bool, bool)
+    def setAutostart(self, daemon: bool, gui: bool) -> None:
+        self._call("SetAutostart", bool(daemon), bool(gui))
+        self.refresh()
+
     def _get_take_over_default_sink(self) -> bool:
         return bool(self._settings().get("take_over_default_sink", False))
 

@@ -429,6 +429,34 @@ eski kalırdı.
 
 ---
 
+## Paketleme ve oturum açılışı
+
+Paket dört çalıştırılabilir kuruyor (`sonar`, `sonar-cli`, `sonar-daemon`,
+`sonar-uninstall`) ve dört entegrasyon dosyası:
+
+| Dosya | İşi |
+|---|---|
+| `sonar-daemon.service` (systemd user) | oturum açılışında ses düzenini hazırlar |
+| `io.github.iwhimss.Sonar.service` (D-Bus) | arayüz bağlanmayı deneyince otobüs daemon'ı kaldırır |
+| `io.github.iwhimss.Sonar.desktop` | uygulama menüsündeki kısayol |
+| `60-sonar-headset.rules` (udev) | ChatMix tekerinin `/dev/hidraw*` erişimi |
+
+### Otomatik başlatma neden ayarda değil de systemd'de
+
+`Settings.autostart_daemon` yalnızca kullanıcının **niyetini** saklıyor; gerçek durumu
+systemd biliyor ve ikisi ayrışabilir (`systemctl --user disable`, paketin kaldırılması).
+Bu yüzden `api.autostart()` durumu `systemctl is-enabled`'dan ve autostart girdisinin
+varlığından okuyor — ayardan değil.
+
+Arayüzün açılışta gelmesi ayrı bir şey: `~/.config/autostart/` altına kurulu `.desktop`
+girdisinin `Exec`ine `--minimized` eklenmiş bir kopyası yazılıyor. Pencere açılmıyor,
+uygulama tepside bekliyor.
+
+`enable` çağrısında `--now` **kullanılmıyor**: "oturum açılışında başlasın" demek çalışan
+daemon'ı durdurmak/başlatmak değil.
+
+---
+
 ## Yapılandırma
 
 ```
@@ -485,7 +513,7 @@ Argümanlar yalnızca basit tiplerde (`s`, `b`, `d`, `i`); karmaşık yapılar J
 olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip grafı yeniden kurar
 (~200 ms sessizlik); diğerleri canlı ve kesintisizdir.
 
-### Metotlar (63)
+### Metotlar (65)
 
 | Metot | Argümanlar | Açıklama |
 |---|---|---|
@@ -493,6 +521,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `AddEqBand` | `s target, d freq, d gain_db` | Verilen frekansa yeni bir EQ bandı ekler. Sonuç: bandın indeksi. **Canlı**. |
 | `CopyProfile` | `s target, s name` | Aktif profili yeni bir adla çoğaltır ve ona geçer. |
 | `DeleteProfile` | `s target, s name` | Kullanıcı profilini siler; gömülü presetler silinemez. |
+| `Autostart` | `—` | Oturum açılışında başlatmanın **gerçek** durumu (systemd + XDG girdisi). |
 | `Deprovision` | `b purge_settings` | Sanal kanalları söker, varsayılan cihazı geri verir. `purge_settings` → yapılandırma dizini de silinir. **Yapısal**. |
 | `AddEffect` | `s target, s kind, i index` | Zincire efekt ekler; sonuç slot kimliği. **Yapısal**. |
 | `Diagnose` | `—` | Ses yolu teşhisi: eksik bağlantılar, doğmayan node'lar, çakışmalar. |
@@ -524,6 +553,7 @@ olarak taşınır. **Yapısal** işaretli metotlar `graph.conf`'u değiştirip g
 | `ReorderFavorites` | `s target, ? names` | Favori sırasını yeniden yazar. |
 | `ResetProfile` | `s target` | Aktif profili düz hâle döndürür (EQ sıfır, filtreler kapalı). |
 | `SaveProfile` | `s target, s name` | Çalışılan profili yeni adla kaydeder ('farklı kaydet'). |
+| `SetAutostart` | `b daemon, b gui` | Oturum açılışında ses düzenini ve/veya arayüzü başlat. |
 | `SetBusDevice` | `s bus, s device` | Bus'ın çıkış cihazı. **Yapısal** — graf yeniden kurulur. |
 | `SetChannelMute` | `s channel, s bus, b muted` | Kanalın bir miks yolunu susturur. |
 | `SetChannelStreamSource` | `s channel, b enabled` | Kanal için OBS'e ayrı bir sanal giriş cihazı yayınla. **Yapısal**. |

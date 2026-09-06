@@ -1,0 +1,81 @@
+# Maintainer: iwhimss <https://github.com/iwhimss>
+#
+# Yerel kurulum:
+#     cd packaging && makepkg -si
+#
+# Paket, depoyu **kaynak olarak** kullanmıyor: `makepkg` bunu bir git ağacının içinde
+# çalıştırıldığını varsayıp `..`'yi derliyor. Böylece `public` yapıldığında kullanıcı
+# depoyu klonlayıp tek komutla kurabiliyor; ayrı bir tarball yayınlamak gerekmiyor.
+
+pkgname=sonar-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="PipeWire için kanal tabanlı ses mikseri — SteelSeries Sonar alternatifi"
+arch=('any')
+url="https://github.com/iwhimss/sonar"
+license=('GPL-3.0-or-later')
+
+depends=(
+  'python'
+  'pipewire'
+  'pipewire-pulse'
+  'wireplumber'
+  'pyside6'
+  'python-numpy'
+  # Efekt kataloğunun çekirdeği: ekolayzer, kompresör, gate, limitleyici, genişletici,
+  # gecikme, gürlük dengeleme. Bunlar olmadan zincir kurulur ama neredeyse boş kalır.
+  'lsp-plugins-lv2'
+)
+optdepends=(
+  'calf: Yankı, De-esser, Exciter, Bas Zenginleştirici, Stereo Araçları'
+  'zam-plugins: Maximizer'
+  'deepfilter-ladspa: AI gürültü engelleme (mikrofon)'
+  'qpwgraph: ses grafını gözle incelemek için'
+)
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
+
+# Kaynak yerel ağaç; `makepkg` depo içinden çalıştırılıyor.
+source=()
+sha256sums=()
+
+_root="$(cd "${startdir}/.." && pwd)"
+
+build() {
+  cd "${_root}"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "${_root}"
+  python -m installer --destdir="${pkgdir}" dist/*.whl
+
+  # --- systemd user unit'i ve D-Bus etkinleştirme -----------------------------
+  # İkisi birlikte çalışıyor: arayüz daemon'a bağlanmayı deneyince otobüs unit'i
+  # kaldırıyor, yani kullanıcı hiçbir komut yazmadan uygulamayı açabiliyor.
+  install -Dm644 packaging/sonar-daemon.service \
+    "${pkgdir}/usr/lib/systemd/user/sonar-daemon.service"
+  install -Dm644 packaging/io.github.iwhimss.Sonar.service \
+    "${pkgdir}/usr/share/dbus-1/services/io.github.iwhimss.Sonar.service"
+
+  # --- masaüstü entegrasyonu --------------------------------------------------
+  install -Dm644 packaging/io.github.iwhimss.Sonar.desktop \
+    "${pkgdir}/usr/share/applications/io.github.iwhimss.Sonar.desktop"
+  install -Dm644 packaging/io.github.iwhimss.Sonar.Uninstall.desktop \
+    "${pkgdir}/usr/share/applications/io.github.iwhimss.Sonar.Uninstall.desktop"
+  install -Dm644 packaging/io.github.iwhimss.Sonar.svg \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.iwhimss.Sonar.svg"
+
+  # --- kulaklık teker erişimi -------------------------------------------------
+  # Dosya adındaki 60 önemli: `uaccess` etiketini systemd'nin 73-seat-late.rules'u
+  # işliyor ve udev kuralları ad sırasına göre çalışıyor. 99- ile denendi, ACL hiç
+  # uygulanmadı (bkz. kuralın kendi başlığı).
+  install -Dm644 packaging/60-sonar-headset.rules \
+    "${pkgdir}/usr/lib/udev/rules.d/60-sonar-headset.rules"
+
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 ARCHITECTURE.md "${pkgdir}/usr/share/doc/${pkgname}/ARCHITECTURE.md"
+  install -Dm644 docs/OBS.md "${pkgdir}/usr/share/doc/${pkgname}/OBS.md"
+  install -Dm644 docs/TROUBLESHOOTING.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/TROUBLESHOOTING.md"
+}

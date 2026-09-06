@@ -1347,3 +1347,55 @@ def test_reset_effect_rejects_an_unknown_slot(api):
     with pytest.raises(ApiError) as excinfo:
         api.reset_effect("game", "yok")
     assert excinfo.value.code == "unknown_stage"
+
+
+# --------------------------------------------------------------------------- otomatik başlatma
+
+
+def test_autostart_reports_the_real_state_not_the_setting(api, monkeypatch):
+    """Ayar niyeti, systemd gerçeği söylüyor; arayüz gerçeğe bakmalı."""
+    from sonar.core import autostart
+
+    monkeypatch.setattr(autostart, "is_daemon_enabled", lambda: True)
+    monkeypatch.setattr(autostart, "is_gui_enabled", lambda: False)
+    monkeypatch.setattr(autostart, "is_available", lambda: True)
+
+    api.config.settings.autostart_daemon = False  # ayar ile gerçek ayrışmış
+
+    state = api.autostart()
+
+    assert state == {"daemon": True, "gui": False, "available": True}
+
+
+def test_set_autostart_persists_and_applies(api, monkeypatch):
+    from sonar.core import autostart
+
+    applied: dict[str, bool] = {}
+    monkeypatch.setattr(autostart, "set_daemon_enabled", lambda v: applied.update(daemon=v))
+    monkeypatch.setattr(autostart, "set_gui_enabled", lambda v: applied.update(gui=v))
+    monkeypatch.setattr(autostart, "is_daemon_enabled", lambda: True)
+    monkeypatch.setattr(autostart, "is_gui_enabled", lambda: True)
+    monkeypatch.setattr(autostart, "is_available", lambda: True)
+
+    result = api.set_autostart(True, True)
+
+    assert applied == {"daemon": True, "gui": True}
+    assert api.config.settings.autostart_daemon is True
+    assert api.store.load().settings.autostart_gui is True, "hemen diske yazılmalı"
+    assert result["daemon"] is True
+
+
+def test_set_autostart_reports_why_it_failed(api, monkeypatch):
+    """Depodan çalıştırırken unit yok; sessizce başarılı görünmek yanıltırdı."""
+    from sonar.core import autostart
+
+    def boom(_enabled):
+        raise autostart.AutostartError("Unit not found.")
+
+    monkeypatch.setattr(autostart, "set_daemon_enabled", boom)
+    monkeypatch.setattr(autostart, "set_gui_enabled", lambda _v: None)
+
+    with pytest.raises(ApiError) as excinfo:
+        api.set_autostart(True, False)
+    assert excinfo.value.code == "autostart_failed"
+    assert "Unit not found" in excinfo.value.message

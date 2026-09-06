@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Sonar
+GenericName=Audio Mixer
+GenericName[tr]=Ses Mikseri
+Comment=Channel-based audio mixer for PipeWire
+Comment[tr]=PipeWire için kanal tabanlı ses mikseri
+Exec=sonar
+Icon=io.github.iwhimss.Sonar
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+Keywords=audio;mixer;pipewire;equalizer;obs;stream;chatmix;
+Keywords[tr]=ses;mikser;pipewire;ekolayzer;obs;yayın;chatmix;
+StartupWMClass=sonar

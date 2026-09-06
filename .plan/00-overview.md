@@ -7,10 +7,10 @@
 
 ## Şu an neredeyiz
 
-**Aktif faz:** Faz 11 — Paketleme (onay bekliyor)
+**Aktif faz:** Faz 11 — Paketleme (kurulum testi kullanıcıda)
 **Son güncelleme:** 2026-09-06
-**Sonraki adım:** **Faz 11 — Paketleme** ve ayrı `sonar-uninstall`. Test turu 8 sorunsuz
-geçti; açık bir hata kalmadı.
+**Sonraki adım:** Kullanıcı `cd packaging && makepkg -si` ile kuracak (sudo gerektiği için
+bende yapılamadı), sonra `sonar-uninstall` ile temiz kurulum denemesi yapacak.
 
 > **Test turu 8 (2026-09-06).** Kullanıcı hata bildirmedi. İki uzun süredir açık olan
 > doğrulama maddesi kapandı:
@@ -127,13 +127,13 @@ geçti; açık bir hata kalmadı.
 | 48 | [Dosya pencereleri](48-file-dialogs.md) | 🟢 Tamamlandı |
 | 49 | [Filtre başına sıfırlama](49-effect-reset.md) | 🟢 Tamamlandı |
 | 50 | [Yanlış alarm ve doğrulama](50-verify.md) | 🟢 Tamamlandı |
-| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | 🟡 Sıradaki |
+| 11 | [Paketleme + `sonar-uninstall`](11-packaging.md) | 🟡 Kurulum testi kullanıcıda |
 | — | [v1 sonrası backlog](99-backlog.md) | 📋 Liste |
 
 Durum işaretleri: ⚪ bekliyor · 🟡 devam ediyor · 🟢 tamamlandı · 🔴 engellendi
 
-**Test durumu:** 1026 test geçiyor (2 atlanıyor), `ruff` temiz.
-**Graf durumu:** daemon D-Bus'ta yayında (63 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
+**Test durumu:** 1036 test geçiyor (2 atlanıyor), `ruff` temiz.
+**Graf durumu:** daemon D-Bus'ta yayında (65 metot, 5 sinyal); `sonar-cli` ile GUI olmadan
 tam kontrol çalışıyor. Daemon açılışta **kanal kurmuyor**: kurulum kullanıcının onayına
 bağlı (`Provision`). Zincir profilin efekt listesinden kuruluyor; katalogda **16 efekt**. Yeniden inşa gerektiren tek işlem kanal ekleme/silme ve kanal
 başına OBS kaynağı; cihaz değişimi, EQ bandı ekleme/silme, Spatial ve profil geçişi

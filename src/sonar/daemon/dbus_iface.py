@@ -366,6 +366,16 @@ class SonarDBusInterface(QObject):
         """Kurulacak (veya kurulmuş) sanal cihazların listesi."""
         return reply(self.api.setup_summary)
 
+    @Slot(result=str)
+    def Autostart(self) -> str:
+        """Oturum açılışında başlatmanın gerçek durumu."""
+        return reply(self.api.autostart)
+
+    @Slot(bool, bool, result=str)
+    def SetAutostart(self, daemon: bool, gui: bool) -> str:
+        """Oturum açılışında ses düzenini ve/veya arayüzü başlat."""
+        return reply(lambda: self.api.set_autostart(daemon, gui))
+
     @Slot(str, result=str)
     def SetLanguage(self, code: str) -> str:
         """Arayüz ve mesaj dili (`tr` / `en`). Grafa dokunmaz."""

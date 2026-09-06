@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sonar simgesi: dört kanal şeridi ve tutamakları.
+
+  Tasarım dili uygulamanınkiyle aynı: yuvarlatılmış köşe yok, gradyan yok, gölge yok.
+  Renkler mikserdeki kanal renkleri (Oyun / Sohbet / Medya / Diğer), zemin `Theme.bg`.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#0E1116"/>
+  <rect x="8" y="8" width="112" height="112" fill="none" stroke="#232A33" stroke-width="2"/>
+
+  <!-- oluklar -->
+  <g fill="#1A1F27">
+    <rect x="28" y="24" width="6" height="80"/>
+    <rect x="52" y="24" width="6" height="80"/>
+    <rect x="76" y="24" width="6" height="80"/>
+    <rect x="100" y="24" width="6" height="80"/>
+  </g>
+
+  <!-- dolu kısımlar: her şerit farklı seviyede -->
+  <rect x="28" y="44" width="6" height="60" fill="#22C58B"/>
+  <rect x="52" y="60" width="6" height="44" fill="#3B9EFF"/>
+  <rect x="76" y="34" width="6" height="70" fill="#F0479A"/>
+  <rect x="100" y="72" width="6" height="32" fill="#8B95A5"/>
+
+  <!-- tutamaklar -->
+  <g fill="#E4E9F0">
+    <rect x="22" y="40" width="18" height="8"/>
+    <rect x="46" y="56" width="18" height="8"/>
+    <rect x="70" y="30" width="18" height="8"/>
+    <rect x="94" y="68" width="18" height="8"/>
+  </g>
+</svg>

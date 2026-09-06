@@ -48,11 +48,34 @@ Mikrofon sayfası, AI gürültü engelleme açıkken Noise Gate'i devre dışı 
 ### Arch / CachyOS
 
 ```bash
-sudo pacman -S pipewire wireplumber lsp-plugins-lv2 pyside6 python-numpy
-paru -S deepfilter-ladspa          # isteğe bağlı: AI gürültü engelleme
+git clone https://github.com/iwhimss/sonar
+cd sonar/packaging
+makepkg -si
+```
 
-git clone https://github.com/iwhimss/sonar && cd sonar
-pip install --user .
+Bu kadar. `makepkg` bağımlılıkları kendisi kurar ve şunları yerine koyar:
+
+| Ne | Nereye |
+|---|---|
+| `sonar`, `sonar-cli`, `sonar-daemon`, `sonar-uninstall` | `/usr/bin` |
+| Uygulama kısayolu ve ikon | uygulama menüsü |
+| systemd kullanıcı servisi | `sonar-daemon.service` |
+| D-Bus etkinleştirme | arayüz açılınca daemon kendiliğinden kalkar |
+| Kulaklık teker kuralı | `/usr/lib/udev/rules.d` |
+
+**İsteğe bağlı eklentiler** — efekt kataloğunun bir kısmı bunlara dayanıyor, kurulu
+olmayanlar "Efekt ekle" listesinde hiç görünmez:
+
+```bash
+sudo pacman -S calf zam-plugins     # Yankı, Exciter, De-esser, Maximizer…
+paru -S deepfilter-ladspa           # AI gürültü engelleme (mikrofon)
+```
+
+Kulaklık tekerinin okunabilmesi için udev kuralının bir kez yüklenmesi gerekiyor
+(kurulumdan sonra kulaklığı çıkarıp takmak da yeterli):
+
+```bash
+sudo udevadm control --reload && sudo udevadm trigger
 ```
 
 ### İlk açılış
@@ -69,6 +92,20 @@ Terminalden yapmak istersen aynı iş:
 ```bash
 sonar-cli install       # sanal kanalları kur
 sonar-cli uninstall     # kaldır (ayarlar diskte kalır)
+```
+
+### Oturum açılışında başlasın
+
+**Ayarlar → Oturum açılışında başlat** altında iki kutucuk var:
+
+* **Ses düzeni hazır olsun** — kanallar oturum açılır açılmaz kurulur, arayüzü hiç
+  açmasan bile ses düzenin yerinde olur.
+* **Arayüz de açılsın (tepside)** — pencere açılmaz, uygulama sistem tepsisinde bekler.
+
+İkisi de isteğe bağlı ve istediğin zaman kapatılabilir. Terminalden karşılığı:
+
+```bash
+systemctl --user enable --now sonar-daemon
 ```
 
 ### Kurmadan denemek
@@ -90,21 +127,6 @@ kesilmez.
 
 > **EasyEffects çalışıyorsa önce durdur** (`pkill easyeffects`) — ikisi aynı anda
 > çalışamaz, bkz. [Bilinen sınırlar](#bilinen-sınırlar).
-
-### Servisi başlat
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp packaging/sonar-daemon.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now sonar-daemon
-```
-
-Arayüzü aç:
-
-```bash
-sonar
-```
 
 ### Dil
 
@@ -296,18 +318,26 @@ karşılaştırır, doğmamış node'ları ve çakışan ses işleyicilerini sö
 
 ## Sonar'ı bırakırken
 
-**Ayarlar → Sonar'ı kaldır** sanal kanalları söker, varsayılan ses cihazını geri verir ve
-sistemi Sonar hiç kurulmamış hâle döndürür. Uygulamalar bundan sonra doğrudan fiziksel
-cihazlara çalar. Ayarların ve profillerin diskte kalır; pencerede bir kutucukla onları da
-silebilirsin.
+İki ayrı şey var.
 
-Terminalden aynısı:
+**Geçici olarak bırakmak** — *Ayarlar → Sonar'ı kaldır*: sanal kanalları söker, varsayılan
+ses cihazını geri verir, uygulamalar doğrudan fiziksel cihazlara çalmaya döner. Ayarların
+ve profillerin diskte kalır, geri dönmek tek tık.
 
 ```bash
 sonar-cli uninstall             # kanallar gider, ayarlar kalır
-sonar-cli uninstall --purge     # ayarlar ve profiller de silinir
 ./scripts/sonar-dev reset       # depodan çalıştırıyorsan
 ```
+
+**Tamamen kaldırmak** — `sonar-uninstall` (uygulama menüsünde "Sonar'ı Kaldır"):
+
+```bash
+sonar-uninstall
+```
+
+Ne silineceğini listeler, **onay ister**, sonra sanal kanalları söker, ayarları ve
+profilleri siler, oturum açılışı servisini kapatır ve udev kuralı ile paketin kendisi için
+`sudo` komutlarını çalıştırmayı önerir. Yedek almaz — Sonar hiç kurulmamış gibi olur.
 
 **EasyEffects'i tekrar açabilirsin** — Sonar durduğu için çakışma kalmaz:
 

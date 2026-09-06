@@ -141,6 +141,29 @@ yeniden inşa gerçekten olmuştur ve başka bir sebep vardır.
 Yeniden inşa gerektiren işlemler yalnızca şunlar: kanal/çıkış ekleme-silme, band sayısı,
 kanal başına OBS kaynağı ve Spatial Audio.
 
+## Oturum açılışında başlamıyor
+
+**Ayarlar → Oturum açılışında başlat** kutucukları soluk ve altında "yalnızca uygulama
+kurulduğunda çalışır" yazıyorsa, Sonar depodan çalıştırılıyor demektir: systemd servisi ve
+uygulama kısayolu kurulu değil. `cd packaging && makepkg -si` ile kurun.
+
+Kurulu olmasına rağmen başlamıyorsa servisin durumuna bakın:
+
+```bash
+systemctl --user status sonar-daemon
+systemctl --user enable sonar-daemon      # açılışta başlasın
+journalctl --user -u sonar-daemon -b      # bu oturumun günlüğü
+```
+
+Arayüzün tepside açılması ayrı bir ayar; girdisi şurada:
+`~/.config/autostart/io.github.iwhimss.Sonar.desktop`. Masaüstünüzün kendi "Otomatik
+başlatma" ayarları da bu girdiyi kapatabilir.
+
+Servis çalışıyor ama **kanallar yok**sa kurulum yapılmamış demektir: arayüzdeki karşılama
+ekranından ya da `sonar-cli install` ile kurun.
+
+---
+
 ## Kanallar hiç görünmüyor, karşılama ekranı açılıyor
 
 Sanal kanallar henüz **kurulmadı**. Sonar ilk açılışta PipeWire'a hiçbir şey yazmaz;

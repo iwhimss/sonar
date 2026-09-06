@@ -25,7 +25,7 @@ from sonar.gui.bridge import SonarBridge
 from sonar.gui.dbus_client import DBusClient
 from sonar.gui.i18n import QmlI18n
 
-__all__ = ["main", "qml_dir"]
+__all__ = ["app_icon", "main", "qml_dir"]
 
 log = logging.getLogger(__name__)
 
@@ -35,11 +35,37 @@ def qml_dir() -> Path:
     return Path(__file__).resolve().parent / "qml"
 
 
+#: Kurulu ikonun adı; `.desktop` girdisiyle birebir aynı olmalı.
+ICON_NAME = "io.github.iwhimss.Sonar"
+
+
+def app_icon() -> QIcon:
+    """Uygulama ikonu.
+
+    Önce kurulu tema ikonu (paket `/usr/share/icons/hicolor/scalable/apps/` altına
+    koyuyor), sonra depodaki `packaging/` kopyası. Eskiden `audio-volume-high` tema
+    ikonu kullanılıyordu — her masaüstünde başka bir şey çiziyordu ve pencere ile tepsi
+    Sonar'a ait görünmüyordu.
+    """
+    icon = QIcon.fromTheme(ICON_NAME)
+    if not icon.isNull():
+        return icon
+    local = Path(__file__).resolve().parents[3] / "packaging" / f"{ICON_NAME}.svg"
+    if local.is_file():
+        return QIcon(str(local))
+    return QIcon.fromTheme("audio-volume-high")
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(prog="sonar", description="Sonar mikser arayüzü")
     parser.add_argument("--log", default="warning")
+    parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help="pencereyi açmadan sistem tepsisinde başlat",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=getattr(logging, args.log.upper(), logging.WARNING))
 
@@ -54,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Sonar")
     app.setOrganizationName("iwhimss")
     app.setDesktopFileName("io.github.iwhimss.Sonar")
+    app.setWindowIcon(app_icon())
 
     # Köprü uygulamaya bağlanıyor: aksi hâlde çıkışta Python tarafından toplanıp
     # QML'in altından çekiliyor ve kapanışta 'null' hataları düşüyor.
@@ -85,6 +112,13 @@ def main(argv: list[str] | None = None) -> int:
     tray = _install_tray(app, engine)
 
     _restore_window(engine, paths)
+    # `--minimized`: pencere hiç açılmıyor, uygulama tepside bekliyor. XDG autostart
+    # girdisi bu bayrakla yazılıyor (`core.autostart`), böylece oturum açılışında ekrana
+    # bir pencere fırlamıyor.
+    if args.minimized and tray is not None:
+        engine.rootObjects()[0].hide()
+    elif args.minimized:
+        log.warning("sistem tepsisi yok; pencere gizlenmiyor")
     exit_code = app.exec()
     del tray
     bridge.subscribeMeters(False)
@@ -127,7 +161,7 @@ def _install_tray(app: QApplication, engine: QQmlApplicationEngine):
     quit_action = menu.addAction("Çıkış (daemon çalışmaya devam eder)")
     quit_action.triggered.connect(app.quit)
 
-    tray = QSystemTrayIcon(QIcon.fromTheme("audio-volume-high"), app)
+    tray = QSystemTrayIcon(app_icon(), app)
     tray.setToolTip("Sonar")
     tray.setContextMenu(menu)
     tray.activated.connect(
