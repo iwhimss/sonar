@@ -26,10 +26,16 @@ depends=(
   # gecikme, gürlük dengeleme. Bunlar olmadan zincir kurulur ama neredeyse boş kalır.
   'lsp-plugins-lv2'
 )
+# Adlar **ölçülerek** yazıldı: her biri Sonar'ın aradığı dosyanın gerçek sahibi
+# (`pacman -Qo /usr/lib/lv2/...`, `pacman -Qo /usr/lib/ladspa/...`).
+#
+# `zam-plugins` **değil**: o bir meta paket, kendi dosya listesinde tek bir LADSPA
+# dosyası yok ve altı ayrı yapıyı (clap/lv2/vst/vst3/standalone) birden çekiyor.
+# Maximizer'ın ihtiyacı olan tek şey `-ladspa` bölümü.
 optdepends=(
   'calf: Yankı, De-esser, Exciter, Bas Zenginleştirici, Stereo Araçları'
-  'zam-plugins: Maximizer'
-  'deepfilter-ladspa: AI gürültü engelleme (mikrofon)'
+  'zam-plugins-ladspa: Maximizer'
+  'deepfilternet-plus-bin: AI gürültü engelleme (mikrofon, AUR)'
   'qpwgraph: ses grafını gözle incelemek için'
 )
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
@@ -40,14 +46,21 @@ sha256sums=()
 
 _root="$(cd "${startdir}/.." && pwd)"
 
+# Tekerlek deponun `dist/`ine **değil**, makepkg'nin kendi `srcdir`ine derleniyor ve
+# dizin önce siliniyor. Sebep: `dist/*.whl` globu sürüm yükseltildiğinde eski tekerleği
+# de yakalar, `python -m installer` iki dosya alıp kurulumu bozardı. Boşaltılmış bir
+# dizinde glob tanım gereği tek dosya eşliyor.
+_wheeldir() { echo "${srcdir}/wheel"; }
+
 build() {
   cd "${_root}"
-  python -m build --wheel --no-isolation
+  rm -rf "$(_wheeldir)"
+  python -m build --wheel --no-isolation --outdir "$(_wheeldir)"
 }
 
 package() {
   cd "${_root}"
-  python -m installer --destdir="${pkgdir}" dist/*.whl
+  python -m installer --destdir="${pkgdir}" "$(_wheeldir)"/*.whl
 
   # --- systemd user unit'i ve D-Bus etkinleştirme -----------------------------
   # İkisi birlikte çalışıyor: arayüz daemon'a bağlanmayı deneyince otobüs unit'i

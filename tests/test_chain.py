@@ -200,7 +200,7 @@ def test_ladspa_node_carries_a_label_and_lv2_does_not(all_installed):
 def test_ladspa_plugin_is_an_absolute_path_when_installed():
     spec = registry.plugin("deepfilter_stereo")
     if not registry.is_available("deepfilter_stereo"):
-        pytest.skip("deepfilter-ladspa kurulu değil")
+        pytest.skip("deepfilternet-plus-bin kurulu değil")
     assert registry.plugin_reference(spec).startswith("/")
 
 

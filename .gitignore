@@ -13,6 +13,11 @@ venv/
 .coverage
 htmlcov/
 
+# makepkg artıkları — `packaging/` içinde derleniyor, hiçbiri repoya girmez
+packaging/pkg/
+packaging/src/
+packaging/*.pkg.tar.*
+
 # Editör
 .vscode/
 .idea/

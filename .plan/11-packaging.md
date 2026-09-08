@@ -27,8 +27,10 @@ oturum açılışında başlamıyor, kaldırmanın tek yolu elle dosya silmek.
 - [x] `packaging/PKGBUILD`
   - `depends`: `pipewire`, `pipewire-pulse`, `wireplumber`, `pyside6`, `python-numpy`,
     `lsp-plugins-lv2`
-  - `optdepends`: `calf` ve `zam-plugins` (efekt kataloğunun bir kısmı), 
-    `deepfilter-ladspa` (AI gürültü engelleme), `qpwgraph` (hata ayıklama)
+  - `optdepends`: `calf` ve `zam-plugins-ladspa` (efekt kataloğunun bir kısmı), 
+    `deepfilternet-plus-bin` (AI gürültü engelleme), `qpwgraph` (hata ayıklama).
+    Adlar `pacman -Qo` ile ölçüldü: `zam-plugins` meta paket, LADSPA vermiyor;
+    `deepfilter-ladspa` diye bir paket ne depoda ne AUR'da var.
   - `makedepends`: `python-build`, `python-installer`, `python-hatchling`
 - [x] `makepkg --printsrcinfo` geçiyor; tekerlek `python -m build` ile derlendi ve içeriği doğrulandı
 - [x] Kurulan dosyalar: `sonar`, `sonar-daemon`, `sonar-cli`, `sonar-uninstall`,

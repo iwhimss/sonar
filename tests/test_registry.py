@@ -172,7 +172,7 @@ def test_deepfilter_catalog_matches_the_real_library():
             library = candidate
             break
     if library is None:
-        pytest.skip("deepfilter-ladspa kurulu değil")
+        pytest.skip("deepfilternet-plus-bin kurulu değil")
 
     for spec in (registry.plugin("deepfilter_mono"), registry.plugin("deepfilter_stereo")):
         descriptor = _ladspa_descriptor(library, spec.label)

@@ -77,7 +77,7 @@ aşama zincirden **sessizce düşer** (graf yine kurulur, o efekt görünmez).
 ```bash
 pacman -S lsp-plugins-lv2          # Arch / CachyOS
 # AI gürültü engelleme için (isteğe bağlı):
-paru -S deepfilter-ladspa
+paru -S deepfilternet-plus-bin
 ```
 
 Kurulu olanları görmek için:

@@ -12,7 +12,7 @@ pip install -e ".[dev]"
 
 ```bash
 sudo pacman -S pipewire wireplumber lsp-plugins-lv2
-paru -S deepfilter-ladspa      # isteğe bağlı
+paru -S deepfilternet-plus-bin   # isteğe bağlı (AUR)
 ```
 
 ## Kontroller

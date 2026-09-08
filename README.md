@@ -45,6 +45,11 @@ Mikrofon sayfası, AI gürültü engelleme açıkken Noise Gate'i devre dışı 
 
 ## Kurulum
 
+Hazır paket **yalnızca Arch tabanlı dağıtımlar** için var (Arch, CachyOS, EndeavourOS,
+Manjaro). Başka bir dağıtımdaysan Sonar yine çalışır — PipeWire ve LSP eklentileri her
+yerde bulunur — ama kurulumu elle yapman gerekir: [Kurmadan
+denemek](#kurmadan-denemek) bölümü depodan çalıştırmayı anlatıyor.
+
 ### Arch / CachyOS
 
 ```bash
@@ -67,9 +72,17 @@ Bu kadar. `makepkg` bağımlılıkları kendisi kurar ve şunları yerine koyar:
 olmayanlar "Efekt ekle" listesinde hiç görünmez:
 
 ```bash
-sudo pacman -S calf zam-plugins     # Yankı, Exciter, De-esser, Maximizer…
-paru -S deepfilter-ladspa           # AI gürültü engelleme (mikrofon)
+sudo pacman -S calf zam-plugins-ladspa   # Yankı, Exciter, De-esser, Maximizer…
+paru -S deepfilternet-plus-bin           # AI gürültü engelleme (mikrofon, AUR)
 ```
+
+`zam-plugins` **değil** `zam-plugins-ladspa`: ilki bir meta paket, kendisi hiçbir LADSPA
+dosyası kurmuyor ve altı ayrı yapıyı birden çekiyor.
+
+**EasyEffects'e gerek yok.** Sonar aynı LSP ve Calf eklentilerini doğrudan kullanıyor;
+EasyEffects onları yalnızca kendi *isteğe bağlı bağımlılığı* olarak getirdiği için ikisi
+karıştırılabiliyor. Sonar'ın kurulumu `lsp-plugins-lv2`'yi zaten zorunlu bağımlılık
+olarak çekiyor.
 
 Kulaklık tekerinin okunabilmesi için udev kuralının bir kez yüklenmesi gerekiyor
 (kurulumdan sonra kulaklığı çıkarıp takmak da yeterli):
@@ -149,7 +162,8 @@ Terminalden: `sonar-cli lang en`
 | Python | 3.11 |
 | PySide6 | 6.6 |
 | `lsp-plugins-lv2` | 1.2 — **zorunlu**, DSP zinciri buna dayanıyor |
-| `deepfilter-ladspa` | isteğe bağlı, yalnızca AI gürültü engelleme için |
+| `calf`, `zam-plugins-ladspa` | isteğe bağlı — yankı, exciter, de-esser, maximizer |
+| `deepfilternet-plus-bin` | isteğe bağlı (AUR), yalnızca AI gürültü engelleme için |
 
 Kurulu olmayan bir eklenti zincirden **sessizce düşer** — graf yine kurulur, o efekt
 görünmez.
